@@ -2,7 +2,7 @@
 import socket
 import threading
 import time
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 import pytest
@@ -78,12 +78,13 @@ def test_ignores_other_paths():
     t.start()
     _wait_ready(port)
 
-    # 잘못된 path
+    # 잘못된 path — 404 응답. HTTPError 객체는 닫아서 ResourceWarning 방지.
     try:
-        urlopen(f"http://127.0.0.1:{port}/something_else")
+        with urlopen(f"http://127.0.0.1:{port}/something_else") as resp:
+            resp.read()
+    except HTTPError as e:
+        e.close()
     except URLError:
-        pass
-    except Exception:
         pass
 
     # 그 다음 올바른 path
