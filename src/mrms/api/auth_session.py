@@ -48,6 +48,8 @@ async def device_code_init() -> dict:
         data.get("verificationUriComplete")
         or f"{verification_uri}?code={data['userCode']}"
     )
+    if verification_uri_complete and not verification_uri_complete.startswith("http"):
+        verification_uri_complete = f"https://{verification_uri_complete}"
     return {
         "user_code": data["userCode"],
         "device_code": data["deviceCode"],
