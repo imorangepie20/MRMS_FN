@@ -2,6 +2,40 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## 🚨 구현 결과 — Plan과 실제 차이 (READ FIRST)
+
+> **이 plan은 Tidal Web Playback SDK 기반으로 작성되었으나, Task 5 이후 SDK 접근이 실패하여 큰 pivot이 일어남**. 아래 요약 후 원래 plan 내용은 역사적 기록으로 보존됨.
+
+### 실제 실행 결과
+
+- **Task 0–9**: 대체로 plan대로 진행됨 (UI + Zustand store + 초기 SDK wrapper + PlayerBar/Controls/QueueDrawer + layout 통합)
+- **Task 5 (SDK wrapper)**: 후반에 **완전히 재작성**됨. `@tidal-music/player` + `@tidal-music/auth` + `@tidal-music/event-producer` 조합은 FULL track 재생까지 도달하지 못함 (dev app tier 제약 + Widevine CDN segment 실패 → PREVIEW 30s 한정). 결과적으로 HTML5 `<audio>` 요소 + 백엔드 proxy (`/api/playback/tidal/stream/{track_id}`)로 전환
+- **Task 10 (검증)**: proxy pivot **이후에만** 성공 — SDK 경로에서는 success criteria의 ▶ 클릭 → 소리 남이 작동하지 않았음
+
+### 최종 아키텍처
+
+```
+Browser <audio>  ←  /api/playback/tidal/stream/{track_id}  (FastAPI)  ←  Tidal CDN
+```
+
+FastAPI proxy가 Tidal legacy `/v1/tracks/{id}/playbackinfo` (audioquality=HIGH, assetpresentation=FULL)를 호출하여 base64 manifest에서 직접 audio URL을 추출. `httpx.AsyncClient.stream` + Bearer auth로 브라우저까지 relay.
+
+### Final commits
+
+- `9b98dc9` — **the pivot**: Tidal proxy streaming endpoint + HTML5 audio wrapper
+- `1c4418a` — Remove unused `@tidal-music/*` SDK packages
+- `4a0f7c9` — Merge E.5 to main
+
+### Additional CLI (plan에 없던 것)
+
+- `scripts/08c_tidal_device_code.py` — Device Authorization Code flow CLI. python-tidal 라이브러리의 공개 credentials (`TIDAL_CLIENT_ID=fX2JxdmntZWK0ixT`)를 사용 (우리 dev app 아님). plan에 명시된 `scripts/08_onboard_tidal.py`의 Authorization Code + PKCE는 SDK 폐기 후 사용 안 함
+
+### 이하 내용에 대한 안내
+
+Task 0–10의 step-by-step 내용은 **원래 plan 그대로** 보존되어 있음. 특히 Task 5의 코드 / Task 0의 SDK notes / Task 3의 `pnpm add @tidal-music/*`는 최종 코드 상태와 일치하지 않음. 최신 구현 메모는 `docs/tidal-sdk-notes.md` 참조.
+
+---
+
 **Goal:** /mrt 페이지에서 ▶ 클릭 시 Tidal Web Playback SDK로 full track 재생. 하단 영구 PlayerBar + 큐 + auto-next + 반응형. 본인 Tidal Premium 활용.
 
 **Architecture:** 백엔드는 Tidal-only filter + 토큰/refresh endpoint 추가. 프론트엔드는 Zustand store가 단일 상태 출처, Tidal SDK 싱글톤 wrapper, 5개 player 컴포넌트. PlayerBar는 layout에 마운트 — 페이지 이동해도 유지.

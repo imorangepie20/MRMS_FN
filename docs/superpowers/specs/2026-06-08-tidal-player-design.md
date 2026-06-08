@@ -4,6 +4,44 @@
 **상태**: 디자인 (사용자 리뷰 대기)
 **범위**: 추천 페이지(MRT)에서 Tidal Web Playback SDK로 full track 재생. 하단 영구 PlayerBar + 큐 + auto-next + 반응형.
 
+## 🚨 구현 결과 — 큰 pivot 있음 (READ FIRST)
+
+> **이 spec의 SDK 접근 방식은 실패했고, 백엔드 proxy 방식으로 교체됨**. 아래 내용은 최종 구현이 아닌 **역사적 기록**으로 보존.
+
+### 최종 아키텍처
+
+```
+Browser <audio>  ←  /api/playback/tidal/stream/{track_id}  (FastAPI proxy)  ←  Tidal CDN
+```
+
+- HTML5 `<audio>` 요소를 직접 사용 (SDK 없음)
+- FastAPI proxy가 Tidal `/v1/tracks/{id}/playbackinfo` (legacy REST)를 호출 → base64 manifest 디코드 → `urls[0]` (직접 audio file URL) 추출
+- proxy가 `Authorization: Bearer <token>` 헤더로 Tidal CDN에서 stream을 받아 브라우저로 relay
+
+### SDK 접근이 실패한 이유 (6시간 디버깅 후)
+
+1. **dev app tier 제약**: 우리 Tidal dev app의 access tier가 SDK 경로의 FULL DRM streaming을 지원하지 않음
+2. **CDN segment 다운로드 실패**: DASH manifest까지는 정상 수신되지만 CDN segment 단계에서 Widevine challenge가 실패함
+3. **PREVIEW 한정**: SDK로 도달 가능한 최대치는 30초 PREVIEW 뿐, FULL track 재생 불가
+
+### Proxy 접근의 핵심
+
+- 사용자의 Electron 앱 코드와 `my-forever-music` 프로젝트에서 발견한 패턴
+- python-tidal 라이브러리의 공개 credentials (`TIDAL_CLIENT_ID=fX2JxdmntZWK0ixT`)와 Device Authorization Code flow 사용 — 원래 spec의 Authorization Code + PKCE 아님
+- legacy `/v1/tracks/{id}/playbackinfo` endpoint는 DRM 없이 직접 audio URL을 반환 (`audioquality=HIGH`, `assetpresentation=FULL`)
+- 결과적으로 브라우저는 일반 HTML5 audio 재생만 하면 됨
+
+### Pivot 시점
+
+- Commit `9b98dc9` "feat: Tidal proxy streaming" — SDK 폐기 + proxy endpoint 도입
+- 후속 commit에서 `@tidal-music/*` 패키지 제거 + Device Code OAuth 도입
+
+### 이하 내용에 대한 안내
+
+아래 섹션 1–12는 **원래 spec 그대로** 보존되어 있음. SDK 패키지명 / Premium 체크 / Widevine DRM / `credentialsProvider` 등의 기술 결정은 **모두 실제 구현에 반영되지 않음**. 최종 구현 문서는 `docs/tidal-sdk-notes.md` 참조.
+
+---
+
 ## 1. Goal + 사용자 의도
 
 E.0+1+2에서 시각화된 MRT를 **브라우저에서 직접 들어볼 수 있게** 만듦. 본인 Tidal Premium 구독 활용. 추천 → 감상 루프 닫음.
