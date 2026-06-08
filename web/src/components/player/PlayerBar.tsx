@@ -1,13 +1,38 @@
 "use client";
 
+import { Volume2 } from "lucide-react";
 import { useEffect } from "react";
 
 import { getTidalToken } from "@/lib/api";
-import { initTidalSdk } from "@/lib/tidal-player";
+import { initTidalSdk, setSdkVolume } from "@/lib/tidal-player";
 import { usePlayerStore } from "@/store/player";
 
 import { NowPlaying } from "./NowPlaying";
 import { PlayerControls } from "./PlayerControls";
+import { QueueDrawer } from "./QueueDrawer";
+
+
+function VolumeSlider() {
+  const volume = usePlayerStore((s) => s.volume);
+  return (
+    <div className="flex items-center gap-2">
+      <Volume2 className="h-4 w-4 text-muted-foreground" />
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={Math.round(volume * 100)}
+        onChange={async (e) => {
+          const v = Number(e.target.value) / 100;
+          usePlayerStore.setState({ volume: v });
+          await setSdkVolume(v);
+        }}
+        className="w-20 h-1 accent-primary"
+        aria-label="Volume"
+      />
+    </div>
+  );
+}
 
 
 export function PlayerBar() {
@@ -69,7 +94,8 @@ export function PlayerBar() {
         <NowPlaying className="flex-1 min-w-0 max-w-[40%] md:max-w-[30%]" />
         <PlayerControls compact={true} />
         <div className="hidden md:flex items-center gap-2 shrink-0">
-          {/* Volume + QueueButton — Task 8에서 추가 */}
+          <VolumeSlider />
+          <QueueDrawer />
         </div>
       </div>
     </div>
