@@ -1,4 +1,4 @@
-import type { MrtLatestResponse, UserInfo } from "./types";
+import type { MrtLatestResponse, TidalTokenResponse, UserInfo } from "./types";
 
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
@@ -23,4 +23,14 @@ export function getUser(): Promise<UserInfo> {
 
 export function getMrtLatest(): Promise<MrtLatestResponse> {
   return fetchJson<MrtLatestResponse>("/mrt/latest");
+}
+
+
+export function getTidalToken(): Promise<TidalTokenResponse> {
+  return fetchJson<TidalTokenResponse>("/auth/tidal/token");
+}
+
+
+export function refreshTidalToken(): Promise<TidalTokenResponse> {
+  return fetchJson<TidalTokenResponse>("/auth/tidal/refresh", { method: "POST" });
 }

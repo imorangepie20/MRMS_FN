@@ -14,6 +14,7 @@ export interface PersonaTrack {
   album_id: string | null;
   album_title: string | null;
   similarity: number;
+  tidal_track_id: string | null;
 }
 
 export interface Persona {
@@ -29,6 +30,7 @@ export interface RecommendedTrack {
   album_id: string | null;
   score: number;
   persona_idx: number | null;
+  tidal_track_id: string | null;
 }
 
 export interface RecommendedAlbum {
@@ -44,4 +46,10 @@ export interface MrtLatestResponse {
   personas: Persona[];
   recommended_tracks: RecommendedTrack[];
   recommended_albums: RecommendedAlbum[];
+}
+
+export interface TidalTokenResponse {
+  access_token: string;
+  expires_at: string | null;
+  premium: boolean | null;
 }
