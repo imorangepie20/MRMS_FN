@@ -1,0 +1,19 @@
+[Unit]
+Description=MRMS_FN FastAPI backend
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=mrms
+Group=mrms
+WorkingDirectory=/opt/mrms
+EnvironmentFile=/opt/mrms/.env.production
+ExecStart=/opt/mrms/.venv/bin/uvicorn mrms.api.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
