@@ -59,3 +59,56 @@ async def test_fetch_paginates():
             country="KR",
         )
     assert len(ids) == 75
+
+
+@pytest.mark.asyncio
+async def test_fetch_user_playlists_returns_uuids():
+    """User playlists → list of UUIDs."""
+    fake_response = MagicMock()
+    fake_response.status_code = 200
+    fake_response.json = MagicMock(return_value={
+        "items": [
+            {"uuid": "pl-aaa", "title": "P1"},
+            {"uuid": "pl-bbb", "title": "P2"},
+        ],
+        "totalNumberOfItems": 2,
+    })
+    fake_client = MagicMock()
+    fake_client.__aenter__ = AsyncMock(return_value=fake_client)
+    fake_client.__aexit__ = AsyncMock(return_value=None)
+    fake_client.get = AsyncMock(return_value=fake_response)
+
+    from mrms.onboarding.tidal_favorites import fetch_tidal_user_playlists
+
+    with patch("httpx.AsyncClient", return_value=fake_client):
+        uuids = await fetch_tidal_user_playlists(
+            access_token="fake", tidal_user_id="12345", country="KR",
+        )
+    assert uuids == ["pl-aaa", "pl-bbb"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_playlist_tracks_skips_non_tracks():
+    """플레이리스트 items에서 트랙만 (video 등 제외)."""
+    fake_response = MagicMock()
+    fake_response.status_code = 200
+    fake_response.json = MagicMock(return_value={
+        "items": [
+            {"item": {"id": 111, "type": "track"}},
+            {"item": {"id": 222, "type": "video"}},
+            {"item": {"id": 333, "type": "track"}},
+        ],
+        "totalNumberOfItems": 3,
+    })
+    fake_client = MagicMock()
+    fake_client.__aenter__ = AsyncMock(return_value=fake_client)
+    fake_client.__aexit__ = AsyncMock(return_value=None)
+    fake_client.get = AsyncMock(return_value=fake_response)
+
+    from mrms.onboarding.tidal_favorites import fetch_tidal_playlist_tracks
+
+    with patch("httpx.AsyncClient", return_value=fake_client):
+        ids = await fetch_tidal_playlist_tracks(
+            access_token="fake", playlist_uuid="pl-xyz", country="KR",
+        )
+    assert ids == ["111", "333"]

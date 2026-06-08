@@ -15,7 +15,11 @@ from mrms.db.user_embedding import (
 )
 from mrms.db.user_track import get_oauth, upsert_user_track
 from mrms.onboarding.status import OnboardingStatus
-from mrms.onboarding.tidal_favorites import fetch_tidal_favorite_tracks
+from mrms.onboarding.tidal_favorites import (
+    fetch_tidal_favorite_tracks,
+    fetch_tidal_playlist_tracks,
+    fetch_tidal_user_playlists,
+)
 from mrms.recsys.mrt import search_for_persona
 from mrms.recsys.persona import (
     NotEnoughTracksError,
@@ -98,30 +102,76 @@ async def run_onboarding(
         access_token = oauth["accessToken"]
         tidal_uid = _extract_tidal_uid(access_token)
 
-        # 2. Tidal favorites fetch
+        # 2. Tidal favorites + 모든 user 플레이리스트 트랙 fetch
         status.set("fetching_favorites", 5, "Tidal 즐겨찾기 가져오는 중...")
-        tidal_track_ids = await fetch_tidal_favorite_tracks(
+        favorite_track_ids = await fetch_tidal_favorite_tracks(
             access_token=access_token, tidal_user_id=tidal_uid, country="KR"
         )
-        if not tidal_track_ids:
-            status.fail("Tidal 즐겨찾기에 트랙이 없습니다. Tidal 앱에서 좋아요를 누른 곡이 필요합니다")
+
+        status.set("fetching_favorites", 10, "Tidal 플레이리스트 목록 가져오는 중...")
+        playlist_uuids = await fetch_tidal_user_playlists(
+            access_token=access_token, tidal_user_id=tidal_uid, country="KR"
+        )
+
+        playlist_track_ids_set: set[str] = set()
+        for i, pl_uuid in enumerate(playlist_uuids):
+            status.set(
+                "fetching_favorites",
+                10 + int(10 * (i + 1) / max(len(playlist_uuids), 1)),
+                f"플레이리스트 트랙 가져오는 중... ({i + 1}/{len(playlist_uuids)})",
+            )
+            try:
+                tracks = await fetch_tidal_playlist_tracks(
+                    access_token=access_token, playlist_uuid=pl_uuid, country="KR"
+                )
+                playlist_track_ids_set.update(tracks)
+            except Exception:
+                # 한 플레이리스트 실패는 무시 (다른 플레이리스트 진행)
+                continue
+
+        # favorites 우선 (set 합치되 favorites는 별도 set으로 유지)
+        favorite_set = set(favorite_track_ids)
+        all_tidal_ids = list(favorite_set | playlist_track_ids_set)
+
+        if not all_tidal_ids:
+            status.fail(
+                "Tidal 즐겨찾기와 플레이리스트에 트랙이 없습니다. "
+                "Tidal 앱에서 좋아요나 플레이리스트를 만들어주세요"
+            )
             return
 
         # 3. Tidal IDs → internal Track IDs 매핑
-        status.set("matching_tracks", 25, f"트랙 매칭 중... (Tidal {len(tidal_track_ids)}곡)")
-        internal_track_ids = _match_tidal_to_internal(conn, tidal_track_ids)
+        status.set("matching_tracks", 25, f"트랙 매칭 중... (Tidal {len(all_tidal_ids)}곡)")
+        internal_track_ids = _match_tidal_to_internal(conn, all_tidal_ids)
         if len(internal_track_ids) < 10:
             status.fail(
-                f"매칭된 트랙이 부족합니다 (Tidal {len(tidal_track_ids)}곡 중 {len(internal_track_ids)}곡만 내부 catalog 매칭). 최소 10곡 필요"
+                f"매칭된 트랙이 부족합니다 (Tidal {len(all_tidal_ids)}곡 중 {len(internal_track_ids)}곡만 내부 catalog 매칭). 최소 10곡 필요"
             )
             return
 
-        # 4. UserTrack 저장 (source='liked', is_core=True, platform='tidal')
-        for tid in internal_track_ids:
-            upsert_user_track(
-                conn, user_id=user_id, track_id=tid,
-                is_core=True, source="liked", platform="tidal",
+        # 4. UserTrack 저장 (favorites는 liked, 플레이리스트만의 트랙은 playlist source)
+        # 먼저 매칭된 ID → 어떤 Tidal ID에서 왔는지 알아야 함 — TrackPlatform 다시 조회로 매핑
+        with conn.cursor() as cur:
+            cur.execute(
+                '''SELECT "trackId", "platformTrackId" FROM "TrackPlatform"
+                   WHERE platform = 'tidal' AND "platformTrackId" = ANY(%s)''',
+                (all_tidal_ids,),
             )
+            rows = cur.fetchall()
+        internal_to_tidal = {r[0]: r[1] for r in rows}
+
+        for internal_id in internal_track_ids:
+            tidal_id = internal_to_tidal.get(internal_id)
+            if tidal_id and tidal_id in favorite_set:
+                upsert_user_track(
+                    conn, user_id=user_id, track_id=internal_id,
+                    is_core=True, source="liked", platform="tidal",
+                )
+            else:
+                upsert_user_track(
+                    conn, user_id=user_id, track_id=internal_id,
+                    is_core=False, source="playlist", platform="tidal",
+                )
         conn.commit()
 
         # 5. Embedding matrix

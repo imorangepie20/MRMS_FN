@@ -9,11 +9,10 @@ from mrms.onboarding.status import OnboardingStatus
 
 
 @pytest.mark.asyncio
-async def test_pipeline_no_favorites_sets_error(db_conn):
-    """Tidal 즐겨찾기 0개면 error 상태."""
+async def test_pipeline_no_data_sets_error(db_conn):
+    """Tidal favorites + playlists 모두 0이면 error 상태."""
     from mrms.db.user_track import get_or_create_user, upsert_oauth
 
-    # Tidal uid 99999 — JWT encoded in access token
     import base64
     import json
     payload = base64.urlsafe_b64encode(json.dumps({"uid": 99999}).encode()).decode().rstrip("=")
@@ -32,10 +31,13 @@ async def test_pipeline_no_favorites_sets_error(db_conn):
     with patch(
         "mrms.onboarding.pipeline.fetch_tidal_favorite_tracks",
         new=AsyncMock(return_value=[]),
+    ), patch(
+        "mrms.onboarding.pipeline.fetch_tidal_user_playlists",
+        new=AsyncMock(return_value=[]),
     ):
         await run_onboarding(user_id=user_id, status=status, conn=db_conn)
     assert status.step == "error"
-    assert "즐겨찾기" in (status.error or "")
+    assert "트랙이 없습니다" in (status.error or "")
 
 
 @pytest.mark.asyncio
@@ -76,6 +78,9 @@ async def test_pipeline_progresses_through_steps(db_conn):
     with patch(
         "mrms.onboarding.pipeline.fetch_tidal_favorite_tracks",
         new=AsyncMock(return_value=tidal_track_ids),
+    ), patch(
+        "mrms.onboarding.pipeline.fetch_tidal_user_playlists",
+        new=AsyncMock(return_value=[]),  # 플레이리스트 없음, 즐겨찾기로만 진행
     ):
         await run_onboarding(user_id=user_id, status=status, conn=db_conn)
 
