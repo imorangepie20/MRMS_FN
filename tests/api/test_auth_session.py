@@ -1,5 +1,8 @@
 """AuthSession + get_current_user_id 테스트."""
+import base64
+import json
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -64,3 +67,101 @@ def test_expired_session_returns_401(db_conn):
     r = client.get("/api/user")
     client.cookies.clear()
     assert r.status_code == 401
+
+
+def _make_tidal_jwt(uid: int = 99999) -> str:
+    """가짜 Tidal JWT (서명 X, payload만 디코드 가능하게)."""
+    header = base64.urlsafe_b64encode(b'{"alg":"none"}').decode().rstrip("=")
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"uid": uid, "scope": "r_usr w_usr w_sub"}).encode()
+    ).decode().rstrip("=")
+    sig = base64.urlsafe_b64encode(b"fake").decode().rstrip("=")
+    return f"{header}.{payload}.{sig}"
+
+
+def test_device_code_init_returns_user_code(db_conn):
+    """init endpoint → Tidal mock 응답 → user_code + verification_uri 반환."""
+    fake_response = AsyncMock()
+    fake_response.status_code = 200
+    fake_response.json = lambda: {
+        "userCode": "ABC123",
+        "deviceCode": "DEVICE_XYZ",
+        "verificationUri": "link.tidal.com",
+        "verificationUriComplete": "https://link.tidal.com/ABC123",
+        "expiresIn": 300,
+        "interval": 5,
+    }
+    with patch("httpx.AsyncClient.post", return_value=fake_response):
+        r = client.post("/api/auth/tidal/device-code/init")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["user_code"] == "ABC123"
+    assert body["device_code"] == "DEVICE_XYZ"
+    assert "link.tidal.com" in body["verification_uri_complete"]
+
+
+def test_device_code_poll_pending_returns_pending(db_conn):
+    """Tidal이 authorization_pending 400 → {status: pending}."""
+    fake_response = AsyncMock()
+    fake_response.status_code = 400
+    fake_response.json = lambda: {"error": "authorization_pending"}
+    with patch("httpx.AsyncClient.post", return_value=fake_response):
+        r = client.post(
+            "/api/auth/tidal/device-code/poll",
+            json={"device_code": "DEVICE_XYZ"},
+        )
+    assert r.status_code == 200
+    assert r.json()["status"] == "pending"
+
+
+def test_device_code_poll_success_creates_session(db_conn):
+    """성공 응답 → User+UserOAuth+AuthSession 생성 + cookie set."""
+    jwt = _make_tidal_jwt(uid=12345)
+    fake_response = AsyncMock()
+    fake_response.status_code = 200
+    fake_response.json = lambda: {
+        "access_token": jwt,
+        "refresh_token": "refresh_xyz",
+        "expires_in": 86400,
+    }
+    with patch("httpx.AsyncClient.post", return_value=fake_response):
+        r = client.post(
+            "/api/auth/tidal/device-code/poll",
+            json={"device_code": "DEVICE_XYZ"},
+        )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "success"
+    assert body["has_mrt"] is False
+    assert "mrms_session" in r.cookies
+
+    # DB 검증
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT id FROM "User" WHERE email = %s', ("tidal-12345@auto.local",))
+        user_row = cur.fetchone()
+        assert user_row is not None
+        user_id = user_row[0]
+        cur.execute('SELECT COUNT(*) FROM "AuthSession" WHERE "userId" = %s', (user_id,))
+        assert cur.fetchone()[0] == 1
+        cur.execute(
+            'SELECT "accessToken" FROM "UserOAuth" WHERE "userId" = %s AND platform = %s',
+            (user_id, "tidal"),
+        )
+        token_row = cur.fetchone()
+        assert token_row is not None
+        assert token_row[0] == jwt
+    client.cookies.clear()
+
+
+def test_device_code_poll_expired_returns_expired(db_conn):
+    """Tidal이 expired_token → {status: expired}."""
+    fake_response = AsyncMock()
+    fake_response.status_code = 400
+    fake_response.json = lambda: {"error": "expired_token"}
+    with patch("httpx.AsyncClient.post", return_value=fake_response):
+        r = client.post(
+            "/api/auth/tidal/device-code/poll",
+            json={"device_code": "DEVICE_XYZ"},
+        )
+    assert r.status_code == 200
+    assert r.json()["status"] == "expired"

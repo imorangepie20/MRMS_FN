@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import psycopg
 
+from mrms.api.auth_session import router as auth_session_router
 from mrms.api.auth_tidal import playback_router as tidal_playback_router, router as tidal_router
 from mrms.api.deps import db_conn, get_current_user_id, get_default_user_email
 from mrms.api.schemas import (
@@ -31,6 +32,7 @@ app.add_middleware(
 )
 app.include_router(tidal_router)
 app.include_router(tidal_playback_router)
+app.include_router(auth_session_router)
 
 
 @app.get("/api/health")
