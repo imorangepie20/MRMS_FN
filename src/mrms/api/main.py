@@ -82,17 +82,20 @@ def user(
 
 
 def _fetch_track_metadata(conn, track_ids: list[str]) -> dict[str, dict]:
-    """Tidal 가용 트랙의 메타 + tidal_track_id 반환. Tidal 없는 트랙은 dict에 없음."""
+    """Tidal 가용 트랙의 메타 + tidal/spotify ID 반환."""
     if not track_ids:
         return {}
     with conn.cursor() as cur:
         cur.execute(
-            '''SELECT t.id, t.title, a.name, t."albumId", alb.title, tp."platformTrackId"
+            '''SELECT t.id, t.title, a.name, t."albumId", alb.title,
+                      tp_t."platformTrackId", tp_s."platformTrackId"
                FROM "Track" t
                JOIN "Artist" a ON a.id = t."artistId"
                LEFT JOIN "Album" alb ON alb.id = t."albumId"
-               INNER JOIN "TrackPlatform" tp
-                  ON tp."trackId" = t.id AND tp.platform = 'tidal'
+               INNER JOIN "TrackPlatform" tp_t
+                  ON tp_t."trackId" = t.id AND tp_t.platform = 'tidal'
+               LEFT JOIN "TrackPlatform" tp_s
+                  ON tp_s."trackId" = t.id AND tp_s.platform = 'spotify'
                WHERE t.id = ANY(%s)''',
             (track_ids,),
         )
@@ -104,6 +107,7 @@ def _fetch_track_metadata(conn, track_ids: list[str]) -> dict[str, dict]:
             "album_id": r[3],
             "album_title": r[4],
             "tidal_track_id": r[5],
+            "spotify_track_id": r[6],
         }
         for r in rows
     }
@@ -160,6 +164,7 @@ def mrt_latest(
                 album_title=m["album_title"],
                 similarity=float(sc),
                 tidal_track_id=m["tidal_track_id"],
+                spotify_track_id=m["spotify_track_id"],
             ))
         personas.append(Persona(
             persona_idx=persona_idx,
@@ -186,6 +191,7 @@ def mrt_latest(
             score=float(r["score"]),
             persona_idx=r.get("persona_idx"),
             tidal_track_id=meta[r["track_id"]]["tidal_track_id"],
+            spotify_track_id=meta[r["track_id"]]["spotify_track_id"],
         )
         for r in rec_tracks_raw
         if r["track_id"] in meta  # Tidal 가용한 것만

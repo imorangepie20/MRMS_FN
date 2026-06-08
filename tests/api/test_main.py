@@ -193,3 +193,47 @@ def test_user_endpoint_includes_primary_platform(db_conn):
     client.cookies.clear()
     assert r.status_code == 200
     assert r.json()["primary_platform"] == "tidal"
+
+
+def test_mrt_latest_includes_spotify_track_id(db_conn):
+    """/api/mrt/latest 응답 트랙들이 spotify_track_id 필드 포함."""
+    import numpy as np
+    from mrms.db.user_track import get_or_create_user
+    from mrms.db import user_embedding as ue
+
+    user_id = _set_session_cookie(db_conn, "spotify_track_test@example.com")
+
+    rng = np.random.default_rng(789)
+    for idx in range(3):
+        v = rng.standard_normal(256).astype(np.float32)
+        v /= np.linalg.norm(v)
+        ue.upsert_user_persona(db_conn, user_id, idx, v, track_count=50)
+
+    # Tidal + Spotify 둘 다 있는 트랙
+    with db_conn.cursor() as cur:
+        cur.execute('''
+            SELECT t.id, tp_t."platformTrackId", tp_s."platformTrackId"
+            FROM "Track" t
+            JOIN "TrackPlatform" tp_t ON tp_t."trackId" = t.id AND tp_t.platform = 'tidal'
+            JOIN "TrackPlatform" tp_s ON tp_s."trackId" = t.id AND tp_s.platform = 'spotify'
+            LIMIT 5
+        ''')
+        rows = cur.fetchall()
+    if len(rows) < 3:
+        import pytest
+        pytest.skip("필요한 Tidal+Spotify 동시 트랙 데이터 부족")
+
+    track_ids = [r[0] for r in rows]
+    for idx in range(3):
+        ue.insert_playlist_history(
+            db_conn, user_id, track_ids[:3], "our-v1.0+persona-K3",
+            context={"personaIdx": idx, "kind": "persona", "scores": [0.9, 0.8, 0.7]},
+        )
+    db_conn.commit()
+
+    r = client.get("/api/mrt/latest")
+    client.cookies.clear()
+    assert r.status_code == 200
+    body = r.json()
+    persona_0 = body["personas"][0]
+    assert any(t.get("spotify_track_id") for t in persona_0["playlist"])
