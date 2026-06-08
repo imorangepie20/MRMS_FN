@@ -2,11 +2,10 @@
 
 엔드포인트는 spec 작성 시점 추정. 실제 호출에서 다르면 코드 조정 필요
 (spec section 14 참고).
-
-이 모듈은 fetch 레이어만 — DB import orchestration은 Task 7의 import_all에서.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
 import httpx
@@ -16,6 +15,9 @@ from mrms.sync.jsonapi import flatten_jsonapi, get_next_cursor
 
 BASE_URL = "https://openapi.tidal.com/v2"
 MAX_PAGES = 1000  # 안전 상한 — 보통 사용자는 트랙 1만개 이내. 외부 API 무한 루프 방지.
+MAX_RETRIES_429 = 8  # 429 만났을 때 최대 재시도
+MAX_RETRIES_5XX = 3
+MAX_RETRY_WAIT_SEC = 60  # Retry-After가 너무 크면 cap
 
 
 @dataclass
@@ -55,11 +57,32 @@ class TidalImporter:
         }
 
     async def _get(self, path: str, params: dict | None = None) -> dict:
+        """GET with 429/5xx retry — Tidal rate limit (Retry-After) 존중."""
         url = path if path.startswith("http") else f"{BASE_URL}{path}"
         full_params = {"countryCode": self.country, **(params or {})}
-        r = await self.http.get(url, params=full_params, headers=self._headers())
-        r.raise_for_status()
-        return r.json()
+        retries_429 = 0
+        retries_5xx = 0
+        while True:
+            r = await self.http.get(url, params=full_params, headers=self._headers())
+            if r.status_code == 429:
+                if retries_429 >= MAX_RETRIES_429:
+                    r.raise_for_status()
+                try:
+                    wait = int(r.headers.get("Retry-After", "5"))
+                except (TypeError, ValueError):
+                    wait = 5
+                wait = min(max(wait, 1), MAX_RETRY_WAIT_SEC)
+                retries_429 += 1
+                await asyncio.sleep(wait)
+                continue
+            if 500 <= r.status_code < 600:
+                if retries_5xx >= MAX_RETRIES_5XX:
+                    r.raise_for_status()
+                retries_5xx += 1
+                await asyncio.sleep(min(2 ** retries_5xx, MAX_RETRY_WAIT_SEC))
+                continue
+            r.raise_for_status()
+            return r.json()
 
     async def fetch_user_info(self) -> dict:
         body = await self._get("/users/me")
@@ -156,6 +179,7 @@ async def import_all(
             upserted_tracks.add(track_id)
             stats.user_tracks_upserted += 1
             stats.user_tracks_is_core += 1
+    conn.commit()  # 좋아요까지 완료 — 이후 실패해도 보존
 
     # 플레이리스트
     playlists = await importer.fetch_my_playlists(user_id=tidal_uid)
@@ -182,5 +206,6 @@ async def import_all(
                 upserted_tracks.add(track_id)
                 stats.user_tracks_upserted += 1
                 # isCore는 liked로 안 들어왔으면 false 유지 — is_core 카운트 X
+        conn.commit()  # 플레이리스트별로 커밋 — 중도 실패해도 진행분 보존
 
     return stats

@@ -38,7 +38,7 @@ from mrms.db.user_track import (
 )
 from mrms.sync.tidal_importer import TidalImporter, import_all
 
-load_dotenv()
+load_dotenv(override=True)  # .env가 shell 환경변수보다 우선
 console = Console()
 
 
