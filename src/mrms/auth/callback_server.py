@@ -78,8 +78,14 @@ class CallbackServer:
         self._httpd.timeout = 0.5
 
         def serve():
+            # 메인 스레드가 server_close()를 호출한 뒤 한 번 더 handle_request가
+            # 돌면 selector 등록이 깨지면서 예외가 난다. event가 이미 set된 상황이라
+            # 무시해도 안전하므로 조용히 종료.
             while not self._event.is_set():
-                self._httpd.handle_request()
+                try:
+                    self._httpd.handle_request()
+                except (ValueError, OSError):
+                    break
 
         t = threading.Thread(target=serve, daemon=True)
         t.start()
