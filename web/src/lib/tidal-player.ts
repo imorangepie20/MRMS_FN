@@ -26,7 +26,7 @@ function ensureAudio(): HTMLAudioElement {
       const nextIdx = s.currentIdx + 1;
       usePlayerStore.setState({ currentIdx: nextIdx, position: 0 });
       const next = s.queue[nextIdx];
-      void loadAndPlay(next.tidal_track_id);
+      if (next.tidal_track_id) void loadAndPlay(next.tidal_track_id);
     } else {
       usePlayerStore.setState({ isPlaying: false, position: 0 });
     }
@@ -57,7 +57,7 @@ function ensureAudio(): HTMLAudioElement {
         const nextIdx = s.currentIdx + 1;
         usePlayerStore.setState({ currentIdx: nextIdx, position: 0 });
         const next = s.queue[nextIdx];
-        void loadAndPlay(next.tidal_track_id);
+        if (next.tidal_track_id) void loadAndPlay(next.tidal_track_id);
       }, 1000);
     }
   });
