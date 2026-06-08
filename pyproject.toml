@@ -44,6 +44,7 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "respx>=0.20",
     "ruff>=0.4",
     "ipykernel>=6.29",
     "matplotlib>=3.8",
