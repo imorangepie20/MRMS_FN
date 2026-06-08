@@ -4,7 +4,7 @@ import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { Notifications } from "@/components/layout/notifications";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserMenu } from "@/components/layout/user-menu";
 
 export function AppHeader() {
   return (
@@ -16,9 +16,7 @@ export function AppHeader() {
         <CommandPalette />
         <ThemeToggle />
         <Notifications />
-        <Avatar className="size-8">
-          <AvatarFallback>TB</AvatarFallback>
-        </Avatar>
+        <UserMenu />
       </div>
     </header>
   );
