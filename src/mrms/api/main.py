@@ -1,10 +1,11 @@
 """FastAPI app — MRMS 데이터를 HTTP로 노출."""
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI
 
 import psycopg
 
+from mrms.api.auth_tidal import router as tidal_router
 from mrms.api.deps import db_conn, get_default_user_email
 from mrms.api.schemas import (
     MrtLatestResponse,
@@ -15,33 +16,17 @@ from mrms.api.schemas import (
     UserInfo,
 )
 from mrms.db.user_embedding import fetch_latest_playlists
-from mrms.db.user_track import get_oauth, get_or_create_user
+from mrms.db.user_track import get_or_create_user
 from mrms.recsys.mrt import derive_recommended_albums, derive_recommended_tracks
 
 
 app = FastAPI(title="MRMS API", version="0.1.0")
+app.include_router(tidal_router)
 
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
-
-
-@app.get("/api/auth/tidal/token")
-def tidal_token_temp(conn: psycopg.Connection = Depends(db_conn)) -> dict:
-    """Task 0 smoke test용 임시. Task 2에서 정식 구현 (refresh 처리 등)."""
-    email = get_default_user_email()
-    user_id = get_or_create_user(conn, email)
-    conn.commit()
-    oauth = get_oauth(conn, user_id, "tidal")
-    if not oauth:
-        raise HTTPException(404, "no UserOAuth row for tidal")
-    return {
-        "access_token": oauth["accessToken"],
-        "refresh_token": oauth["refreshToken"],
-        "expires_at": oauth["expiresAt"].isoformat() if oauth["expiresAt"] else None,
-        "scope": oauth["scope"],
-    }
 
 
 @app.get("/api/user", response_model=UserInfo)
