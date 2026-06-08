@@ -74,8 +74,8 @@ model User {
 
 | Endpoint | 역할 |
 |---|---|
-| `POST /api/auth/tidal/device-code/init` | Tidal에 device_authorization 요청. 응답: `{user_code, verification_uri_complete, device_code, expires_in, interval}`. device_code는 서버 in-memory에 보관 (또는 클라이언트에 전달해서 poll 시 함께 전송). |
-| `POST /api/auth/tidal/device-code/poll` | body: `{device_code}`. Tidal /token 호출. 성공 시: JWT에서 Tidal user_id 추출 → User upsert → UserOAuth upsert → AuthSession 생성 → Set-Cookie `mrms_session=...; HttpOnly; SameSite=Lax; Max-Age=2592000` → `{status: 'success', is_new_user: bool}` 반환. 401 + pending: `{status: 'pending'}`. expired: `{status: 'expired'}`. |
+| `POST /api/auth/tidal/device-code/init` | Tidal에 device_authorization 요청. 응답: `{user_code, verification_uri_complete, device_code, expires_in, interval}`. **device_code는 stateless — 클라이언트가 보관 후 poll 시 함께 전송**. 서버 in-memory 저장 X. |
+| `POST /api/auth/tidal/device-code/poll` | body: `{device_code}`. Tidal /token 호출. 성공 시: JWT에서 Tidal user_id 추출 → User upsert → UserOAuth upsert → AuthSession 생성 → Set-Cookie `mrms_session=...; HttpOnly; SameSite=Lax; Max-Age=2592000` → `{status: 'success', has_mrt: bool}` 반환 (has_mrt로 /mrt vs /onboarding 분기). 401 + pending: `{status: 'pending'}`. expired: `{status: 'expired'}`. |
 | `GET /api/auth/me` | Cookie 읽어서 현재 user info 반환 (UserInfo 스키마). cookie 없거나 expired AuthSession이면 401. |
 | `POST /api/auth/logout` | AuthSession 삭제 + Set-Cookie (만료된 값) clear. |
 | `POST /api/onboarding/start` | 백그라운드 job 시작 (FastAPI BackgroundTasks). 이미 진행 중이거나 done이면 idempotent. |
@@ -141,7 +141,7 @@ web/src/app/
 - `user_code` + `verification_uri_complete` 받으면 Modal 표시
 - `window.open(verification_uri_complete, '_blank')` 자동 새 탭
 - 5초마다 `/poll` 호출
-- 성공: modal 닫고 `router.push('/onboarding' if is_new_user else '/mrt')`
+- 성공: modal 닫고 `router.push('/onboarding' if !has_mrt else '/mrt')`
 - 만료/에러: alert + 재시도 버튼
 
 ```tsx
