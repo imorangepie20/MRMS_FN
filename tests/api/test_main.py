@@ -1,4 +1,7 @@
 """FastAPI endpoint 테스트 (TestClient)."""
+import uuid as _uuid_helper
+from datetime import datetime as _dt_helper, timedelta as _td_helper, timezone as _tz_helper
+
 from fastapi.testclient import TestClient
 
 from mrms.api.main import app
@@ -7,21 +10,33 @@ from mrms.api.main import app
 client = TestClient(app)
 
 
+def _set_session_cookie(db_conn, email: str) -> str:
+    """테스트용 — User 생성 + AuthSession + cookie set. user_id 반환."""
+    from mrms.db.user_track import get_or_create_user
+    user_id = get_or_create_user(db_conn, email)
+    session_id = _uuid_helper.uuid4().hex
+    expires_at = _dt_helper.now(_tz_helper.utc) + _td_helper(days=30)
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
+            (session_id, user_id, expires_at),
+        )
+    db_conn.commit()
+    client.cookies.set("mrms_session", session_id)
+    return user_id
+
+
 def test_health():
     r = client.get("/api/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
 
 
-def test_user_endpoint_returns_default_user(db_conn, monkeypatch):
-    """DEFAULT_USER_EMAIL 환경변수의 사용자 정보 반환."""
-    import os
-    from mrms.db.user_track import get_or_create_user
+def test_user_endpoint_returns_default_user(db_conn):
+    """Session에서 user_id 추출 → 사용자 정보 반환."""
     from mrms.db import user_embedding as ue
 
-    monkeypatch.setenv("DEFAULT_USER_EMAIL", "test_api@example.com")
-    user_id = get_or_create_user(db_conn, "test_api@example.com")
-    db_conn.commit()
+    user_id = _set_session_cookie(db_conn, "test_api@example.com")
     # 3 personas
     import numpy as np
     rng = np.random.default_rng(99)
@@ -32,6 +47,7 @@ def test_user_endpoint_returns_default_user(db_conn, monkeypatch):
     db_conn.commit()
 
     r = client.get("/api/user")
+    client.cookies.clear()
     assert r.status_code == 200
     body = r.json()
     assert body["email"] == "test_api@example.com"
@@ -40,16 +56,12 @@ def test_user_endpoint_returns_default_user(db_conn, monkeypatch):
     assert "user_tracks_count" in body  # 0 이상
 
 
-def test_mrt_latest_returns_personas_and_derives(db_conn, monkeypatch):
+def test_mrt_latest_returns_personas_and_derives(db_conn):
     """MRT latest endpoint — 페르소나 + 추천 트랙/앨범 derive."""
-    import os
     import numpy as np
-    from mrms.db.user_track import get_or_create_user
     from mrms.db import user_embedding as ue
 
-    monkeypatch.setenv("DEFAULT_USER_EMAIL", "test_mrt@example.com")
-    user_id = get_or_create_user(db_conn, "test_mrt@example.com")
-    db_conn.commit()
+    user_id = _set_session_cookie(db_conn, "test_mrt@example.com")
 
     # 3 personas + 3 playlist history (각 persona 당 1)
     rng = np.random.default_rng(123)
@@ -68,6 +80,7 @@ def test_mrt_latest_returns_personas_and_derives(db_conn, monkeypatch):
         track_rows = cur.fetchall()
     if not track_rows or len(track_rows) < 3:
         import pytest
+        client.cookies.clear()
         pytest.skip("Tidal Track 데이터 부족")
 
     track_ids = [r[0] for r in track_rows]
@@ -80,6 +93,7 @@ def test_mrt_latest_returns_personas_and_derives(db_conn, monkeypatch):
     db_conn.commit()
 
     r = client.get("/api/mrt/latest")
+    client.cookies.clear()
     assert r.status_code == 200
     body = r.json()
     assert body["model_version"] == "our-v1.0+persona-K3"
@@ -93,16 +107,12 @@ def test_mrt_latest_returns_personas_and_derives(db_conn, monkeypatch):
     assert "artist" in body["personas"][0]["playlist"][0]
 
 
-def test_mrt_latest_includes_tidal_track_id_and_filters(db_conn, monkeypatch):
+def test_mrt_latest_includes_tidal_track_id_and_filters(db_conn):
     """Tidal-only filter — Tidal 가용 트랙만 반환 + tidal_track_id 필드 포함."""
-    import os
     import numpy as np
-    from mrms.db.user_track import get_or_create_user
     from mrms.db import user_embedding as ue
 
-    monkeypatch.setenv("DEFAULT_USER_EMAIL", "tidal_filter@example.com")
-    user_id = get_or_create_user(db_conn, "tidal_filter@example.com")
-    db_conn.commit()
+    user_id = _set_session_cookie(db_conn, "tidal_filter@example.com")
 
     rng = np.random.default_rng(456)
     for idx in range(3):
@@ -130,6 +140,7 @@ def test_mrt_latest_includes_tidal_track_id_and_filters(db_conn, monkeypatch):
         non_tidal_row = cur.fetchone()
     if not tidal_rows or len(tidal_rows) < 2 or not non_tidal_row:
         import pytest
+        client.cookies.clear()
         pytest.skip("필요 데이터 부족 (Tidal 트랙 + non-Tidal 트랙)")
 
     tidal_ids = [r[0] for r in tidal_rows]
@@ -151,6 +162,7 @@ def test_mrt_latest_includes_tidal_track_id_and_filters(db_conn, monkeypatch):
     db_conn.commit()
 
     r = client.get("/api/mrt/latest")
+    client.cookies.clear()
     assert r.status_code == 200
     body = r.json()
 
