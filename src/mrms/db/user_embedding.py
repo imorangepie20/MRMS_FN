@@ -20,10 +20,6 @@ def _id(value: str) -> str:
     return f"c{h}"
 
 
-def _to_list(vec: np.ndarray) -> list[float]:
-    return [float(x) for x in vec.tolist()]
-
-
 def _ensure_vector_registered(conn: psycopg.Connection) -> None:
     """idempotent register_vector — 같은 connection에 반복 호출 안전."""
     if getattr(conn, "_mrms_vector_registered", False):
