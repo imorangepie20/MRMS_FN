@@ -1,13 +1,13 @@
 """FastAPI app — MRMS 데이터를 HTTP로 노출."""
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 import psycopg
 
 from mrms.api.auth_tidal import playback_router as tidal_playback_router, router as tidal_router
-from mrms.api.deps import db_conn, get_default_user_email
+from mrms.api.deps import db_conn, get_current_user_id, get_default_user_email
 from mrms.api.schemas import (
     MrtLatestResponse,
     Persona,
@@ -39,17 +39,19 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/user", response_model=UserInfo)
-def user(conn: psycopg.Connection = Depends(db_conn)) -> UserInfo:
-    email = get_default_user_email()
-    user_id = get_or_create_user(conn, email)
-    conn.commit()
+def user(
+    user_id: str = Depends(get_current_user_id),
+    conn: psycopg.Connection = Depends(db_conn),
+) -> UserInfo:
     with conn.cursor() as cur:
         cur.execute(
-            'SELECT "displayName", country FROM "User" WHERE id = %s',
+            'SELECT email, "displayName", country FROM "User" WHERE id = %s',
             (user_id,),
         )
         row = cur.fetchone()
-        display_name, country = (row[0], row[1]) if row else (None, None)
+        if not row:
+            raise HTTPException(404, "User not found")
+        email, display_name, country = row
 
         cur.execute(
             'SELECT COUNT(*) FROM "UserPersona" WHERE "userId" = %s',
