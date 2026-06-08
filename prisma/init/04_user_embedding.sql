@@ -1,4 +1,6 @@
--- UserEmbedding (사용자별 단일 vector, modelVersion으로 A/B)
+-- UserEmbedding + UserPersona + PlaylistHistory DDL
+-- 사용자 단일 vector (modelVersion으로 A/B), K개 페르소나, 추천 결과 history
+
 CREATE TABLE IF NOT EXISTS "UserEmbedding" (
     "userId"       TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
     "modelVersion" TEXT NOT NULL,
@@ -11,7 +13,6 @@ CREATE TABLE IF NOT EXISTS "UserEmbedding" (
 CREATE INDEX IF NOT EXISTS idx_userembedding_version
   ON "UserEmbedding"("modelVersion");
 
--- UserPersona (사용자당 K=3 페르소나, 추후 다양화 가능)
 CREATE TABLE IF NOT EXISTS "UserPersona" (
     id             TEXT PRIMARY KEY,
     "userId"       TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
@@ -25,10 +26,6 @@ CREATE TABLE IF NOT EXISTS "UserPersona" (
     UNIQUE ("userId", "personaIdx")
 );
 
-CREATE INDEX IF NOT EXISTS idx_userpersona_user
-  ON "UserPersona"("userId");
-
--- PlaylistHistory (페르소나당 1행, 갱신마다 INSERT — history 보존)
 CREATE TABLE IF NOT EXISTS "PlaylistHistory" (
     id             TEXT PRIMARY KEY,
     "userId"       TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
