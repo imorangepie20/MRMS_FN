@@ -41,16 +41,18 @@ export function UserMenu() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="rounded-full focus:outline-none focus:ring-2 focus:ring-ring"
-          aria-label="User menu"
-        >
-          <Avatar className="size-8">
-            <AvatarFallback>{initials(user?.email)}</AvatarFallback>
-          </Avatar>
-        </button>
+      <DropdownMenuTrigger
+        render={
+          <button
+            type="button"
+            className="rounded-full focus:outline-none focus:ring-2 focus:ring-ring"
+            aria-label="User menu"
+          />
+        }
+      >
+        <Avatar className="size-8">
+          <AvatarFallback>{initials(user?.email)}</AvatarFallback>
+        </Avatar>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>
