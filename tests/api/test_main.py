@@ -58,13 +58,17 @@ def test_mrt_latest_returns_personas_and_derives(db_conn, monkeypatch):
         v /= np.linalg.norm(v)
         ue.upsert_user_persona(db_conn, user_id, idx, v, track_count=50 + idx * 10)
 
-    # 실제 Track id 3개 fetch
+    # 실제 Track id 3개 fetch (Tidal 가용한 것만 — _fetch_track_metadata가 INNER JOIN)
     with db_conn.cursor() as cur:
-        cur.execute('SELECT id FROM "Track" LIMIT 3')
+        cur.execute(
+            '''SELECT DISTINCT t.id FROM "Track" t
+               JOIN "TrackPlatform" tp ON tp."trackId" = t.id AND tp.platform = 'tidal'
+               LIMIT 3'''
+        )
         track_rows = cur.fetchall()
     if not track_rows or len(track_rows) < 3:
         import pytest
-        pytest.skip("Track 데이터 부족")
+        pytest.skip("Tidal Track 데이터 부족")
 
     track_ids = [r[0] for r in track_rows]
     for idx in range(3):
@@ -87,3 +91,78 @@ def test_mrt_latest_returns_personas_and_derives(db_conn, monkeypatch):
     # 페르소나 playlist 트랙 메타 채워짐
     assert "title" in body["personas"][0]["playlist"][0]
     assert "artist" in body["personas"][0]["playlist"][0]
+
+
+def test_mrt_latest_includes_tidal_track_id_and_filters(db_conn, monkeypatch):
+    """Tidal-only filter — Tidal 가용 트랙만 반환 + tidal_track_id 필드 포함."""
+    import os
+    import numpy as np
+    from mrms.db.user_track import get_or_create_user
+    from mrms.db import user_embedding as ue
+
+    monkeypatch.setenv("DEFAULT_USER_EMAIL", "tidal_filter@example.com")
+    user_id = get_or_create_user(db_conn, "tidal_filter@example.com")
+    db_conn.commit()
+
+    rng = np.random.default_rng(456)
+    for idx in range(3):
+        v = rng.standard_normal(256).astype(np.float32)
+        v /= np.linalg.norm(v)
+        ue.upsert_user_persona(db_conn, user_id, idx, v, track_count=50)
+
+    # Tidal platform이 있는 트랙 ID 2개 + Tidal 없는 트랙 ID 1개 가져옴
+    with db_conn.cursor() as cur:
+        cur.execute('''
+            SELECT DISTINCT t.id, tp."platformTrackId"
+            FROM "Track" t
+            JOIN "TrackPlatform" tp ON tp."trackId" = t.id AND tp.platform = 'tidal'
+            LIMIT 2
+        ''')
+        tidal_rows = cur.fetchall()
+        cur.execute('''
+            SELECT t.id FROM "Track" t
+            WHERE NOT EXISTS (
+                SELECT 1 FROM "TrackPlatform" tp
+                WHERE tp."trackId" = t.id AND tp.platform = 'tidal'
+            )
+            LIMIT 1
+        ''')
+        non_tidal_row = cur.fetchone()
+    if not tidal_rows or len(tidal_rows) < 2 or not non_tidal_row:
+        import pytest
+        pytest.skip("필요 데이터 부족 (Tidal 트랙 + non-Tidal 트랙)")
+
+    tidal_ids = [r[0] for r in tidal_rows]
+    tidal_platform_ids = [r[1] for r in tidal_rows]
+    non_tidal_id = non_tidal_row[0]
+
+    # 페르소나 0의 playlist에 Tidal+Non-Tidal 섞어서 넣음
+    for idx in range(3):
+        if idx == 0:
+            track_ids_for_persona = [tidal_ids[0], non_tidal_id, tidal_ids[1]]
+            scores = [0.9, 0.8, 0.7]
+        else:
+            track_ids_for_persona = [tidal_ids[0]]
+            scores = [0.6]
+        ue.insert_playlist_history(
+            db_conn, user_id, track_ids_for_persona, "our-v1.0+persona-K3",
+            context={"personaIdx": idx, "kind": "persona", "scores": scores},
+        )
+    db_conn.commit()
+
+    r = client.get("/api/mrt/latest")
+    assert r.status_code == 200
+    body = r.json()
+
+    # 페르소나 0의 playlist에 non_tidal_id 제외됐는지
+    persona_0 = next(p for p in body["personas"] if p["persona_idx"] == 0)
+    playlist_ids = [t["track_id"] for t in persona_0["playlist"]]
+    assert non_tidal_id not in playlist_ids, "non-Tidal 트랙이 필터링 안 됐음"
+
+    # tidal_track_id 필드 채워져 있음
+    assert all(t["tidal_track_id"] is not None for t in persona_0["playlist"])
+    assert any(t["tidal_track_id"] == tidal_platform_ids[0] for t in persona_0["playlist"])
+
+    # 추천 트랙도 모두 tidal_track_id 채워졌는지
+    if body["recommended_tracks"]:
+        assert all(t["tidal_track_id"] for t in body["recommended_tracks"])

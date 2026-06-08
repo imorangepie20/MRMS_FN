@@ -74,3 +74,6 @@ web/out/
 web/.env.local
 web/playwright-report/
 web/test-results/
+
+# Backup .env files
+.env.bak*

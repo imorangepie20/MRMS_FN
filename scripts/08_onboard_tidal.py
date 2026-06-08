@@ -50,7 +50,9 @@ async def ensure_token(conn, user_id: str) -> tuple[str, str]:
     client_id = os.environ["TIDAL_CLIENT_ID"]
     client_secret = os.environ["TIDAL_CLIENT_SECRET"]
     redirect_uri = os.environ["TIDAL_REDIRECT_URI"]
-    scopes = ["user.read", "collection.read", "playlists.read"]
+    # Read from TIDAL_SCOPES env (space-separated), fallback to safe defaults
+    scopes_env = os.environ.get("TIDAL_SCOPES", "user.read collection.read playlists.read").strip().strip('"').strip("'")
+    scopes = scopes_env.split()
 
     client = TidalOAuthClient(
         client_id=client_id,
