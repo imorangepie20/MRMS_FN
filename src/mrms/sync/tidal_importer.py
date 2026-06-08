@@ -114,3 +114,73 @@ class TidalImporter:
                 break
             cursor = next_cursor
         return items
+
+
+async def import_all(
+    conn,
+    user_id: str,
+    importer: TidalImporter,
+) -> ImportStats:
+    """전체 import 흐름 — 좋아요 + 플레이리스트 → DB 적재.
+
+    UserTrack은 이미 있어도 UPSERT 규칙대로 머지 (liked > playlist).
+    같은 트랙이 양쪽에 있으면 stats.user_tracks_upserted는 1로 카운트.
+    """
+    from mrms.db.user_track import find_track_id_by_isrc, upsert_user_track
+
+    stats = ImportStats()
+    upserted_tracks: set[str] = set()
+
+    # 사용자 정보
+    user_info = await importer.fetch_user_info()
+    tidal_uid = user_info.get("id")
+
+    # 좋아요 트랙
+    liked = await importer.fetch_liked_tracks(user_id=tidal_uid)
+    stats.liked_fetched = len(liked)
+    for t in liked:
+        isrc = t.get("isrc")
+        if not isrc:
+            stats.liked_no_isrc += 1
+            continue
+        track_id = find_track_id_by_isrc(conn, isrc)
+        if not track_id:
+            stats.liked_not_in_catalog += 1
+            continue
+        upsert_user_track(
+            conn, user_id, track_id,
+            is_core=True, source="liked", platform="tidal",
+        )
+        stats.liked_matched += 1
+        if track_id not in upserted_tracks:
+            upserted_tracks.add(track_id)
+            stats.user_tracks_upserted += 1
+            stats.user_tracks_is_core += 1
+
+    # 플레이리스트
+    playlists = await importer.fetch_my_playlists(user_id=tidal_uid)
+    stats.playlists_fetched = len(playlists)
+    for pl in playlists:
+        title = pl.get("title", "untitled")
+        tracks = await importer.fetch_playlist_tracks(playlist_id=pl["id"])
+        for t in tracks:
+            stats.playlist_tracks_fetched += 1
+            isrc = t.get("isrc")
+            if not isrc:
+                stats.playlist_tracks_no_isrc += 1
+                continue
+            track_id = find_track_id_by_isrc(conn, isrc)
+            if not track_id:
+                stats.playlist_tracks_not_in_catalog += 1
+                continue
+            upsert_user_track(
+                conn, user_id, track_id,
+                is_core=False, source=f"playlist:{title}", platform="tidal",
+            )
+            stats.playlist_tracks_matched += 1
+            if track_id not in upserted_tracks:
+                upserted_tracks.add(track_id)
+                stats.user_tracks_upserted += 1
+                # isCore는 liked로 안 들어왔으면 false 유지 — is_core 카운트 X
+
+    return stats
