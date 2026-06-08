@@ -15,6 +15,7 @@ from mrms.sync.jsonapi import flatten_jsonapi, get_next_cursor
 
 
 BASE_URL = "https://openapi.tidal.com/v2"
+MAX_PAGES = 1000  # 안전 상한 — 보통 사용자는 트랙 1만개 이내. 외부 API 무한 루프 방지.
 
 
 @dataclass
@@ -68,44 +69,48 @@ class TidalImporter:
         return flat[0]
 
     async def fetch_liked_tracks(self, user_id: str) -> list[dict]:
-        items: list[dict] = []
+        seen: dict[tuple[str, str], dict] = {}
         path = f"/userCollections/{user_id}/relationships/tracks"
         cursor: str | None = None
-        while True:
+        for _ in range(MAX_PAGES):
             params = {"include": "tracks", "locale": "en-US"}
             if cursor:
                 params["page[cursor]"] = cursor
             body = await self._get(path, params=params)
-            items.extend(flatten_jsonapi(body, focus_type="tracks"))
-            cursor = get_next_cursor(body)
-            if not cursor:
+            for item in flatten_jsonapi(body, focus_type="tracks"):
+                seen[(item.get("type", ""), item.get("id", ""))] = item
+            next_cursor = get_next_cursor(body)
+            if not next_cursor or next_cursor == cursor:
                 break
-        return items
+            cursor = next_cursor
+        return list(seen.values())
 
     async def fetch_my_playlists(self, user_id: str) -> list[dict]:
         items: list[dict] = []
         cursor: str | None = None
-        while True:
+        for _ in range(MAX_PAGES):
             params = {"filter[r.owners.id]": user_id}
             if cursor:
                 params["page[cursor]"] = cursor
             body = await self._get("/playlists", params=params)
             items.extend(flatten_jsonapi(body, focus_type="playlists"))
-            cursor = get_next_cursor(body)
-            if not cursor:
+            next_cursor = get_next_cursor(body)
+            if not next_cursor or next_cursor == cursor:
                 break
+            cursor = next_cursor
         return items
 
     async def fetch_playlist_tracks(self, playlist_id: str) -> list[dict]:
         items: list[dict] = []
         cursor: str | None = None
-        while True:
+        for _ in range(MAX_PAGES):
             params = {"include": "items"}
             if cursor:
                 params["page[cursor]"] = cursor
             body = await self._get(f"/playlists/{playlist_id}/relationships/items", params=params)
             items.extend(flatten_jsonapi(body, focus_type="tracks"))
-            cursor = get_next_cursor(body)
-            if not cursor:
+            next_cursor = get_next_cursor(body)
+            if not next_cursor or next_cursor == cursor:
                 break
+            cursor = next_cursor
         return items

@@ -87,3 +87,27 @@ def _resp(body: dict, status: int = 200):
             if not (200 <= status < 300):
                 raise Exception(f"HTTP {status}")
     return _R()
+
+
+@pytest.mark.asyncio
+async def test_fetch_breaks_when_cursor_does_not_advance():
+    """API가 같은 cursor를 두 번 보내면 무한 루프 방지를 위해 중단."""
+    http = AsyncMock()
+    # 두 페이지 모두 같은 cursor를 next로 반환 (정상이라면 절대 없음)
+    page = {
+        "data": [{"id": "t1", "type": "tracks", "attributes": {}}],
+        "included": [{"id": "t1", "type": "tracks", "attributes": {"isrc": "AAA111111111"}}],
+        "links": {"next": "https://x?page%5Bcursor%5D=STUCK"},
+    }
+    page2 = {
+        "data": [{"id": "t1", "type": "tracks", "attributes": {}}],
+        "included": [{"id": "t1", "type": "tracks", "attributes": {"isrc": "AAA111111111"}}],
+        "links": {"next": "https://x?page%5Bcursor%5D=STUCK"},  # 같음
+    }
+    http.get = AsyncMock(side_effect=[_resp(page), _resp(page2)])
+    importer = _make_importer(http)
+    tracks = await importer.fetch_liked_tracks(user_id="u_123")
+    # 첫 페이지 + cursor 진전 없음 감지 → 두 번째 페이지까지만 호출
+    assert http.get.call_count == 2
+    # dedup이 동작해서 t1은 1개만 (실제로 같은 트랙)
+    assert len(tracks) == 1
