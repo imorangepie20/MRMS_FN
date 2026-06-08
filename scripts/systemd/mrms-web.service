@@ -1,0 +1,18 @@
+[Unit]
+Description=MRMS_FN Next.js frontend
+After=mrms-api.service network.target
+
+[Service]
+Type=simple
+User=mrms
+Group=mrms
+WorkingDirectory=/opt/mrms/web
+EnvironmentFile=/opt/mrms/.env.production
+ExecStart=/usr/bin/pnpm start --port 3500
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
