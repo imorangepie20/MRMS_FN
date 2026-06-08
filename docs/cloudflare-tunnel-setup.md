@@ -92,3 +92,46 @@ curl -I https://mrms.approid.team
 **OAuth 콜백 후 "Connection refused"**
 → 로컬 콜백 서버(우리 OAuth 모듈)가 안 떠 있음.
    OAuth flow 시작 직전에 콜백 서버 띄우는 게 우리 코드 패턴.
+
+## Web Viewer 추가 (E.0+1+2부터)
+
+기존 단일 서비스 라우팅을 path-based로 확장. `~/.cloudflared/config.yml`:
+
+```yaml
+tunnel: <기존 UUID>
+credentials-file: <기존 path>
+ingress:
+  - hostname: mrms.approid.team
+    path: /api/*
+    service: http://localhost:8000   # FastAPI
+  - hostname: mrms.approid.team
+    path: /callback/*
+    service: http://localhost:8080   # OAuth callback (CLI 실행 시)
+  - hostname: mrms.approid.team
+    service: http://localhost:3500   # Next.js (catch-all)
+  - service: http_status:404
+```
+
+적용:
+
+```bash
+# tunnel 재시작 (config 변경 반영)
+cloudflared tunnel run mrms
+
+# 또는 systemd로 돌리고 있다면:
+sudo systemctl restart cloudflared
+```
+
+### 검증
+
+```bash
+curl -I https://mrms.approid.team/                       # Next.js 응답
+curl -I https://mrms.approid.team/api/health             # FastAPI 응답 (uvicorn 실행 중)
+curl -I https://mrms.approid.team/callback/tidal         # CallbackServer (실행 안 했으면 503)
+```
+
+### 트러블슈팅
+
+- `/api/*` 매칭 안 됨: ingress 순서 중요 — path 가장 구체적인 것부터.
+- `503 No targets`: 해당 localhost 포트 서비스 미실행. uvicorn / pnpm dev 확인.
+- 변경 후 reload 안 됨: cloudflared 프로세스 SIGHUP 또는 재시작.
