@@ -12,3 +12,6 @@ export const navGroups: NavGroup[] = [
     ],
   },
 ];
+
+// e2e/smoke.spec.ts가 의존 — 모든 nav route iterate용
+export const allNavItems: NavItem[] = navGroups.flatMap((g) => g.items);
