@@ -57,3 +57,31 @@ def test_get_next_cursor_absent():
     assert get_next_cursor({}) is None
     assert get_next_cursor({"links": {}}) is None
     assert get_next_cursor({"links": {"next": None}}) is None
+
+
+def test_flatten_same_id_different_type():
+    """JSON:API: ID는 type 안에서만 unique. 같은 ID 다른 type은 별개 자원."""
+    response = {
+        "data": [
+            {"id": "1", "type": "tracks", "attributes": {"isrc": "AAA"}},
+            {"id": "1", "type": "artists", "attributes": {"name": "ArtistX"}},
+        ]
+    }
+    result = flatten_jsonapi(response)
+    assert len(result) == 2
+    by_type = {r["type"]: r for r in result}
+    assert by_type["tracks"]["isrc"] == "AAA"
+    assert by_type["artists"]["name"] == "ArtistX"
+
+
+def test_flatten_skips_entry_without_type():
+    """type 누락된 entry는 skip (id만 있어도 무시)."""
+    response = {
+        "data": [
+            {"id": "1", "attributes": {"isrc": "AAA"}},  # no type
+            {"id": "2", "type": "tracks", "attributes": {"isrc": "BBB"}},
+        ]
+    }
+    result = flatten_jsonapi(response)
+    assert len(result) == 1
+    assert result[0]["isrc"] == "BBB"
