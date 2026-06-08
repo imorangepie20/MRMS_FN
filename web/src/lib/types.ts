@@ -53,3 +53,34 @@ export interface TidalTokenResponse {
   expires_at: string | null;
   premium: boolean | null;
 }
+
+export interface DeviceCodeInit {
+  user_code: string;
+  device_code: string;
+  verification_uri_complete: string;
+  expires_in: number;
+  interval: number;
+}
+
+export type DeviceCodePollStatus =
+  | { status: "pending" }
+  | { status: "expired" }
+  | { status: "error"; detail?: string }
+  | { status: "success"; has_mrt: boolean };
+
+export type OnboardingStep =
+  | "idle"
+  | "fetching_favorites"
+  | "matching_tracks"
+  | "computing_embedding"
+  | "clustering"
+  | "generating_mrt"
+  | "done"
+  | "error";
+
+export interface OnboardingStatus {
+  step: OnboardingStep;
+  progress: number;
+  message: string | null;
+  error: string | null;
+}
