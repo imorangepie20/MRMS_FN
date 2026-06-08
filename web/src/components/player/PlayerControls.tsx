@@ -7,7 +7,7 @@ import {
   pausePlayback,
   resumePlayback,
   seekTo,
-} from "@/lib/tidal-player";
+} from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
 
 
@@ -42,7 +42,7 @@ export function PlayerControls({ compact = false }: Props) {
       usePlayerStore.setState({ currentIdx: nextIdx, position: 0 });
       const nextTrack = s.queue[nextIdx];
       try {
-        await loadAndPlay(nextTrack.tidal_track_id);
+        await loadAndPlay(nextTrack);
       } catch (e) {
         usePlayerStore.setState({ errorMsg: (e as Error).message });
       }
@@ -56,7 +56,7 @@ export function PlayerControls({ compact = false }: Props) {
       usePlayerStore.setState({ currentIdx: prevIdx, position: 0 });
       const prevTrack = s.queue[prevIdx];
       try {
-        await loadAndPlay(prevTrack.tidal_track_id);
+        await loadAndPlay(prevTrack);
       } catch (e) {
         usePlayerStore.setState({ errorMsg: (e as Error).message });
       }

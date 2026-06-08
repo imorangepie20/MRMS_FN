@@ -2,8 +2,9 @@
 
 import { Play } from "lucide-react";
 
-import { loadAndPlay } from "@/lib/tidal-player";
+import { loadAndPlay } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
+import type { QueueTrack } from "@/store/player";
 import type { PersonaTrack, RecommendedTrack } from "@/lib/types";
 
 
@@ -23,7 +24,10 @@ export function PlayButton({ tracks, trackIdx, size = "md" }: Props) {
   const premium = usePlayerStore((s) => s.premium);
 
   const target = tracks[trackIdx];
-  const disabled = !target?.tidal_track_id || !sdkReady || premium === false;
+  const disabled =
+    (!target?.tidal_track_id && !target?.spotify_track_id) ||
+    !sdkReady ||
+    premium === false;
 
   // 모바일 44x44 터치 영역 (Apple HIG)
   const sizeClasses = size === "sm"
@@ -32,14 +36,13 @@ export function PlayButton({ tracks, trackIdx, size = "md" }: Props) {
 
   const onClick = async () => {
     if (disabled) return;
-    // Tidal 가용한 트랙만 큐로 (tidal_track_id null인 거 제외)
-    const queueable = tracks
-      .filter((t): t is TrackLike & { tidal_track_id: string } =>
-        Boolean(t.tidal_track_id),
-      )
+    // Tidal 또는 Spotify 가용한 트랙만 큐로 (둘 다 null인 거 제외)
+    const queueable: QueueTrack[] = tracks
+      .filter((t) => t.tidal_track_id || t.spotify_track_id)
       .map((t) => ({
         track_id: t.track_id,
         tidal_track_id: t.tidal_track_id,
+        spotify_track_id: t.spotify_track_id,
         title: t.title,
         artist: t.artist,
         album_title: "album_title" in t ? (t.album_title ?? null) : null,
@@ -48,7 +51,7 @@ export function PlayButton({ tracks, trackIdx, size = "md" }: Props) {
     if (actualIdx < 0) return;
     setQueue(queueable, actualIdx);
     try {
-      await loadAndPlay(queueable[actualIdx].tidal_track_id);
+      await loadAndPlay(queueable[actualIdx]);
     } catch (e) {
       usePlayerStore.setState({ errorMsg: (e as Error).message });
     }

@@ -3,7 +3,8 @@
 import { Volume2 } from "lucide-react";
 import { useEffect } from "react";
 
-import { initTidalSdk, setSdkVolume } from "@/lib/tidal-player";
+import { useUser } from "@/lib/hooks/use-user";
+import { initPlayer, setSdkVolume } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
 
 import { NowPlaying } from "./NowPlaying";
@@ -38,17 +39,19 @@ export function PlayerBar() {
   const errorMsg = usePlayerStore((s) => s.errorMsg);
   const premium = usePlayerStore((s) => s.premium);
   const sdkReady = usePlayerStore((s) => s.sdkReady);
+  const { user } = useUser();
 
   useEffect(() => {
+    if (!user) return;
     // Audio element 초기화 + sdkReady = true (백엔드 proxy 사용 — SDK init 불필요)
     (async () => {
       try {
-        await initTidalSdk();
+        await initPlayer(user.primary_platform);
       } catch (e) {
         usePlayerStore.setState({ errorMsg: (e as Error).message });
       }
     })();
-  }, []);
+  }, [user]);
 
   return (
     <div className="fixed bottom-0 left-0 right-0 h-16 md:h-20 bg-background border-t z-50">
