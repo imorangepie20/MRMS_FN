@@ -6,8 +6,8 @@ export function middleware(request: NextRequest) {
   const session = request.cookies.get("mrms_session");
   const pathname = request.nextUrl.pathname;
 
-  // (dashboard) 경로 (= /mrt 등) 보호
-  if (pathname.startsWith("/mrt")) {
+  // 인증 필요 경로 보호
+  if (pathname.startsWith("/mrt") || pathname.startsWith("/onboarding")) {
     if (!session) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
@@ -23,5 +23,5 @@ export function middleware(request: NextRequest) {
 
 
 export const config = {
-  matcher: ["/mrt/:path*", "/login"],
+  matcher: ["/mrt/:path*", "/onboarding/:path*", "/login"],
 };
