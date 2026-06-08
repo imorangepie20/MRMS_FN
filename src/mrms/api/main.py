@@ -80,14 +80,17 @@ def user(conn: psycopg.Connection = Depends(db_conn)) -> UserInfo:
 
 
 def _fetch_track_metadata(conn, track_ids: list[str]) -> dict[str, dict]:
+    """Tidal 가용 트랙의 메타 + tidal_track_id 반환. Tidal 없는 트랙은 dict에 없음."""
     if not track_ids:
         return {}
     with conn.cursor() as cur:
         cur.execute(
-            '''SELECT t.id, t.title, a.name, t."albumId", alb.title
+            '''SELECT t.id, t.title, a.name, t."albumId", alb.title, tp."platformTrackId"
                FROM "Track" t
                JOIN "Artist" a ON a.id = t."artistId"
                LEFT JOIN "Album" alb ON alb.id = t."albumId"
+               INNER JOIN "TrackPlatform" tp
+                  ON tp."trackId" = t.id AND tp.platform = 'tidal'
                WHERE t.id = ANY(%s)''',
             (track_ids,),
         )
@@ -98,6 +101,7 @@ def _fetch_track_metadata(conn, track_ids: list[str]) -> dict[str, dict]:
             "artist": r[2],
             "album_id": r[3],
             "album_title": r[4],
+            "tidal_track_id": r[5],
         }
         for r in rows
     }
@@ -146,14 +150,17 @@ def mrt_latest(
         scores = ctx.get("scores", [])
         playlist: list[PersonaTrack] = []
         for tid, sc in zip(p["trackIds"][:top_n], scores[:top_n]):
-            m = meta.get(tid, {})
+            m = meta.get(tid)
+            if not m:
+                continue  # Tidal 미가용 → skip
             playlist.append(PersonaTrack(
                 track_id=tid,
-                title=m.get("title", "?"),
-                artist=m.get("artist", "?"),
-                album_id=m.get("album_id"),
-                album_title=m.get("album_title"),
+                title=m["title"],
+                artist=m["artist"],
+                album_id=m["album_id"],
+                album_title=m["album_title"],
                 similarity=float(sc),
+                tidal_track_id=m["tidal_track_id"],
             ))
         personas.append(Persona(
             persona_idx=persona_idx,
@@ -174,13 +181,15 @@ def mrt_latest(
     recommended_tracks = [
         RecommendedTrack(
             track_id=r["track_id"],
-            title=meta.get(r["track_id"], {}).get("title", "?"),
-            artist=meta.get(r["track_id"], {}).get("artist", "?"),
-            album_id=meta.get(r["track_id"], {}).get("album_id"),
+            title=meta[r["track_id"]]["title"],
+            artist=meta[r["track_id"]]["artist"],
+            album_id=meta[r["track_id"]]["album_id"],
             score=float(r["score"]),
             persona_idx=r.get("persona_idx"),
+            tidal_track_id=meta[r["track_id"]]["tidal_track_id"],
         )
         for r in rec_tracks_raw
+        if r["track_id"] in meta  # Tidal 가용한 것만
     ]
 
     track_to_album = {tid: m["album_id"] for tid, m in meta.items()}

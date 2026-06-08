@@ -22,6 +22,7 @@ class PersonaTrack(BaseModel):
     album_id: str | None = None
     album_title: str | None = None
     similarity: float
+    tidal_track_id: str | None = None
 
 
 class Persona(BaseModel):
@@ -37,6 +38,7 @@ class RecommendedTrack(BaseModel):
     album_id: str | None = None
     score: float
     persona_idx: int | None = None
+    tidal_track_id: str | None = None
 
 
 class RecommendedAlbum(BaseModel):
