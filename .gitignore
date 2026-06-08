@@ -77,3 +77,4 @@ web/test-results/
 
 # Backup .env files
 .env.bak*
+.env.production
