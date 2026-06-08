@@ -81,24 +81,43 @@ def user(
     )
 
 
-def _fetch_track_metadata(conn, track_ids: list[str]) -> dict[str, dict]:
-    """Tidal 가용 트랙의 메타 + tidal/spotify ID 반환."""
+def _fetch_track_metadata(
+    conn,
+    track_ids: list[str],
+    primary_platform: str = "tidal",
+) -> dict[str, dict]:
+    """{primary_platform}-가용 트랙의 메타 + tidal/spotify ID 반환.
+
+    primary_platform='tidal': INNER JOIN tidal, LEFT JOIN spotify
+    primary_platform='spotify': INNER JOIN spotify, LEFT JOIN tidal
+    """
     if not track_ids:
         return {}
-    with conn.cursor() as cur:
-        cur.execute(
-            '''SELECT t.id, t.title, a.name, t."albumId", alb.title,
-                      tp_t."platformTrackId", tp_s."platformTrackId"
-               FROM "Track" t
-               JOIN "Artist" a ON a.id = t."artistId"
-               LEFT JOIN "Album" alb ON alb.id = t."albumId"
-               INNER JOIN "TrackPlatform" tp_t
-                  ON tp_t."trackId" = t.id AND tp_t.platform = 'tidal'
-               LEFT JOIN "TrackPlatform" tp_s
-                  ON tp_s."trackId" = t.id AND tp_s.platform = 'spotify'
-               WHERE t.id = ANY(%s)''',
-            (track_ids,),
+    if primary_platform == "spotify":
+        join_clause = (
+            'INNER JOIN "TrackPlatform" tp_s '
+            '   ON tp_s."trackId" = t.id AND tp_s.platform = \'spotify\' '
+            'LEFT JOIN "TrackPlatform" tp_t '
+            '   ON tp_t."trackId" = t.id AND tp_t.platform = \'tidal\' '
         )
+    else:
+        join_clause = (
+            'INNER JOIN "TrackPlatform" tp_t '
+            '   ON tp_t."trackId" = t.id AND tp_t.platform = \'tidal\' '
+            'LEFT JOIN "TrackPlatform" tp_s '
+            '   ON tp_s."trackId" = t.id AND tp_s.platform = \'spotify\' '
+        )
+    sql = (
+        'SELECT t.id, t.title, a.name, t."albumId", alb.title, '
+        '       tp_t."platformTrackId", tp_s."platformTrackId" '
+        'FROM "Track" t '
+        'JOIN "Artist" a ON a.id = t."artistId" '
+        'LEFT JOIN "Album" alb ON alb.id = t."albumId" '
+        + join_clause +
+        'WHERE t.id = ANY(%s)'
+    )
+    with conn.cursor() as cur:
+        cur.execute(sql, (track_ids,))
         rows = cur.fetchall()
     return {
         r[0]: {
@@ -121,6 +140,12 @@ def mrt_latest(
     top_tracks_n: int = 30,
     top_albums_n: int = 15,
 ) -> MrtLatestResponse:
+    # user의 primary_platform 확인
+    with conn.cursor() as cur:
+        cur.execute('SELECT "primaryPlatform" FROM "User" WHERE id = %s', (user_id,))
+        row = cur.fetchone()
+    primary_platform = row[0] if row else "tidal"
+
     playlists = fetch_latest_playlists(conn, user_id, limit=3)
     if not playlists:
         return MrtLatestResponse(
@@ -136,7 +161,7 @@ def mrt_latest(
     )
 
     all_track_ids = list({tid for p in playlists_sorted for tid in p["trackIds"]})
-    meta = _fetch_track_metadata(conn, all_track_ids)
+    meta = _fetch_track_metadata(conn, all_track_ids, primary_platform=primary_platform)
 
     # UserPersona의 trackCount 매핑
     with conn.cursor() as cur:
