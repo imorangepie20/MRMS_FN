@@ -1,0 +1,68 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data (외장 SSD 용량 큼, git에 올리면 안 됨)
+data/audio/
+data/audio_decoded/
+data/mel/
+data/embeddings/
+data/features/
+data/projection/
+data/faiss/
+data/csv/
+data/raw/
+data/processed/
+data/splits/
+data/*.parquet
+data/*.csv
+data/*.npy
+!data/.gitkeep
+
+# Model artifacts
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+*.bin
+mlruns/
+wandb/
+
+# Logs
+logs/
+*.log
+
+# FAISS indices
+*.faiss
+*.index
+
+# Prisma
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp

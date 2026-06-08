@@ -1,0 +1,30 @@
+# 로컬 PostgreSQL + pgvector
+# 사용:
+#   docker compose up -d        # 시작
+#   docker compose logs -f pg   # 로그 확인
+#   docker compose down         # 정지
+#   docker compose down -v      # 정지 + 데이터 삭제
+
+services:
+  pg:
+    image: pgvector/pgvector:pg16
+    container_name: mrms-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mrms
+      POSTGRES_PASSWORD: mrms
+      POSTGRES_DB: mrms
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./prisma/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mrms -d mrms"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+    driver: local

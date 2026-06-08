@@ -1,0 +1,6 @@
+{
+  "name": "mrms-migrations",
+  "version": "0.1.0",
+  "private": true,
+  "devDependencies": {"prisma": "^6.0.0"}
+}

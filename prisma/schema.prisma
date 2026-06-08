@@ -1,0 +1,289 @@
+// MRMS — Music Recommendation Management System
+// PostgreSQL + pgvector
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// ─── Track Identity ──────────────────────────────────────
+model Track {
+  id              String   @id @default(cuid())
+  isrc            String   @unique // KR-A0-24-12345 — 글로벌 키
+  title           String
+  titleNormalized String
+  durationMs      Int
+  explicit        Boolean  @default(false)
+
+  artistId        String
+  albumId         String?
+  artist          Artist   @relation(fields: [artistId], references: [id])
+  album           Album?   @relation(fields: [albumId], references: [id])
+
+  platforms       TrackPlatform[]
+  features        TrackAudioFeatures[]
+  embeddings      TrackEmbedding[]
+  lyrics          TrackLyrics?
+  interactions    TrackInteraction[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([artistId])
+  @@index([titleNormalized])
+}
+
+model Artist {
+  id             String   @id @default(cuid())
+  name           String
+  nameNormalized String
+  mainGenre      String?
+  tracks         Track[]
+  albums         Album[]
+
+  @@index([nameNormalized])
+}
+
+model Album {
+  id          String    @id @default(cuid())
+  title       String
+  releaseDate DateTime?
+  albumType   String    // 'single' | 'ep' | 'album' | 'compilation'
+  label       String?
+  artistId    String
+  artist      Artist    @relation(fields: [artistId], references: [id])
+  tracks      Track[]
+}
+
+// ─── Platform Mapping (1:N) ──────────────────────────────
+model TrackPlatform {
+  id              String   @id @default(cuid())
+  trackId         String
+  track           Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  platform        String   // 'tidal' | 'spotify' | 'apple' | 'youtube_music'
+  platformTrackId String
+  popularity      Int?     // 0~100
+  available       Boolean  @default(true)
+  regions         String[] // ['KR', 'US', ...]
+  previewUrl      String?  // 30s mp3 URL
+  lastSyncedAt    DateTime @default(now())
+
+  @@unique([trackId, platform])
+  @@index([platform, platformTrackId])
+}
+
+// ─── Audio Features (버저닝) ─────────────────────────────
+model TrackAudioFeatures {
+  id            String   @id @default(cuid())
+  trackId       String
+  track         Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  // 출처 추적
+  source             String   // 'spotify_cached' | 'tidal_cached' | 'our_model'
+  modelVersion       String
+  analyzedAt         DateTime @default(now())
+  audioSourceQuality String?  // 'flac_lossless' | 'mp3_320' | 'mp3_30s'
+
+  // Spotify 호환 12개
+  danceability     Float
+  energy           Float
+  valence          Float
+  acousticness     Float
+  instrumentalness Float
+  liveness         Float
+  speechiness      Float
+  tempo            Float    // BPM
+  loudness         Float    // dB
+  key              Int      // 0~11
+  mode             Int      // 0(minor) | 1(major)
+  timeSignature    Int      // 3~7
+
+  // 우리 확장 차원
+  energyCurve   Float[]  // 32 points
+  chorusStartMs Int?
+  chorusEndMs   Int?
+  vocalRatio    Float?
+  kpopMood      String?
+  subgenres     String[]
+
+  confidence    Float    // 모델 확신도
+
+  @@unique([trackId, modelVersion])
+  @@index([trackId])
+}
+
+// ─── Embedding (pgvector, 검색용) ────────────────────────
+model TrackEmbedding {
+  id            String                       @id @default(cuid())
+  trackId       String
+  track         Track                        @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  modelVersion  String
+  embedding     Unsupported("vector(256)")
+  pooling       String                       // 'mean' | 'attention'
+  audioSource   String                       // 'flac_full' | 'mp3_30s'
+  createdAt     DateTime                     @default(now())
+
+  @@unique([trackId, modelVersion])
+  @@index([modelVersion])
+}
+
+// ─── Lyrics (선택) ───────────────────────────────────────
+model TrackLyrics {
+  trackId         String                       @id
+  track           Track                        @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  language        String                       // 'ko' | 'en' | 'ja'
+  lyricsText      String?
+  lyricsEmbedding Unsupported("vector(768)")
+  sentiment       Float?
+  topics          String[]
+  explicit        Boolean                      @default(false)
+  source          String
+  syncedAt        DateTime                     @default(now())
+}
+
+// ─── User Identity ───────────────────────────────────────
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  displayName String?
+  country     String?  // 'KR' — region 가용성 체크
+  explicit    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  oauth        UserOAuth[]
+  embeddings   UserEmbedding[]
+  personas     UserPersona[]
+  profile      UserProfile?
+  interactions TrackInteraction[]
+  playlists    PlaylistHistory[]
+  blocked      UserBlocked[]
+  sessions     UserSession[]
+}
+
+model UserOAuth {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform     String   // 'tidal' | 'spotify'
+  accessToken  String   // 암호화 권장
+  refreshToken String
+  expiresAt    DateTime
+  scope        String[]
+
+  @@unique([userId, platform])
+}
+
+// ─── User Embedding (per user) ───────────────────────────
+model UserEmbedding {
+  userId       String
+  user         User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  modelVersion String
+  embedding    Unsupported("vector(256)")
+  computedFrom Int      // 몇 개 트랙 신호로 만들었는지
+  updatedAt    DateTime @updatedAt
+
+  @@id([userId, modelVersion])
+}
+
+// ─── User Persona (다중 페르소나) ────────────────────────
+model UserPersona {
+  id           String                       @id @default(cuid())
+  userId       String
+  user         User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  personaIdx   Int                          // 0, 1, 2, ...
+  embedding    Unsupported("vector(256)")
+  inferredTag  String?                      // '운동용' | '잠들기'
+  topGenres    String[]
+  avgBpm       Float?
+  contextHours Int[]                        // 주로 활성화되는 시간대
+  trackCount   Int                          // 클러스터 크기
+
+  @@unique([userId, personaIdx])
+}
+
+// ─── User Profile (집계 통계) ────────────────────────────
+model UserProfile {
+  userId            String   @id
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  genreDistribution Json     // {"K-pop": 0.4, ...}
+  bpmHistogram      Json
+  energyMean        Float?
+  valenceMean       Float?
+  acousticnessMean  Float?
+  preferredEras     Int[]
+  popularityBias    Float?
+  updatedAt         DateTime @updatedAt
+}
+
+model UserBlocked {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetId   String
+  targetType String   // 'track' | 'artist'
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model UserSession {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device    String?
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  context   Json?
+}
+
+// ─── Behavioral Signal ───────────────────────────────────
+model TrackInteraction {
+  id      String @id @default(cuid())
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trackId String
+  track   Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  action String // 'play' | 'skip' | 'save' | 'like' | 'add_to_playlist' | 'block'
+  weight Float
+
+  playedMs       Int?
+  totalMs        Int?
+  completion     Float?
+  skipPositionMs Int?
+
+  platform   String  // 'tidal' | 'spotify' | 'app'
+  deviceType String?
+  hourOfDay  Int
+  dayOfWeek  Int
+  sessionId  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([trackId])
+  @@index([sessionId])
+}
+
+model PlaylistHistory {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trackIds     String[]
+  modelVersion String
+  context      Json?
+  generatedAt  DateTime @default(now())
+
+  // 결과 측정용
+  playedCount Int @default(0)
+  skipCount   Int @default(0)
+  savedCount  Int @default(0)
+
+  @@index([userId, generatedAt(sort: Desc)])
+}
