@@ -3,7 +3,6 @@
 import { Volume2 } from "lucide-react";
 import { useEffect } from "react";
 
-import { getTidalToken } from "@/lib/api";
 import { initTidalSdk, setSdkVolume } from "@/lib/tidal-player";
 import { usePlayerStore } from "@/store/player";
 
@@ -39,33 +38,14 @@ export function PlayerBar() {
   const errorMsg = usePlayerStore((s) => s.errorMsg);
   const premium = usePlayerStore((s) => s.premium);
   const sdkReady = usePlayerStore((s) => s.sdkReady);
-  const isPreview = usePlayerStore((s) => s.isPreview);
 
   useEffect(() => {
+    // Audio element 초기화 + sdkReady = true (백엔드 proxy 사용 — SDK init 불필요)
     (async () => {
       try {
-        const t = await getTidalToken();
-        usePlayerStore.setState({ premium: t.premium });
-        if (t.premium === false) {
-          usePlayerStore.setState({
-            errorMsg: "Tidal Premium 구독이 필요합니다",
-          });
-          return;
-        }
-        await initTidalSdk({
-          access_token: t.access_token,
-          expires_at: t.expires_at,
-        });
+        await initTidalSdk();
       } catch (e) {
-        const err = e as Error;
-        if (err.message.includes("404")) {
-          usePlayerStore.setState({
-            errorMsg:
-              "Tidal 연동이 필요합니다 — scripts/08_onboard_tidal.py 실행",
-          });
-        } else {
-          usePlayerStore.setState({ errorMsg: err.message });
-        }
+        usePlayerStore.setState({ errorMsg: (e as Error).message });
       }
     })();
   }, []);
