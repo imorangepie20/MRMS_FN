@@ -18,7 +18,6 @@ import asyncio
 import os
 import secrets
 import sys
-import threading
 import webbrowser
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -83,21 +82,12 @@ async def ensure_token(conn, user_id: str) -> tuple[str, str]:
     console.print(f"브라우저 열림: {auth_url[:80]}...")
     webbrowser.open(auth_url)
 
-    received: dict[str, tuple[str, str] | None] = {}
-
-    def wait():
-        try:
-            received["pair"] = server.wait_for_callback(timeout=300)
-        except TimeoutError:
-            received["pair"] = None
-
-    t = threading.Thread(target=wait, daemon=True)
-    t.start()
-    t.join()
-
-    if not received.get("pair"):
-        raise RuntimeError("OAuth 콜백 안 옴 (300초 timeout)")
-    code, received_state = received["pair"]
+    try:
+        code, received_state = await asyncio.to_thread(
+            server.wait_for_callback, 300
+        )
+    except TimeoutError as e:
+        raise RuntimeError("OAuth 콜백 안 옴 (300초 timeout)") from e
     if received_state != state:
         raise RuntimeError(f"state 불일치: {received_state} != {state}")
 
