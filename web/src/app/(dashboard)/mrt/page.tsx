@@ -35,7 +35,7 @@ export default async function MrtPage() {
 
       <section className="space-y-4">
         <h2 className="text-xl font-semibold">페르소나</h2>
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {mrt.personas.map((p) => (
             <PersonaCard key={p.persona_idx} persona={p} />
           ))}
@@ -49,7 +49,7 @@ export default async function MrtPage() {
 
       <section className="space-y-4">
         <h2 className="text-xl font-semibold">추천 앨범</h2>
-        <div className="grid md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {mrt.recommended_albums.map((a) => (
             <RecommendedAlbumCard key={a.album_id} album={a} />
           ))}
