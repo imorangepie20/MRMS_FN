@@ -11,9 +11,9 @@ import psycopg
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from mrms.api.deps import db_conn, get_default_user_email
+from mrms.api.deps import db_conn, get_current_user_id
 from mrms.auth.tidal import TidalOAuthClient
-from mrms.db.user_track import get_oauth, get_or_create_user, upsert_oauth
+from mrms.db.user_track import get_oauth, upsert_oauth
 
 
 router = APIRouter(prefix="/api/auth/tidal", tags=["auth"])
@@ -58,36 +58,19 @@ async def _check_premium(access_token: str) -> bool | None:
 
 
 @router.get("/token")
-async def get_token(conn: psycopg.Connection = Depends(db_conn)) -> dict:
+async def get_token(
+    user_id: str = Depends(get_current_user_id),
+    conn: psycopg.Connection = Depends(db_conn),
+) -> dict:
     """현재 유효한 access_token 반환. 만료 임박 시 자동 refresh."""
-    email = get_default_user_email()
-    user_id = get_or_create_user(conn, email)
-    conn.commit()
     oauth = get_oauth(conn, user_id, "tidal")
     if not oauth:
-        raise HTTPException(404, "Tidal OAuth not configured. Run scripts/08_onboard_tidal.py")
+        raise HTTPException(404, "Tidal OAuth not configured. Sign in via /login")
 
-    access_token = oauth["accessToken"]
-    expires_at = oauth["expiresAt"]
-
-    # 60초 이내 만료면 refresh
-    if expires_at and expires_at - timedelta(seconds=60) < datetime.now(timezone.utc):
-        tokens = await _client().refresh_access_token(oauth["refreshToken"])
-        access_token = tokens["access_token"]
-        new_refresh = tokens.get("refresh_token", oauth["refreshToken"])
-        new_expires = datetime.now(timezone.utc) + timedelta(seconds=tokens["expires_in"])
-        scope = tokens.get("scope", "")
-        granted = scope.split() if isinstance(scope, str) else list(scope)
-        if not granted:
-            granted = list(oauth.get("scope", []))
-        upsert_oauth(
-            conn, user_id=user_id, platform="tidal",
-            access_token=access_token, refresh_token=new_refresh,
-            expires_at=new_expires, scopes=granted,
-        )
-        conn.commit()
-        expires_at = new_expires
-
+    access_token = await _get_access_token(user_id, conn)
+    # _get_access_token이 refresh했을 수 있으므로 expires_at 재조회
+    oauth = get_oauth(conn, user_id, "tidal")
+    expires_at = oauth["expiresAt"] if oauth else None
     premium = await _check_premium(access_token)
     return {
         "access_token": access_token,
@@ -97,11 +80,11 @@ async def get_token(conn: psycopg.Connection = Depends(db_conn)) -> dict:
 
 
 @router.post("/refresh")
-async def refresh_token(conn: psycopg.Connection = Depends(db_conn)) -> dict:
+async def refresh_token(
+    user_id: str = Depends(get_current_user_id),
+    conn: psycopg.Connection = Depends(db_conn),
+) -> dict:
     """명시적 refresh — 새 access_token 발급."""
-    email = get_default_user_email()
-    user_id = get_or_create_user(conn, email)
-    conn.commit()
     oauth = get_oauth(conn, user_id, "tidal")
     if not oauth:
         raise HTTPException(404, "Tidal OAuth not configured")
@@ -126,14 +109,11 @@ async def refresh_token(conn: psycopg.Connection = Depends(db_conn)) -> dict:
     }
 
 
-async def _get_access_token(conn: psycopg.Connection) -> str:
-    """Helper — 현재 유효한 access_token. 만료 임박 시 자동 refresh + DB 저장."""
-    email = get_default_user_email()
-    user_id = get_or_create_user(conn, email)
-    conn.commit()
+async def _get_access_token(user_id: str, conn: psycopg.Connection) -> str:
+    """Helper — 주어진 user_id의 유효 access_token. 만료 임박 시 자동 refresh + DB 저장."""
     oauth = get_oauth(conn, user_id, "tidal")
     if not oauth:
-        raise HTTPException(404, "Tidal OAuth not configured. Run scripts/08c_tidal_device_code.py")
+        raise HTTPException(404, "Tidal OAuth not configured. Sign in via /login")
 
     access_token = oauth["accessToken"]
     expires_at = oauth["expiresAt"]
@@ -158,14 +138,18 @@ async def _get_access_token(conn: psycopg.Connection) -> str:
 
 
 @playback_router.get("/stream/{track_id}")
-async def stream_track(track_id: str, conn: psycopg.Connection = Depends(db_conn)):
+async def stream_track(
+    track_id: str,
+    user_id: str = Depends(get_current_user_id),
+    conn: psycopg.Connection = Depends(db_conn),
+):
     """Tidal 트랙을 직접 stream — SDK 우회.
 
     1. /v1/tracks/{id}/playbackinfo 호출 → manifest 받음
     2. manifest 디코드 → audio URL 추출
     3. 그 URL을 stream proxy
     """
-    access_token = await _get_access_token(conn)
+    access_token = await _get_access_token(user_id, conn)
 
     # 1. playbackinfo 호출
     async with httpx.AsyncClient(timeout=10.0) as http:

@@ -1,13 +1,15 @@
 """FastAPI app — MRMS 데이터를 HTTP로 노출."""
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 import psycopg
 
+from mrms.api.auth_session import router as auth_session_router
 from mrms.api.auth_tidal import playback_router as tidal_playback_router, router as tidal_router
-from mrms.api.deps import db_conn, get_default_user_email
+from mrms.api.deps import db_conn, get_current_user_id
+from mrms.api.onboarding_api import router as onboarding_router
 from mrms.api.schemas import (
     MrtLatestResponse,
     Persona,
@@ -17,7 +19,6 @@ from mrms.api.schemas import (
     UserInfo,
 )
 from mrms.db.user_embedding import fetch_latest_playlists
-from mrms.db.user_track import get_or_create_user
 from mrms.recsys.mrt import derive_recommended_albums, derive_recommended_tracks
 
 
@@ -31,6 +32,8 @@ app.add_middleware(
 )
 app.include_router(tidal_router)
 app.include_router(tidal_playback_router)
+app.include_router(auth_session_router)
+app.include_router(onboarding_router)
 
 
 @app.get("/api/health")
@@ -39,17 +42,19 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/user", response_model=UserInfo)
-def user(conn: psycopg.Connection = Depends(db_conn)) -> UserInfo:
-    email = get_default_user_email()
-    user_id = get_or_create_user(conn, email)
-    conn.commit()
+def user(
+    user_id: str = Depends(get_current_user_id),
+    conn: psycopg.Connection = Depends(db_conn),
+) -> UserInfo:
     with conn.cursor() as cur:
         cur.execute(
-            'SELECT "displayName", country FROM "User" WHERE id = %s',
+            'SELECT email, "displayName", country FROM "User" WHERE id = %s',
             (user_id,),
         )
         row = cur.fetchone()
-        display_name, country = (row[0], row[1]) if row else (None, None)
+        if not row:
+            raise HTTPException(404, "User not found")
+        email, display_name, country = row
 
         cur.execute(
             'SELECT COUNT(*) FROM "UserPersona" WHERE "userId" = %s',
@@ -103,15 +108,12 @@ def _fetch_track_metadata(conn, track_ids: list[str]) -> dict[str, dict]:
 
 @app.get("/api/mrt/latest", response_model=MrtLatestResponse)
 def mrt_latest(
+    user_id: str = Depends(get_current_user_id),
+    conn: psycopg.Connection = Depends(db_conn),
     top_n: int = 20,
     top_tracks_n: int = 30,
     top_albums_n: int = 15,
-    conn: psycopg.Connection = Depends(db_conn),
 ) -> MrtLatestResponse:
-    email = get_default_user_email()
-    user_id = get_or_create_user(conn, email)
-    conn.commit()
-
     playlists = fetch_latest_playlists(conn, user_id, limit=3)
     if not playlists:
         return MrtLatestResponse(

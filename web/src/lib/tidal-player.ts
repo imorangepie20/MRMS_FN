@@ -11,7 +11,7 @@ function ensureAudio(): HTMLAudioElement {
   if (audioEl) return audioEl;
   const el = new Audio();
   el.preload = "auto";
-  el.crossOrigin = "anonymous";
+  el.crossOrigin = "use-credentials";
 
   el.addEventListener("playing", () => {
     usePlayerStore.setState({ isPlaying: true });

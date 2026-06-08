@@ -164,6 +164,18 @@ model User {
   playlists    PlaylistHistory[]
   blocked      UserBlocked[]
   sessions     UserSession[]
+  authSessions AuthSession[]
+}
+
+model AuthSession {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userAgent String?
+
+  @@index([userId])
 }
 
 model UserOAuth {

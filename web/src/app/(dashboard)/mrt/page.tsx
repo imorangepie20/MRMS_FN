@@ -1,13 +1,13 @@
 import { PersonaCard } from "@/components/mrms/PersonaCard";
 import { RecommendedAlbumCard } from "@/components/mrms/RecommendedAlbumCard";
 import { RecommendedTracksTable } from "@/components/mrms/RecommendedTracksTable";
-import { getMrtLatest, getUser } from "@/lib/api";
+import { getServerSideMrt, getServerSideUser } from "@/lib/server/auth";
 
 
 export default async function MrtPage() {
   const [user, mrt] = await Promise.all([
-    getUser(),
-    getMrtLatest(),
+    getServerSideUser(),
+    getServerSideMrt(),
   ]);
 
   if (mrt.personas.length === 0) {
