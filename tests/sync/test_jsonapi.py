@@ -85,3 +85,18 @@ def test_flatten_skips_entry_without_type():
     result = flatten_jsonapi(response)
     assert len(result) == 1
     assert result[0]["isrc"] == "BBB"
+
+
+def test_flatten_single_resource_data_dict():
+    """JSON:API: 단일 리소스 엔드포인트는 data가 dict (list 아님). 평탄화 동작 보장."""
+    response = {
+        "data": {
+            "id": "u_1",
+            "type": "users",
+            "attributes": {"country": "KR", "email": "me@x.com"},
+        }
+    }
+    result = flatten_jsonapi(response)
+    assert len(result) == 1
+    assert result[0]["id"] == "u_1"
+    assert result[0]["country"] == "KR"

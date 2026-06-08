@@ -62,12 +62,6 @@ class TidalImporter:
 
     async def fetch_user_info(self) -> dict:
         body = await self._get("/users/me")
-        # /users/me는 단일 리소스라 data가 dict일 수 있음 — flatten_jsonapi는 list 가정.
-        # dict일 때는 직접 평탄화, list일 때만 flatten 사용.
-        data = body.get("data")
-        if isinstance(data, dict):
-            attrs = data.get("attributes") or {}
-            return {"id": data.get("id"), **attrs}
         flat = flatten_jsonapi(body, focus_type="users")
         if not flat:
             return {}

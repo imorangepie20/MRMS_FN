@@ -14,6 +14,7 @@ def flatten_jsonapi(
 ) -> list[dict[str, Any]]:
     """JSON:API 응답을 [{ id, type, ...attributes }] 리스트로 변환.
 
+    data는 list(컬렉션) 또는 dict(단일 리소스) 모두 허용.
     Dedup key: (type, id) 튜플 — JSON:API ID는 type 안에서만 unique.
     처리 순서: data → included. 같은 (type, id) 다시 만나면 새 attributes로 머지
     (included가 보통 더 풍부한 attributes를 가지므로 후순위 우선 패턴이 자연스럽게 동작).
@@ -21,7 +22,14 @@ def flatten_jsonapi(
     focus_type 지정시 해당 type만 반환.
     """
     items: dict[tuple[str, str], dict[str, Any]] = {}
-    sources = (response.get("data") or []) + (response.get("included") or [])
+    raw_data = response.get("data")
+    # JSON:API: data는 컬렉션이면 list, 단일 리소스면 dict.
+    data_list: list = []
+    if isinstance(raw_data, list):
+        data_list = raw_data
+    elif isinstance(raw_data, dict):
+        data_list = [raw_data]
+    sources = data_list + (response.get("included") or [])
     for entry in sources:
         if not entry:
             continue
