@@ -178,3 +178,18 @@ def test_mrt_latest_includes_tidal_track_id_and_filters(db_conn):
     # 추천 트랙도 모두 tidal_track_id 채워졌는지
     if body["recommended_tracks"]:
         assert all(t["tidal_track_id"] for t in body["recommended_tracks"])
+
+
+def test_user_endpoint_includes_primary_platform(db_conn):
+    """/api/user 응답에 primary_platform 필드 포함."""
+    user_id = _set_session_cookie(db_conn, "primary_main@example.com")
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'UPDATE "User" SET "primaryPlatform" = %s WHERE id = %s',
+            ("tidal", user_id),
+        )
+    db_conn.commit()
+    r = client.get("/api/user")
+    client.cookies.clear()
+    assert r.status_code == 200
+    assert r.json()["primary_platform"] == "tidal"

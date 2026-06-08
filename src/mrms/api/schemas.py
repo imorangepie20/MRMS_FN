@@ -13,6 +13,7 @@ class UserInfo(BaseModel):
     country: str | None = None
     personas_count: int
     user_tracks_count: int
+    primary_platform: str
 
 
 class PersonaTrack(BaseModel):
