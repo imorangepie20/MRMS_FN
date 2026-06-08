@@ -12,7 +12,7 @@ import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from mrms.api.deps import db_conn
+from mrms.api.deps import db_conn, get_current_user_id
 from mrms.db.user_track import get_or_create_user, upsert_oauth
 
 
@@ -142,3 +142,45 @@ async def device_code_poll(
         secure=False,  # production은 True
     )
     return {"status": "success", "has_mrt": has_mrt}
+
+
+@router.get("/me")
+def me(
+    user_id: str = Depends(get_current_user_id),
+    conn: psycopg.Connection = Depends(db_conn),
+) -> dict:
+    """현재 user 정보 반환."""
+    with conn.cursor() as cur:
+        cur.execute('SELECT email, "displayName", country FROM "User" WHERE id = %s', (user_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "User not found")
+        email, display_name, country = row
+        cur.execute('SELECT COUNT(*) FROM "UserPersona" WHERE "userId" = %s', (user_id,))
+        personas_count = cur.fetchone()[0]
+        cur.execute('SELECT COUNT(*) FROM "UserTrack" WHERE "userId" = %s', (user_id,))
+        tracks_count = cur.fetchone()[0]
+    return {
+        "user_id": user_id,
+        "email": email,
+        "displayName": display_name,
+        "country": country,
+        "personas_count": personas_count,
+        "user_tracks_count": tracks_count,
+    }
+
+
+@router.post("/logout")
+def logout(
+    request: Request,
+    response: Response,
+    conn: psycopg.Connection = Depends(db_conn),
+) -> dict:
+    """AuthSession 삭제 + cookie clear."""
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if session_id:
+        with conn.cursor() as cur:
+            cur.execute('DELETE FROM "AuthSession" WHERE id = %s', (session_id,))
+        conn.commit()
+    response.delete_cookie(SESSION_COOKIE_NAME)
+    return {"status": "ok"}

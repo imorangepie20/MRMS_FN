@@ -165,3 +165,56 @@ def test_device_code_poll_expired_returns_expired(db_conn):
         )
     assert r.status_code == 200
     assert r.json()["status"] == "expired"
+
+
+def test_me_returns_user_with_valid_session(db_conn):
+    """/me는 session에서 user 정보 반환."""
+    from mrms.db.user_track import get_or_create_user
+    import uuid as _uuid
+
+    user_id = get_or_create_user(db_conn, "me_test@example.com")
+    session_id = _uuid.uuid4().hex
+    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
+            (session_id, user_id, expires_at),
+        )
+    db_conn.commit()
+
+    client.cookies.set("mrms_session", session_id)
+    r = client.get("/api/auth/me")
+    client.cookies.clear()
+    assert r.status_code == 200
+    assert r.json()["email"] == "me_test@example.com"
+
+
+def test_me_returns_401_without_session(db_conn):
+    """Cookie 없으면 401."""
+    r = client.get("/api/auth/me")
+    assert r.status_code == 401
+
+
+def test_logout_deletes_session(db_conn):
+    """/logout은 AuthSession 삭제 + cookie clear."""
+    from mrms.db.user_track import get_or_create_user
+    import uuid as _uuid
+
+    user_id = get_or_create_user(db_conn, "logout_test@example.com")
+    session_id = _uuid.uuid4().hex
+    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
+            (session_id, user_id, expires_at),
+        )
+    db_conn.commit()
+
+    client.cookies.set("mrms_session", session_id)
+    r = client.post("/api/auth/logout")
+    client.cookies.clear()
+    assert r.status_code == 200
+
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT COUNT(*) FROM "AuthSession" WHERE id = %s', (session_id,))
+        assert cur.fetchone()[0] == 0
