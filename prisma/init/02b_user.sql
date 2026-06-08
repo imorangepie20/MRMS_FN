@@ -20,6 +20,3 @@ CREATE TABLE IF NOT EXISTS "UserOAuth" (
     scope          TEXT[] NOT NULL DEFAULT '{}',
     UNIQUE ("userId", platform)
 );
-
-CREATE INDEX IF NOT EXISTS idx_useroauth_user_platform
-  ON "UserOAuth"("userId", platform);
