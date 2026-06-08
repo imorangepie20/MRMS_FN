@@ -23,15 +23,6 @@ importers:
       '@tanstack/react-table':
         specifier: ^8.21.3
         version: 8.21.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@tidal-music/auth':
-        specifier: ^1.6.1
-        version: 1.6.1
-      '@tidal-music/event-producer':
-        specifier: ^2.4.1
-        version: 2.4.1
-      '@tidal-music/player':
-        specifier: ^0.18.1
-        version: 0.18.1
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1037,21 +1028,6 @@ packages:
   '@tanstack/table-core@8.21.3':
     resolution: {integrity: sha512-ldZXEhOBb8Is7xLs01fR3YEc3DERiz5silj8tnGkFZytt1abEvl/GhUmCE0PMLaMPTa3Jk4HbKmRlHmu+gCftg==}
     engines: {node: '>=12'}
-
-  '@tidal-music/auth@1.6.1':
-    resolution: {integrity: sha512-Z0Yt42RbJ97BIve7EunfrXxUaUcgZtNj1nZeOXOdFfb1ZAoxLLzd+lIhBLXnEOyNS+8griqDeySu4MC6GcTO4w==}
-
-  '@tidal-music/common@0.2.1':
-    resolution: {integrity: sha512-23o83gxyXsXYNIydOsupO4+6MkW1ZZfnLFyxphoSCYuS6jXWulbOhiKTz3w8mqZP5+vHeXj6ZQ92gtWmDXCTZg==}
-
-  '@tidal-music/event-producer@2.4.1':
-    resolution: {integrity: sha512-mkGDJBPlnuUzS4JTq5kT7b3fVRoMr/8jngz4TBbTYv516LQk1fcU/Oae9h17Gd4rOhlvkwTn5KPmiBLBdCd/ug==}
-
-  '@tidal-music/player@0.18.1':
-    resolution: {integrity: sha512-18QX0BFmelHlY+C7CN1eDv7sj6LqAVOmqlTyu5QOfm+wnMu21H/pKKY2QeLY0SfCoyiAunaKrDfGDHtrOsUZ3A==}
-
-  '@tidal-music/true-time@0.3.1':
-    resolution: {integrity: sha512-Kmxbe5gmmnwvrkIYfOVWZc/+tUqsScRXhk6rIrwXd92tusnRfI3M2OLR2G6Su6PFWUus0T2nJb/6ev5eGX+2UQ==}
 
   '@ts-morph/common@0.27.0':
     resolution: {integrity: sha512-Wf29UqxWDpc+i61k3oIOzcUfQt79PIT9y/MWfAGlrkjg6lBC1hwDECLXPVJAhWjiGbfBCxZd65F/LIZF3+jeJQ==}
@@ -2247,9 +2223,6 @@ packages:
     resolution: {integrity: sha512-Hs59xBNfUIunMFgWAbGX5cq6893IbWg4KnrjbYwX3tx0ztorVgTDA6B2sxf8ejHJ4wz8BqGUMYlnzNBer5NvGg==}
     engines: {node: '>= 4'}
 
-  immediate@3.0.6:
-    resolution: {integrity: sha512-XXOFtyqDjNDAQxVfYxuF7g9Il/IbWmmlQg2MYKOH8ExIT1qg6xc4zyS3HaEEATgs1btfzxq15ciUiY7gjSXRGQ==}
-
   immer@10.2.0:
     resolution: {integrity: sha512-d/+XTN3zfODyjr89gM3mPq1WNX2B8pYsu7eORitdwyA2sBubnTl3laYlBk4sXY5FUa5qTZGBDPJICVbvqzjlbw==}
 
@@ -2538,9 +2511,6 @@ packages:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
 
-  lie@3.1.1:
-    resolution: {integrity: sha512-RiNhHysUjhrDQntfYSfY4MU24coXXdEOgw9WGcKHNeEwffDYbF//u87M1EWaMGzuFoSbqW0C9C6lEEhDOAswfw==}
-
   lightningcss-android-arm64@1.32.0:
     resolution: {integrity: sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==}
     engines: {node: '>= 12.0.0'}
@@ -2617,9 +2587,6 @@ packages:
 
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
-
-  localforage@1.10.0:
-    resolution: {integrity: sha512-14/H1aX7hzBBmmh7sGPd+AOMkkIrHM3Z1PAyGgZigA1H1p5O5ANnMyWzvpAETtG68/dC4pC0ncy3+PPGzXZHPg==}
 
   locate-path@6.0.0:
     resolution: {integrity: sha512-iPZK6eYjbxRu3uB4/WZ3EsEIMJFMqAoopl3R+zuq0UjcAm/MO6KCweDgPfP3elTztoKP3KtnVHxTn2NHBSDVUw==}
@@ -2716,11 +2683,6 @@ packages:
   nanoid@3.3.12:
     resolution: {integrity: sha512-ZB9RH/39qpq5Vu6Y+NmUaFhQR6pp+M2Xt76XBnEwDaGcVAqhlvxrl3B2bKS5D3NH3QR76v3aSrKaF/Kiy7lEtQ==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
-    hasBin: true
-
-  nanoid@5.1.11:
-    resolution: {integrity: sha512-v+KEsUv2ps74PaSKv0gHTxTCgMXOIfBEbaqa6w6ISIGC7ZsvHN4N9oJ8d4cmf0n5oTzQz2SLmThbQWhjd/8eKg==}
-    engines: {node: ^18 || >=20}
     hasBin: true
 
   napi-postinstall@0.3.4:
@@ -4477,24 +4439,6 @@ snapshots:
 
   '@tanstack/table-core@8.21.3': {}
 
-  '@tidal-music/auth@1.6.1':
-    dependencies:
-      '@tidal-music/common': 0.2.1
-      '@tidal-music/true-time': 0.3.1
-
-  '@tidal-music/common@0.2.1': {}
-
-  '@tidal-music/event-producer@2.4.1':
-    dependencies:
-      '@tidal-music/common': 0.2.1
-      '@tidal-music/true-time': 0.3.1
-      localforage: 1.10.0
-      nanoid: 5.1.11
-
-  '@tidal-music/player@0.18.1': {}
-
-  '@tidal-music/true-time@0.3.1': {}
-
   '@ts-morph/common@0.27.0':
     dependencies:
       fast-glob: 3.3.3
@@ -5823,8 +5767,6 @@ snapshots:
 
   ignore@7.0.5: {}
 
-  immediate@3.0.6: {}
-
   immer@10.2.0: {}
 
   immer@11.1.8: {}
@@ -6075,10 +6017,6 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
 
-  lie@3.1.1:
-    dependencies:
-      immediate: 3.0.6
-
   lightningcss-android-arm64@1.32.0:
     optional: true
 
@@ -6129,10 +6067,6 @@ snapshots:
       lightningcss-win32-x64-msvc: 1.32.0
 
   lines-and-columns@1.2.4: {}
-
-  localforage@1.10.0:
-    dependencies:
-      lie: 3.1.1
 
   locate-path@6.0.0:
     dependencies:
@@ -6226,8 +6160,6 @@ snapshots:
   mute-stream@3.0.0: {}
 
   nanoid@3.3.12: {}
-
-  nanoid@5.1.11: {}
 
   napi-postinstall@0.3.4: {}
 
