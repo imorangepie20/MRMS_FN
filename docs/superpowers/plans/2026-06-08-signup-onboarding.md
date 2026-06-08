@@ -2,6 +2,38 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## 🚨 구현 결과 — Plan과 실제 차이 (READ FIRST)
+
+> Plan과 실제 merge(`a940190`) 결과의 차이를 먼저 요약. 본문(이하)은 원안 그대로 보존.
+
+### 전체 결과
+- **17 commits + 1 merge**(`a940190`)로 main에 통합
+- **74/74 tests passing** (백엔드 + 프론트 통합)
+- Task 1~12는 plan의 TDD + task-별 commit 흐름대로 거의 그대로 진행
+
+### Task 6/7 확장: favorites → favorites + playlists
+
+원안의 Task 6(`tidal_favorites.py`) / Task 7(`pipeline.py`)은 **즐겨찾기 트랙만** 입력으로 가정했으나, 메인 구현 직후 사용자 시드 부족이 드러나 다음과 같이 확장됨(commit `e3c0775`):
+
+- favorites + 모든 사용자 playlist 트랙을 함께 fetch
+- `UserTrack.source` = `'liked'` | `'playlist'` 로 출처 구분
+- 동일 트랙은 `'liked'` 우선 dedupe
+
+### Task 13(정리) 항목
+
+원안에 명시되지 않았던 e2e 후속 작업이 추가됨:
+
+- **Parallel route 충돌 제거** — 구 SDTPL 보일러플레이트의 `(dashboard)/onboarding/` 라우트 삭제 + middleware에서 `/onboarding` 보호 (commit `cf072bc`)
+- **Prisma CLI 폐기** — root `package.json`(Prisma 전용) 제거, `prisma/schema.prisma`는 문서로만 유지, 향후 마이그레이션은 raw SQL (commit `5af02c8`)
+- **Cross-origin 오디오 쿠키 패치** — `<audio crossOrigin="use-credentials">`로 세션 쿠키 전달 (commit `2f72d27`)
+- **`verification_uri_complete` https:// prefix 보정** (commit `4173f2c`)
+
+### AuthCard 유지(template asset 보존 룰)
+
+Plan은 raw `Card`를 가정했으나 `/login`, `/onboarding` 모두 SDTPL `AuthCard` 래퍼를 그대로 사용해 형제 auth 페이지와 일관성 유지.
+
+---
+
 **Goal:** Tidal OAuth Device Code 회원가입 → AuthSession 기반 다중 사용자 → 자동 onboarding (favorites → embedding → MRT) → /mrt에서 풀 곡 재생까지 end-to-end flow.
 
 **Architecture:** 백엔드는 AuthSession (Prisma) + Cookie middleware로 user_id 식별. 신규 4개 auth endpoint (device-code/init, poll, me, logout) + 2개 onboarding endpoint. 기존 5개 endpoint를 session 기반으로 전환. 온보딩 pipeline은 기존 generate_for_user() + Tidal favorites fetch를 함수로 합쳐서 BackgroundTasks로 실행. 프론트는 TidalConnectModal (visibilitychange 트리거) + /onboarding 진행 화면 + middleware 인증.

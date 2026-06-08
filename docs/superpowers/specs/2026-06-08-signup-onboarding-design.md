@@ -4,6 +4,41 @@
 **상태**: 디자인 (사용자 승인 완료)
 **범위**: Single hardcoded user 상태에서 **실제 다중 사용자 + UI 기반 onboarding flow**로 전환. Tidal OAuth로 회원가입 → 자동으로 첫 추천 생성 → /mrt에서 풀 곡 감상까지 한 사이클.
 
+## 🚨 구현 결과 — 변경 사항 (READ FIRST)
+
+> 본 spec과 실제 구현(merge `a940190`) 사이의 주요 차이를 먼저 기록한다. 아래 본문(Section 1~)은 원래 설계 의도로 보존돼 있으므로, 실제 동작은 이 섹션을 우선 참조할 것.
+
+### 1. 온보딩 데이터 소스 확장 (favorites → favorites + playlists)
+
+원래 spec은 Tidal **favorites(좋아요)** 트랙만 임베딩/페르소나 입력으로 사용했다. 구현 중간(commit `e3c0775`)에 사용자 시드 부족 문제를 발견해 **사용자의 모든 playlist 트랙도 함께 fetch**하도록 확장했다.
+
+- `UserTrack.source` 컬럼으로 출처를 구분: `'liked'` (favorites) / `'playlist'` (playlist-only)
+- 동일 트랙이 양쪽에 모두 있으면 `'liked'` 우선
+- 결과적으로 트랙 풀이 늘어나 신규 사용자의 첫 MRT 품질이 안정적으로 확보됨
+
+### 2. AuthCard 래퍼 유지 (/login, /onboarding)
+
+Plan은 raw `Card` 컴포넌트 사용을 가정했으나, 형제 auth 페이지(register/verify 등)와의 시각적 일관성을 위해 SDTPL의 `AuthCard` 래퍼를 그대로 사용했다. (메모리 룰: "Preserve template assets, adapt in place")
+
+### 3. Prisma CLI 제거 (schema.prisma는 문서로만 유지)
+
+구현 중간에 Prisma 워크플로를 폐기하기로 결정(commit `5af02c8`).
+
+- root `package.json`(Prisma CLI 전용) 제거
+- `prisma/schema.prisma`는 **데이터 모델 문서**로만 잔존
+- 이후 마이그레이션은 **raw SQL**로 작성/적용
+
+### 4. Cross-origin 오디오 쿠키 패치
+
+End-to-end 테스트 중 브라우저 `<audio>` 엘리먼트가 cross-origin(`localhost:3500` → `localhost:8000`) 스트림 프록시 호출 시 세션 쿠키를 보내지 않아 401이 발생했다. `crossOrigin="use-credentials"` 속성을 추가해 해결(commit `2f72d27`).
+
+### 5. 기타 e2e 버그픽스
+
+- `verification_uri_complete`에 `https://` prefix 보정 (commit `4173f2c`)
+- 구 SDTPL 보일러플레이트의 `(dashboard)/onboarding/` 병렬 라우트 충돌 제거 (commit `cf072bc`)
+
+---
+
 ## 1. Goal + 사용자 의도
 
 E.5까지의 모든 기능을 진짜 사용자가 "처음 들어와서 음악 듣는 경험"으로 묶음. 현재는 `DEFAULT_USER_EMAIL` env 하나로 single user 가정. 이걸 풀어서:
