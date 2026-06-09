@@ -185,10 +185,16 @@ export function MrtDashboard({ user, mrt }: Props) {
                     />
                   )}
                 </div>
-                <div className="font-display text-[14px] font-semibold leading-tight">
+                <div
+                  className="font-display text-[14px] font-semibold leading-tight truncate"
+                  title={a.title}
+                >
                   {a.title}
                 </div>
-                <div className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5">
+                <div
+                  className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5 truncate"
+                  title={a.artist}
+                >
                   {a.artist}
                 </div>
               </button>
@@ -217,11 +223,17 @@ export function MrtDashboard({ user, mrt }: Props) {
                     <span className="font-mono text-[10px] tracking-editorial opacity-65">
                       P {String((p.persona_idx ?? 0) + 1).padStart(2, "0")}
                     </span>
-                    <span className="font-display font-semibold text-[16px] leading-[1.15]">
+                    <span
+                      className="font-display font-semibold text-[16px] leading-[1.15] line-clamp-2"
+                      title={p.name}
+                    >
                       {p.name}
                     </span>
                   </div>
-                  <div className="font-display text-[14px] font-semibold leading-tight">
+                  <div
+                    className="font-display text-[14px] font-semibold leading-tight truncate"
+                    title={p.name}
+                  >
                     {p.name}
                   </div>
                   <div className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5">
@@ -384,10 +396,16 @@ function TrackRow({
         )}
       </div>
       <div className="min-w-0">
-        <div className="font-display font-semibold text-[15px] leading-tight truncate">
+        <div
+          className="font-display font-semibold text-[15px] leading-tight truncate"
+          title={track.title}
+        >
           {track.title}
         </div>
-        <div className="text-xs text-[var(--mrms-ink-soft)] mt-0.5 truncate">
+        <div
+          className="text-xs text-[var(--mrms-ink-soft)] mt-0.5 truncate"
+          title={`${track.artist}${track.album_title ? ` — ${track.album_title}` : ""}`}
+        >
           {track.artist}
           {track.album_title && (
             <>

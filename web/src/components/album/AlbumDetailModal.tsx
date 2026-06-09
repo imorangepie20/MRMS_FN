@@ -108,10 +108,16 @@ export function AlbumDetailModal({ open, onOpenChange, albumId }: Props) {
                 {i + 1}
               </span>
               <div className="min-w-0">
-                <div className="font-display font-semibold text-[14px] truncate">
+                <div
+                  className="font-display font-semibold text-[14px] truncate"
+                  title={t.title}
+                >
                   {t.title}
                 </div>
-                <div className="text-[11px] text-[var(--mrms-ink-soft)] truncate">
+                <div
+                  className="text-[11px] text-[var(--mrms-ink-soft)] truncate"
+                  title={t.artist}
+                >
                   {t.artist}
                 </div>
               </div>

@@ -83,10 +83,16 @@ export function AppSidebar() {
             Spotify
           </span>
         </div>
-        <div className="font-display font-semibold text-[15px] text-[var(--mrms-ink)] leading-tight">
+        <div
+          className="font-display font-semibold text-[15px] text-[var(--mrms-ink)] leading-tight truncate"
+          title={user?.displayName || ""}
+        >
           {user?.displayName || "—"}
         </div>
-        <div className="font-mono text-[9px] text-[var(--mrms-ink-mute)] tracking-[0.05em] mt-0.5 truncate">
+        <div
+          className="font-mono text-[9px] text-[var(--mrms-ink-mute)] tracking-[0.05em] mt-0.5 truncate"
+          title={user?.email || ""}
+        >
           {user?.email || ""}
         </div>
         <div className="flex gap-3 mt-2 font-mono text-[10px]">
