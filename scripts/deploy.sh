@@ -30,7 +30,7 @@ apply_pending_migrations prisma/migrations
 
 echo "[4/6] frontend install + build..."
 cd web
-pnpm install --frozen-lockfile
+pnpm install --frozen-lockfile --config.strict-dep-builds=false
 pnpm build
 cd "$ROOT"
 
