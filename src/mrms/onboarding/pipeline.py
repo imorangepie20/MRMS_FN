@@ -268,7 +268,10 @@ async def _run_spotify_collection(
     if not all_spotify_ids:
         raise RuntimeError("Spotify 좋아요와 플레이리스트에 트랙이 없습니다.")
 
-    status.set("matching_tracks", 25, f"트랙 매칭 중... (Spotify {len(all_spotify_ids)}곡)")
+    status.set(
+        "matching_tracks", 25,
+        f"트랙 매칭 중... (좋아요 {len(favorite_set)}곡, 플레이리스트 {len(playlist_track_ids_set)}곡, 합 {len(all_spotify_ids)}곡)",
+    )
     with conn.cursor() as cur:
         cur.execute(
             '''SELECT "trackId", "platformTrackId" FROM "TrackPlatform"
@@ -280,7 +283,8 @@ async def _run_spotify_collection(
     internal_track_ids = list(internal_to_spotify.keys())
     if len(internal_track_ids) < 10:
         raise RuntimeError(
-            f"매칭된 트랙이 부족합니다 (Spotify {len(all_spotify_ids)}곡 중 {len(internal_track_ids)}곡만 매칭). 최소 10곡 필요"
+            f"매칭된 트랙이 부족합니다 (좋아요 {len(favorite_set)}곡 + 플레이리스트 {len(playlist_track_ids_set)}곡 → "
+            f"{len(all_spotify_ids)}곡 중 {len(internal_track_ids)}곡만 매칭). 최소 10곡 필요"
         )
 
     for internal_id in internal_track_ids:
