@@ -7,7 +7,22 @@ import { AlbumDetailModal } from "@/components/album/AlbumDetailModal";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { CreatePlaylistModal } from "@/components/playlist/CreatePlaylistModal";
 import { PlaylistDetailModal } from "@/components/playlist/PlaylistDetailModal";
-import type { MrtLatestResponse, UserInfo } from "@/lib/types";
+import { loadAndPlay } from "@/lib/player";
+import { usePlayerStore } from "@/store/player";
+import type { MrtLatestResponse, RecommendedTrack, UserInfo } from "@/lib/types";
+
+
+function toQueueTrack(t: RecommendedTrack) {
+  return {
+    track_id: t.track_id,
+    title: t.title,
+    artist: t.artist,
+    album_title: t.album_title ?? null,
+    album_cover: t.album_cover ?? null,
+    tidal_track_id: t.tidal_track_id,
+    spotify_track_id: t.spotify_track_id,
+  };
+}
 
 
 interface Props {
@@ -111,7 +126,7 @@ export function MrtDashboard({ user, mrt }: Props) {
         title="For your ears, this week"
         meta={`${mrt.recommended_tracks.length} tracks`}
       />
-      <div className="flex justify-between items-baseline font-mono text-[11px] text-[var(--mrms-ink-soft)] mb-1.5">
+      <div className="flex justify-between items-baseline font-mono text-[11px] text-[var(--mrms-ink-soft)] mb-1.5 gap-2 flex-wrap">
         <span>
           Multi · select to make a playlist&nbsp;&nbsp;
           {selectedTracks.size > 0 && (
@@ -120,15 +135,34 @@ export function MrtDashboard({ user, mrt }: Props) {
             </span>
           )}
         </span>
-        <button
-          disabled={selectedTracks.size === 0}
-          onClick={() => setCreateOpen(true)}
-          className="bg-[var(--mrms-rust)] text-[var(--mrms-paper)] border-0 px-3.5 py-1.5 font-mono text-[10px] tracking-editorial uppercase cursor-pointer disabled:bg-[var(--mrms-ink-mute)] disabled:cursor-default"
-        >
-          + playlist
-        </button>
+        <div className="flex gap-2">
+          <button
+            disabled={mrt.recommended_tracks.length === 0}
+            onClick={async () => {
+              if (!mrt.recommended_tracks.length) return;
+              const queue = mrt.recommended_tracks.map(toQueueTrack);
+              usePlayerStore.setState({ queue, currentIdx: 0, position: 0 });
+              try {
+                await loadAndPlay(queue[0]);
+              } catch (e) {
+                usePlayerStore.setState({ errorMsg: (e as Error).message });
+              }
+            }}
+            className="bg-[var(--mrms-ink)] text-[var(--mrms-paper)] border-0 px-3.5 py-1.5 font-mono text-[10px] tracking-editorial uppercase cursor-pointer disabled:bg-[var(--mrms-ink-mute)] disabled:cursor-default inline-flex items-center gap-1.5"
+          >
+            <Play className="size-3 fill-current" />
+            Play all
+          </button>
+          <button
+            disabled={selectedTracks.size === 0}
+            onClick={() => setCreateOpen(true)}
+            className="bg-[var(--mrms-rust)] text-[var(--mrms-paper)] border-0 px-3.5 py-1.5 font-mono text-[10px] tracking-editorial uppercase cursor-pointer disabled:bg-[var(--mrms-ink-mute)] disabled:cursor-default"
+          >
+            + playlist
+          </button>
+        </div>
       </div>
-      <div className="hidden md:grid grid-cols-[18px_56px_1fr_140px_80px_60px_120px] gap-3 px-0 py-1.5 border-b border-[var(--mrms-ink)] font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
+      <div className="hidden md:grid grid-cols-[18px_56px_1fr_140px_80px_60px_80px] gap-3 px-0 py-1.5 border-b border-[var(--mrms-ink)] font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
         <span />
         <span />
         <span>Title</span>
@@ -372,7 +406,7 @@ function TrackRow({
     : "—";
 
   return (
-    <div className="grid grid-cols-[18px_48px_1fr_90px] md:grid-cols-[18px_56px_1fr_140px_80px_60px_120px] gap-2 md:gap-3 py-2.5 border-b border-[var(--mrms-rule)] items-center hover:bg-[var(--mrms-paper)] transition-colors">
+    <div className="grid grid-cols-[18px_48px_1fr_60px] md:grid-cols-[18px_56px_1fr_140px_80px_60px_80px] gap-2 md:gap-3 py-2.5 border-b border-[var(--mrms-rule)] items-center hover:bg-[var(--mrms-paper)] transition-colors">
       <button
         onClick={onToggle}
         className={`size-3.5 border-[1.5px] border-[var(--mrms-ink)] relative cursor-pointer p-0 ${
@@ -461,12 +495,6 @@ function TrackRow({
             fill={pct ? "var(--mrms-rust)" : "none"}
             stroke={pct ? "var(--mrms-rust)" : "var(--mrms-ink-mute)"}
           />
-        </button>
-        <button
-          aria-label="재생"
-          className="bg-[var(--mrms-ink)] text-[var(--mrms-paper)] rounded-full size-7 inline-flex items-center justify-center border-0 cursor-pointer hover:bg-[var(--mrms-rust)] transition-colors"
-        >
-          <Play className="size-3 fill-current" />
         </button>
       </div>
     </div>
