@@ -5,6 +5,7 @@ export interface UserInfo {
   country: string | null;
   personas_count: number;
   user_tracks_count: number;
+  primary_platform: "tidal" | "spotify";
 }
 
 export interface PersonaTrack {
@@ -15,6 +16,7 @@ export interface PersonaTrack {
   album_title: string | null;
   similarity: number;
   tidal_track_id: string | null;
+  spotify_track_id: string | null;
 }
 
 export interface Persona {
@@ -31,6 +33,7 @@ export interface RecommendedTrack {
   score: number;
   persona_idx: number | null;
   tidal_track_id: string | null;
+  spotify_track_id: string | null;
 }
 
 export interface RecommendedAlbum {

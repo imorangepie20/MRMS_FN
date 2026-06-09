@@ -218,3 +218,31 @@ def test_logout_deletes_session(db_conn):
     with db_conn.cursor() as cur:
         cur.execute('SELECT COUNT(*) FROM "AuthSession" WHERE id = %s', (session_id,))
         assert cur.fetchone()[0] == 0
+
+
+def test_me_response_includes_primary_platform(db_conn):
+    """/me 응답에 primary_platform 필드 포함."""
+    from mrms.db.user_track import get_or_create_user
+    import uuid as _u
+
+    user_id = get_or_create_user(db_conn, "primary_test@example.com")
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'UPDATE "User" SET "primaryPlatform" = %s WHERE id = %s',
+            ("spotify", user_id),
+        )
+    session_id = _u.uuid4().hex
+    expires = datetime.now(timezone.utc) + timedelta(days=30)
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
+            (session_id, user_id, expires),
+        )
+    db_conn.commit()
+
+    client.cookies.set("mrms_session", session_id)
+    r = client.get("/api/auth/me")
+    client.cookies.clear()
+    assert r.status_code == 200
+    body = r.json()
+    assert body["primary_platform"] == "spotify"

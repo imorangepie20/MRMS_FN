@@ -153,6 +153,7 @@ model User {
   email       String   @unique
   displayName String?
   country     String?  // 'KR' — region 가용성 체크
+  primaryPlatform String   @default("tidal")  // 'tidal' | 'spotify'
   explicit    Boolean  @default(true)
   createdAt   DateTime @default(now())
 

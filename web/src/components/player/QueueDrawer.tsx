@@ -10,7 +10,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { loadAndPlay } from "@/lib/tidal-player";
+import { loadAndPlay } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
 
 
@@ -22,7 +22,7 @@ export function QueueDrawer() {
   const onJump = async (idx: number) => {
     usePlayerStore.setState({ currentIdx: idx, position: 0 });
     try {
-      await loadAndPlay(queue[idx].tidal_track_id);
+      await loadAndPlay(queue[idx]);
     } catch (e) {
       usePlayerStore.setState({ errorMsg: (e as Error).message });
     }

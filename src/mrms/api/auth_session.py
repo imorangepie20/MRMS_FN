@@ -153,11 +153,11 @@ def me(
 ) -> dict:
     """현재 user 정보 반환."""
     with conn.cursor() as cur:
-        cur.execute('SELECT email, "displayName", country FROM "User" WHERE id = %s', (user_id,))
+        cur.execute('SELECT email, "displayName", country, "primaryPlatform" FROM "User" WHERE id = %s', (user_id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "User not found")
-        email, display_name, country = row
+        email, display_name, country, primary_platform = row
         cur.execute('SELECT COUNT(*) FROM "UserPersona" WHERE "userId" = %s', (user_id,))
         personas_count = cur.fetchone()[0]
         cur.execute('SELECT COUNT(*) FROM "UserTrack" WHERE "userId" = %s', (user_id,))
@@ -169,6 +169,7 @@ def me(
         "country": country,
         "personas_count": personas_count,
         "user_tracks_count": tracks_count,
+        "primary_platform": primary_platform,
     }
 
 

@@ -3,7 +3,8 @@ import { create } from "zustand";
 
 export type QueueTrack = {
   track_id: string;
-  tidal_track_id: string;
+  tidal_track_id: string | null;
+  spotify_track_id: string | null;
   title: string;
   artist: string;
   album_title: string | null;
