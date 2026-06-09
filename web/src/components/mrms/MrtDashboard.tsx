@@ -379,34 +379,37 @@ function TrackRow({
 
   return (
     <div className="group grid grid-cols-[18px_48px_1fr_60px] md:grid-cols-[18px_56px_1fr_140px_80px_60px_80px] gap-2 md:gap-3 py-2.5 border-b border-[var(--mrms-rule)] items-center hover:bg-[var(--mrms-paper)] transition-colors">
-      <div className="relative size-3.5">
-        <button
-          onClick={onToggle}
-          className={`absolute inset-0 size-3.5 border-[1.5px] border-[var(--mrms-ink)] cursor-pointer p-0 group-hover:opacity-0 transition-opacity ${
-            checked ? "bg-[var(--mrms-ink)]" : "bg-[var(--mrms-bg)]"
-          }`}
-          aria-label="select"
-        >
-          {checked && (
-            <span className="absolute inset-0 text-[var(--mrms-bg)] text-[11px] flex items-center justify-center font-display">
-              ✓
-            </span>
-          )}
-        </button>
-        <button
-          onClick={playOne}
-          aria-label="play"
-          className="absolute -inset-1 opacity-0 group-hover:opacity-100 bg-[var(--mrms-ink)] text-[var(--mrms-paper)] rounded-full size-5 inline-flex items-center justify-center border-0 cursor-pointer hover:bg-[var(--mrms-rust)] transition-opacity"
-        >
-          <Play className="size-2.5 fill-current" />
-        </button>
-      </div>
-      <AlbumArt
-        artist={track.artist}
-        album={track.album_title ?? null}
-        initialUrl={track.album_cover ?? null}
-        className="size-14"
-      />
+      <button
+        onClick={onToggle}
+        className={`size-3.5 border-[1.5px] border-[var(--mrms-ink)] relative cursor-pointer p-0 ${
+          checked ? "bg-[var(--mrms-ink)]" : "bg-[var(--mrms-bg)]"
+        }`}
+        aria-label="select"
+      >
+        {checked && (
+          <span className="absolute inset-0 text-[var(--mrms-bg)] text-[11px] flex items-center justify-center font-display">
+            ✓
+          </span>
+        )}
+      </button>
+      <button
+        onClick={playOne}
+        aria-label="play track"
+        className="relative size-14 bg-transparent border-0 p-0 cursor-pointer overflow-hidden block"
+      >
+        <AlbumArt
+          artist={track.artist}
+          album={track.album_title ?? null}
+          initialUrl={track.album_cover ?? null}
+          className="size-14"
+        />
+        <span className="absolute inset-0 bg-[var(--mrms-ink)]/55 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+          <Play
+            className="size-5 fill-[var(--mrms-paper)]"
+            stroke="none"
+          />
+        </span>
+      </button>
       <div className="min-w-0">
         <div
           className="font-display font-semibold text-[15px] leading-tight truncate"
