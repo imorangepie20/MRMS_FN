@@ -123,7 +123,7 @@ async def test_pipeline_dispatches_to_spotify_when_only_spotify_oauth(db_conn):
     status = OnboardingStatus()
     with patch(
         "mrms.onboarding.pipeline.fetch_spotify_favorite_tracks",
-        new=AsyncMock(return_value=spotify_track_ids),
+        new=AsyncMock(return_value={sid: None for sid in spotify_track_ids}),
     ), patch(
         "mrms.onboarding.pipeline.fetch_spotify_user_playlists",
         new=AsyncMock(return_value=[]),

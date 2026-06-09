@@ -78,3 +78,4 @@ web/test-results/
 # Backup .env files
 .env.bak*
 .env.production
+catalog_dump.sql

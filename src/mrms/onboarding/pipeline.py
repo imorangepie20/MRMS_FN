@@ -17,7 +17,6 @@ from mrms.db.user_track import get_oauth, upsert_user_track
 from mrms.onboarding.spotify_collection import (
     fetch_spotify_favorite_tracks,
     fetch_spotify_playlist_tracks,
-    fetch_spotify_tracks_isrcs,
     fetch_spotify_user_playlists,
 )
 from mrms.onboarding.status import OnboardingStatus
@@ -243,7 +242,8 @@ async def _run_spotify_collection(
     access_token = oauth["accessToken"]
 
     status.set("fetching_favorites", 5, "Spotify 좋아요 트랙 가져오는 중...")
-    favorite_track_ids = await fetch_spotify_favorite_tracks(access_token=access_token)
+    favorite_isrcs = await fetch_spotify_favorite_tracks(access_token=access_token)
+    favorite_track_ids = list(favorite_isrcs.keys())
 
     status.set("fetching_favorites", 10, "Spotify 플레이리스트 목록 가져오는 중...")
     playlist_ids = await fetch_spotify_user_playlists(access_token=access_token)
@@ -252,6 +252,7 @@ async def _run_spotify_collection(
         f"Spotify 플레이리스트 {len(playlist_ids)}개 발견",
     )
 
+    playlist_isrcs: dict[str, str | None] = {}
     playlist_track_ids_set: set[str] = set()
     playlist_fetch_errors = 0
     last_playlist_error = ""
@@ -265,7 +266,8 @@ async def _run_spotify_collection(
             tracks = await fetch_spotify_playlist_tracks(
                 access_token=access_token, playlist_id=pl_id
             )
-            playlist_track_ids_set.update(tracks)
+            playlist_isrcs.update(tracks)
+            playlist_track_ids_set.update(tracks.keys())
         except Exception as e:
             playlist_fetch_errors += 1
             last_playlist_error = f"{type(e).__name__}: {str(e)[:150]}"
@@ -291,43 +293,40 @@ async def _run_spotify_collection(
     internal_to_spotify = {r[0]: r[1] for r in rows}
     direct_match_count = len(internal_to_spotify)
 
-    # ISRC fallback — Spotify ID로 매칭 안 된 곡들을 Spotify API에서 ISRC 받아 Track.isrc로 재매칭
+    # ISRC fallback — fetch 시 inline으로 받은 ISRC로 Track.isrc 직접 매칭.
+    # /tracks?ids= 별도 호출 안 함 (Spotify Dev Mode 403).
     isrc_match_count = 0
     matched_spotify_ids = set(internal_to_spotify.values())
-    unmatched_spotify_ids = [sid for sid in all_spotify_ids if sid not in matched_spotify_ids]
-    if unmatched_spotify_ids:
+    all_isrcs = {**favorite_isrcs, **playlist_isrcs}  # {spotify_id: isrc}
+    unmatched_with_isrc = {
+        sid: isrc for sid, isrc in all_isrcs.items()
+        if sid not in matched_spotify_ids and isrc
+    }
+    if unmatched_with_isrc:
         status.set(
             "matching_tracks", 28,
-            f"ISRC로 catalog 재매칭 중... ({len(unmatched_spotify_ids)}곡)",
+            f"ISRC로 catalog 재매칭 중... ({len(unmatched_with_isrc)}곡)",
         )
-        try:
-            spotify_isrcs = await fetch_spotify_tracks_isrcs(
-                access_token=access_token,
-                spotify_track_ids=unmatched_spotify_ids,
+        isrc_to_spotify = {isrc: sid for sid, isrc in unmatched_with_isrc.items()}
+        with conn.cursor() as cur:
+            cur.execute(
+                'SELECT id, isrc FROM "Track" WHERE isrc = ANY(%s)',
+                (list(unmatched_with_isrc.values()),),
             )
-        except Exception:
-            spotify_isrcs = {}
-        if spotify_isrcs:
-            isrc_to_spotify = {isrc: sid for sid, isrc in spotify_isrcs.items()}
-            with conn.cursor() as cur:
-                cur.execute(
-                    'SELECT id, isrc FROM "Track" WHERE isrc = ANY(%s)',
-                    (list(spotify_isrcs.values()),),
-                )
-                isrc_rows = cur.fetchall()
-                for internal_id, isrc in isrc_rows:
-                    sid = isrc_to_spotify.get(isrc)
-                    if sid and internal_id not in internal_to_spotify:
-                        internal_to_spotify[internal_id] = sid
-                        isrc_match_count += 1
-                        # 다음 사용자 위해 캐시
-                        cur.execute(
-                            '''INSERT INTO "TrackPlatform"
-                                 (id, "trackId", platform, "platformTrackId")
-                               VALUES (%s, %s, 'spotify', %s)
-                               ON CONFLICT ("trackId", platform) DO NOTHING''',
-                            (f"tp_spotify_{sid}", internal_id, sid),
-                        )
+            isrc_rows = cur.fetchall()
+            for internal_id, isrc in isrc_rows:
+                sid = isrc_to_spotify.get(isrc)
+                if sid and internal_id not in internal_to_spotify:
+                    internal_to_spotify[internal_id] = sid
+                    isrc_match_count += 1
+                    # 다음 사용자 위해 캐시 (TrackPlatform spotify entry)
+                    cur.execute(
+                        '''INSERT INTO "TrackPlatform"
+                             (id, "trackId", platform, "platformTrackId")
+                           VALUES (%s, %s, 'spotify', %s)
+                           ON CONFLICT ("trackId", platform) DO NOTHING''',
+                        (f"tp_spotify_{sid}", internal_id, sid),
+                    )
             if isrc_match_count:
                 conn.commit()
 
