@@ -60,6 +60,19 @@ export interface RecommendedPlaylist {
   persona_score?: number | null;
 }
 
+export interface TrackInfo {
+  track_id: string;
+  title: string;
+  artist: string;
+  album_id: string | null;
+  album_title?: string | null;
+  album_cover?: string | null;
+  tidal_track_id: string | null;
+  spotify_track_id: string | null;
+  duration_ms?: number | null;
+}
+
+
 export interface MrtLatestResponse {
   generated_at: string | null;
   model_version: string | null;

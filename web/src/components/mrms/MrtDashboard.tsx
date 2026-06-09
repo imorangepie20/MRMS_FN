@@ -3,6 +3,9 @@
 import { useMemo, useState } from "react";
 import { Heart, Play, Sparkles } from "lucide-react";
 
+import { AlbumDetailModal } from "@/components/album/AlbumDetailModal";
+import { CreatePlaylistModal } from "@/components/playlist/CreatePlaylistModal";
+import { PlaylistDetailModal } from "@/components/playlist/PlaylistDetailModal";
 import type { MrtLatestResponse, UserInfo } from "@/lib/types";
 
 
@@ -14,6 +17,9 @@ interface Props {
 
 export function MrtDashboard({ user, mrt }: Props) {
   const [selectedTracks, setSelectedTracks] = useState<Set<string>>(new Set());
+  const [createOpen, setCreateOpen] = useState(false);
+  const [albumModal, setAlbumModal] = useState<string | null>(null);
+  const [playlistModal, setPlaylistModal] = useState<string | null>(null);
 
   const generatedDate = mrt.generated_at ? new Date(mrt.generated_at) : null;
   const generatedLabel = generatedDate
@@ -115,6 +121,7 @@ export function MrtDashboard({ user, mrt }: Props) {
         </span>
         <button
           disabled={selectedTracks.size === 0}
+          onClick={() => setCreateOpen(true)}
           className="bg-[var(--mrms-rust)] text-[var(--mrms-paper)] border-0 px-3.5 py-1.5 font-mono text-[10px] tracking-editorial uppercase cursor-pointer disabled:bg-[var(--mrms-ink-mute)] disabled:cursor-default"
         >
           + playlist
@@ -164,7 +171,11 @@ export function MrtDashboard({ user, mrt }: Props) {
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-3 gap-y-4 md:gap-x-3.5 md:gap-y-5">
             {mrt.recommended_albums.map((a) => (
-              <div key={a.album_id} className="cursor-pointer">
+              <button
+                key={a.album_id}
+                onClick={() => setAlbumModal(a.album_id)}
+                className="cursor-pointer text-left bg-transparent border-0 p-0"
+              >
                 <div className="aspect-square bg-[var(--mrms-rule)] mb-2.5 relative">
                   {a.cover_url && (
                     <img
@@ -180,7 +191,7 @@ export function MrtDashboard({ user, mrt }: Props) {
                 <div className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5">
                   {a.artist}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
           {mrt.recommended_albums.length === 0 && (
@@ -198,28 +209,61 @@ export function MrtDashboard({ user, mrt }: Props) {
             </span>
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-3 gap-y-4 md:gap-x-3.5 md:gap-y-5">
-            {/* Recommended playlists are added in Task 6 backend; render placeholder for now */}
-            {mrt.personas.map((p, i) => (
-              <div key={p.persona_idx} className="cursor-pointer">
-                <div className="aspect-square bg-[var(--mrms-ink)] text-[var(--mrms-paper)] p-3 flex flex-col justify-between mb-2">
-                  <span className="font-mono text-[10px] tracking-editorial opacity-65">
-                    P {String(p.persona_idx + 1).padStart(2, "0")}
-                  </span>
-                  <span className="font-display font-semibold text-[16px] leading-[1.15]">
-                    {p.label ?? `Mix ${i + 1}`}
-                  </span>
-                </div>
-                <div className="font-display text-[14px] font-semibold leading-tight">
-                  {p.label ? `${p.label} mix` : `Persona ${p.persona_idx + 1}`}
-                </div>
-                <div className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5">
-                  {p.track_count} tracks
-                </div>
-              </div>
-            ))}
+            {(mrt.recommended_playlists ?? []).map((p) => {
+              const isDerived = p.id.startsWith("mrt_persona_");
+              const Card = (
+                <>
+                  <div className="aspect-square bg-[var(--mrms-ink)] text-[var(--mrms-paper)] p-3 flex flex-col justify-between mb-2">
+                    <span className="font-mono text-[10px] tracking-editorial opacity-65">
+                      P {String((p.persona_idx ?? 0) + 1).padStart(2, "0")}
+                    </span>
+                    <span className="font-display font-semibold text-[16px] leading-[1.15]">
+                      {p.name}
+                    </span>
+                  </div>
+                  <div className="font-display text-[14px] font-semibold leading-tight">
+                    {p.name}
+                  </div>
+                  <div className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5">
+                    {p.track_count} tracks
+                  </div>
+                </>
+              );
+              return isDerived ? (
+                <div key={p.id}>{Card}</div>
+              ) : (
+                <button
+                  key={p.id}
+                  onClick={() => setPlaylistModal(p.id)}
+                  className="cursor-pointer text-left bg-transparent border-0 p-0"
+                >
+                  {Card}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
+
+      <CreatePlaylistModal
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        trackIds={Array.from(selectedTracks)}
+        onCreated={() => {
+          setSelectedTracks(new Set());
+          window.location.reload();
+        }}
+      />
+      <AlbumDetailModal
+        open={albumModal !== null}
+        onOpenChange={(v) => !v && setAlbumModal(null)}
+        albumId={albumModal}
+      />
+      <PlaylistDetailModal
+        open={playlistModal !== null}
+        onOpenChange={(v) => !v && setPlaylistModal(null)}
+        playlistId={playlistModal}
+      />
     </div>
   );
 }
