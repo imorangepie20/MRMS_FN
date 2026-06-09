@@ -57,7 +57,7 @@ export function AppSidebar() {
                     {item.num}
                   </span>
                   <span
-                    className={`font-display text-[15px] leading-tight ${active ? "text-[var(--mrms-ink)] font-medium" : "text-[var(--mrms-ink-soft)]"} ${item.italic ? "italic" : ""}`}
+                    className={`font-display text-[15px] font-medium leading-tight ${active ? "text-[var(--mrms-ink)] font-medium" : "text-[var(--mrms-ink-soft)]"} ${item.italic ? "italic" : ""}`}
                   >
                     {item.title}
                   </span>

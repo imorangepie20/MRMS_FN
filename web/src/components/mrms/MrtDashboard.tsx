@@ -51,39 +51,51 @@ export function MrtDashboard({ user, mrt }: Props) {
     });
   };
 
+  const today = new Date();
+  const dateStr = today.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
   return (
-    <div className="px-14 pt-14 pb-48 max-w-[1080px]">
-      {/* === HERO === */}
-      <div className="grid grid-cols-[1fr_220px] gap-16 mb-20 items-end">
+    <div className="px-10 pt-10 pb-48">
+      {/* === DATELINE === */}
+      <div className="flex justify-between items-baseline border-b border-[var(--mrms-rule)] pb-2 mb-6 font-mono text-[10px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
+        <span>{dateStr} · Edition 06</span>
+        <span>Curated by MRMS · v0.7</span>
+      </div>
+
+      {/* === HERO + side stats === */}
+      <div className="grid grid-cols-[1fr_280px] gap-10 mb-10 items-start">
         <div>
-          <h1 className="font-display font-light text-[76px] leading-[0.95] tracking-[-0.025em] text-[var(--mrms-ink)]">
+          <h1 className="font-display font-medium text-[64px] leading-[0.95] tracking-[-0.025em] text-[var(--mrms-ink)] mb-4">
             {hero.l1}
             <br />
-            <em className="not-italic font-display italic font-normal text-[var(--mrms-rust)]">
+            <em className="not-italic font-display italic font-medium text-[var(--mrms-rust)]">
               {hero.em}
             </em>
             {hero.l2}
           </h1>
+          <p className="font-display text-[15px] italic font-medium text-[var(--mrms-ink-soft)] leading-snug max-w-[480px] border-l-2 border-[var(--mrms-rust)] pl-3.5">
+            Three personas · {mrt.recommended_tracks.length} fresh tracks ·
+            {" "}{mrt.recommended_albums.length} albums · 6 playlists. Tap a
+            persona to filter, multi-select tracks to forge a playlist of your
+            own.
+          </p>
         </div>
-        <div className="border-l border-[var(--mrms-rule)] pl-5 text-[var(--mrms-ink-soft)] text-xs">
-          <span className="font-mono text-[10px] tracking-editorial uppercase text-[var(--mrms-ink-mute)] mb-1.5 block">
-            Personas detected
-          </span>
-          <span className="font-display text-[22px] mb-4 block">
-            {user.personas_count}
-          </span>
-          <span className="font-mono text-[10px] tracking-editorial uppercase text-[var(--mrms-ink-mute)] mb-1.5 block">
-            UserTracks
-          </span>
-          <span className="font-display text-[22px] mb-4 block">
-            {user.user_tracks_count}
-          </span>
-          <span className="font-mono text-[10px] tracking-editorial uppercase text-[var(--mrms-ink-mute)] mb-1.5 block">
-            Email
-          </span>
-          <span className="font-display text-[14px] italic block break-all">
-            {user.email}
-          </span>
+
+        <div className="grid grid-cols-3 gap-px bg-[var(--mrms-rule)] border border-[var(--mrms-rule)]">
+          {[
+            { label: "Personas", value: user.personas_count },
+            { label: "UserTracks", value: user.user_tracks_count },
+            { label: "Matches", value: 15 },
+          ].map((s) => (
+            <div key={s.label} className="bg-[var(--mrms-bg)] px-3 py-2.5">
+              <div className="font-mono text-[8.5px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
+                {s.label}
+              </div>
+              <div className="font-display text-[28px] leading-none mt-1 text-[var(--mrms-ink)]">
+                {s.value}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -93,7 +105,7 @@ export function MrtDashboard({ user, mrt }: Props) {
         title="Three sides of you"
         meta={personaFilter !== null ? "Filtered ↓" : "Tap to filter ↓"}
       />
-      <div className="grid grid-cols-3 gap-px bg-[var(--mrms-rule)] border-y border-[var(--mrms-rule)] mb-20">
+      <div className="grid grid-cols-3 gap-px bg-[var(--mrms-rule)] border-y border-[var(--mrms-rule)] mb-10">
         {mrt.personas.map((p) => {
           const active = personaFilter === p.persona_idx;
           return (
@@ -102,27 +114,27 @@ export function MrtDashboard({ user, mrt }: Props) {
               onClick={() =>
                 setPersonaFilter(active ? null : p.persona_idx)
               }
-              className={`text-left p-7 pb-6 transition-colors cursor-pointer border-0 ${
+              className={`text-left p-5 pb-4 transition-colors cursor-pointer border-0 ${
                 active
                   ? "bg-[var(--mrms-ink)] text-[var(--mrms-paper)]"
                   : "bg-[var(--mrms-bg)] hover:bg-[var(--mrms-paper)] text-[var(--mrms-ink)]"
               }`}
             >
               <div
-                className={`font-mono text-[11px] tracking-editorial mb-3 ${active ? "text-[var(--mrms-paper)]/70" : "text-[var(--mrms-ink-mute)]"}`}
+                className={`font-mono text-[10px] tracking-editorial mb-2 ${active ? "text-[var(--mrms-paper)]/70" : "text-[var(--mrms-ink-mute)]"}`}
               >
                 P–{String(p.persona_idx + 1).padStart(2, "0")} ·{" "}
                 {p.track_count} tracks
               </div>
-              <div className="font-display font-normal text-[26px] leading-[1.15] mb-4">
+              <div className="font-display font-medium text-[22px] leading-[1.15] mb-2.5">
                 {p.label ? (
-                  <em className="not-italic font-display italic">{p.label}</em>
+                  <em className="not-italic font-display italic font-medium">{p.label}</em>
                 ) : (
                   <span>Persona {p.persona_idx + 1}</span>
                 )}
               </div>
               <div
-                className={`font-mono text-[10px] tracking-editorial uppercase flex justify-between ${active ? "text-[var(--mrms-paper)]/70" : "text-[var(--mrms-ink-soft)]"}`}
+                className={`font-mono text-[9px] tracking-editorial uppercase flex justify-between ${active ? "text-[var(--mrms-paper)]/70" : "text-[var(--mrms-ink-soft)]"}`}
               >
                 <span>{p.track_count} tracks</span>
                 <span className={active ? "text-[var(--mrms-rust)]" : ""}>
@@ -182,15 +194,15 @@ export function MrtDashboard({ user, mrt }: Props) {
       )}
 
       {/* === ALBUMS + PLAYLISTS === */}
-      <div className="grid grid-cols-2 gap-14 mt-20">
+      <div className="grid grid-cols-2 gap-10 mt-10">
         <div>
-          <h3 className="font-display italic font-normal text-[28px] mb-4 pb-2.5 border-b border-[var(--mrms-ink)] flex justify-between items-baseline">
+          <h3 className="font-display italic font-medium text-[28px] mb-3 pb-2 border-b border-[var(--mrms-ink)] flex justify-between items-baseline">
             Albums
             <span className="font-mono text-[10px] not-italic tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
               PT 03 / {filteredAlbums.length}
             </span>
           </h3>
-          <div className="grid grid-cols-3 gap-x-5 gap-y-7">
+          <div className="grid grid-cols-4 gap-x-3.5 gap-y-5">
             {filteredAlbums.map((a) => (
               <div key={a.album_id} className="cursor-pointer">
                 <div className="aspect-square bg-[var(--mrms-rule)] mb-2.5 relative">
@@ -202,7 +214,7 @@ export function MrtDashboard({ user, mrt }: Props) {
                     />
                   )}
                 </div>
-                <div className="font-display text-[16px] leading-tight">
+                <div className="font-display text-[16px] font-medium leading-tight">
                   {a.title}
                 </div>
                 <div className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5">
@@ -219,13 +231,13 @@ export function MrtDashboard({ user, mrt }: Props) {
         </div>
 
         <div>
-          <h3 className="font-display italic font-normal text-[28px] mb-4 pb-2.5 border-b border-[var(--mrms-ink)] flex justify-between items-baseline">
+          <h3 className="font-display italic font-medium text-[28px] mb-3 pb-2 border-b border-[var(--mrms-ink)] flex justify-between items-baseline">
             Playlists
             <span className="font-mono text-[10px] not-italic tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
               PT 04
             </span>
           </h3>
-          <div className="grid grid-cols-3 gap-x-5 gap-y-7">
+          <div className="grid grid-cols-4 gap-x-3.5 gap-y-5">
             {/* Recommended playlists are added in Task 6 backend; render placeholder for now */}
             {mrt.personas.map((p, i) => (
               <div key={p.persona_idx} className="cursor-pointer">
@@ -237,7 +249,7 @@ export function MrtDashboard({ user, mrt }: Props) {
                     {p.label ?? `Mix ${i + 1}`}
                   </span>
                 </div>
-                <div className="font-display text-[16px] leading-tight">
+                <div className="font-display text-[16px] font-medium leading-tight">
                   {p.label ? `${p.label} mix` : `Persona ${p.persona_idx + 1}`}
                 </div>
                 <div className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5">
@@ -269,7 +281,7 @@ function SectionHeader({
           {num}
         </span>
         &nbsp;&nbsp;
-        <span className="font-display italic font-normal text-[28px]">
+        <span className="font-display italic font-medium text-[28px]">
           {title}
         </span>
       </div>
@@ -352,7 +364,7 @@ function TrackRow({
         )}
       </div>
       <div className="min-w-0">
-        <div className="font-display font-normal text-[17px] leading-tight truncate">
+        <div className="font-display font-medium text-[17px] leading-tight truncate">
           {track.title}
         </div>
         <div className="text-xs text-[var(--mrms-ink-soft)] mt-0.5 truncate">
