@@ -14,6 +14,7 @@ import {
   Volume2,
 } from "lucide-react";
 
+import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { useUser } from "@/lib/hooks/use-user";
 import {
   initPlayer,
@@ -47,15 +48,12 @@ function NowPlaying() {
 
   return (
     <div className="flex gap-3 items-center min-w-0">
-      <div className="size-11 bg-[var(--mrms-ink-soft)] shrink-0">
-        {track.album_cover && (
-          <img
-            src={track.album_cover}
-            alt=""
-            className="size-full object-cover"
-          />
-        )}
-      </div>
+      <AlbumArt
+        artist={track.artist}
+        album={track.album_title ?? null}
+        initialUrl={track.album_cover ?? null}
+        className="size-11 shrink-0"
+      />
       <div className="min-w-0 flex flex-col justify-center">
         <div className="flex items-center gap-2 min-w-0">
           <span className="font-display text-[14px] truncate">

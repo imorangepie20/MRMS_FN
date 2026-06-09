@@ -195,8 +195,8 @@ export function MrtDashboard({ user, mrt }: Props) {
         </div>
       )}
 
-      {/* === ALBUMS + PLAYLISTS === */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mt-10">
+      {/* === ALBUMS === */}
+      <div className="mt-10">
         <div>
           <h3 className="font-display font-bold text-[20px] mb-3 pb-2 border-b border-[var(--mrms-ink)] flex justify-between items-baseline">
             Albums
@@ -239,54 +239,6 @@ export function MrtDashboard({ user, mrt }: Props) {
           )}
         </div>
 
-        <div>
-          <h3 className="font-display font-bold text-[20px] mb-3 pb-2 border-b border-[var(--mrms-ink)] flex justify-between items-baseline">
-            Playlists
-            <span className="font-mono text-[10px] not-italic tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
-              PT 04
-            </span>
-          </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-3 gap-y-4 md:gap-x-3.5 md:gap-y-5">
-            {(mrt.recommended_playlists ?? []).map((p) => {
-              const isDerived = p.id.startsWith("mrt_persona_");
-              const Card = (
-                <>
-                  <div className="aspect-square bg-[var(--mrms-ink)] text-[var(--mrms-paper)] p-3 flex flex-col justify-between mb-2">
-                    <span className="font-mono text-[10px] tracking-editorial opacity-65">
-                      P {String((p.persona_idx ?? 0) + 1).padStart(2, "0")}
-                    </span>
-                    <span
-                      className="font-display font-semibold text-[16px] leading-[1.15] line-clamp-2"
-                      title={p.name}
-                    >
-                      {p.name}
-                    </span>
-                  </div>
-                  <div
-                    className="font-display text-[14px] font-semibold leading-tight truncate"
-                    title={p.name}
-                  >
-                    {p.name}
-                  </div>
-                  <div className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5">
-                    {p.track_count} tracks
-                  </div>
-                </>
-              );
-              return isDerived ? (
-                <div key={p.id}>{Card}</div>
-              ) : (
-                <button
-                  key={p.id}
-                  onClick={() => setPlaylistModal(p.id)}
-                  className="cursor-pointer text-left bg-transparent border-0 p-0"
-                >
-                  {Card}
-                </button>
-              );
-            })}
-          </div>
-        </div>
       </div>
 
       <CreatePlaylistModal
