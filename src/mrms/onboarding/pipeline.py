@@ -246,8 +246,13 @@ async def _run_spotify_collection(
 
     status.set("fetching_favorites", 10, "Spotify 플레이리스트 목록 가져오는 중...")
     playlist_ids = await fetch_spotify_user_playlists(access_token=access_token)
+    status.set(
+        "fetching_favorites", 11,
+        f"Spotify 플레이리스트 {len(playlist_ids)}개 발견",
+    )
 
     playlist_track_ids_set: set[str] = set()
+    playlist_fetch_errors = 0
     for i, pl_id in enumerate(playlist_ids):
         status.set(
             "fetching_favorites",
@@ -260,7 +265,13 @@ async def _run_spotify_collection(
             )
             playlist_track_ids_set.update(tracks)
         except Exception:
+            playlist_fetch_errors += 1
             continue
+    if playlist_ids and playlist_fetch_errors == len(playlist_ids):
+        status.set(
+            "fetching_favorites", 20,
+            f"WARNING: 플레이리스트 {len(playlist_ids)}개 전부 트랙 fetch 실패",
+        )
 
     favorite_set = set(favorite_track_ids)
     all_spotify_ids = list(favorite_set | playlist_track_ids_set)
