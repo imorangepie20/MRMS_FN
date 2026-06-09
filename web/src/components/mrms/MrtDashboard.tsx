@@ -367,7 +367,7 @@ function TrackRow({
           {track.album_title && (
             <>
               {" — "}
-              <span className="font-display">{track.album_title}</span>
+              <cite className="font-display italic">{track.album_title}</cite>
             </>
           )}
         </div>
