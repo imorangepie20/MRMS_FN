@@ -253,6 +253,7 @@ async def _run_spotify_collection(
 
     playlist_track_ids_set: set[str] = set()
     playlist_fetch_errors = 0
+    last_playlist_error = ""
     for i, pl_id in enumerate(playlist_ids):
         status.set(
             "fetching_favorites",
@@ -264,14 +265,10 @@ async def _run_spotify_collection(
                 access_token=access_token, playlist_id=pl_id
             )
             playlist_track_ids_set.update(tracks)
-        except Exception:
+        except Exception as e:
             playlist_fetch_errors += 1
+            last_playlist_error = f"{type(e).__name__}: {str(e)[:150]}"
             continue
-    if playlist_ids and playlist_fetch_errors == len(playlist_ids):
-        status.set(
-            "fetching_favorites", 20,
-            f"WARNING: 플레이리스트 {len(playlist_ids)}개 전부 트랙 fetch 실패",
-        )
 
     favorite_set = set(favorite_track_ids)
     all_spotify_ids = list(favorite_set | playlist_track_ids_set)
@@ -293,9 +290,13 @@ async def _run_spotify_collection(
     internal_to_spotify = {r[0]: r[1] for r in rows}
     internal_track_ids = list(internal_to_spotify.keys())
     if len(internal_track_ids) < 10:
+        diag = (
+            f"playlists 발견={len(playlist_ids)}, fetch 실패={playlist_fetch_errors}"
+            + (f", last_err=[{last_playlist_error}]" if last_playlist_error else "")
+        )
         raise RuntimeError(
             f"매칭된 트랙이 부족합니다 (좋아요 {len(favorite_set)}곡 + 플레이리스트 {len(playlist_track_ids_set)}곡 → "
-            f"{len(all_spotify_ids)}곡 중 {len(internal_track_ids)}곡만 매칭). 최소 10곡 필요"
+            f"{len(all_spotify_ids)}곡 중 {len(internal_track_ids)}곡만 매칭). 최소 10곡 필요 | {diag}"
         )
 
     for internal_id in internal_track_ids:
