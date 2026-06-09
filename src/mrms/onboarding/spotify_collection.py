@@ -79,7 +79,8 @@ async def fetch_spotify_playlist_tracks(
                 raise RuntimeError(f"Spotify playlist items failed: {r.status_code} {r.text[:200]}")
             data = r.json()
             for item in data.get("items", []):
-                track = item.get("track")
+                # /items endpoint: track 객체가 "item" 또는 "track" 키에 들어옴 (응답 형식 차이)
+                track = item.get("item") or item.get("track")
                 if not track:
                     continue
                 if track.get("is_local"):
