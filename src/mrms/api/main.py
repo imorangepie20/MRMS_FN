@@ -19,6 +19,7 @@ from mrms.api.schemas import (
     Persona,
     PersonaTrack,
     RecommendedAlbum,
+    RecommendedPlaylist,
     RecommendedTrack,
     UserInfo,
 )
@@ -253,10 +254,25 @@ def mrt_latest(
         for r in rec_albums_raw
     ]
 
+    # 각 페르소나를 추천 플레이리스트로 그대로 노출 (id, name, cover, count + persona_idx)
+    recommended_playlists = [
+        RecommendedPlaylist(
+            id=f"mrt_persona_{p.persona_idx}",
+            name=f"Persona {p.persona_idx + 1}",
+            description=f"{p.track_count} tracks from your persona cluster",
+            cover_url=None,
+            track_count=p.track_count,
+            persona_idx=p.persona_idx,
+            persona_score=None,
+        )
+        for p in personas
+    ]
+
     return MrtLatestResponse(
         generated_at=playlists_sorted[0].get("generatedAt"),
         model_version=playlists_sorted[0].get("modelVersion"),
         personas=personas,
         recommended_tracks=recommended_tracks,
         recommended_albums=recommended_albums,
+        recommended_playlists=recommended_playlists,
     )
