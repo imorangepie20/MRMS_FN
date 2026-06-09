@@ -311,6 +311,39 @@ function PlayerActions() {
 }
 
 
+function MobilePlayPause() {
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const queue = usePlayerStore((s) => s.queue);
+  const currentIdx = usePlayerStore((s) => s.currentIdx);
+  const hasTrack = queue.length > 0 && currentIdx < queue.length;
+
+  const togglePlay = async () => {
+    if (!hasTrack) return;
+    try {
+      if (isPlaying) await pausePlayback();
+      else await resumePlayback();
+    } catch (e) {
+      usePlayerStore.setState({ errorMsg: (e as Error).message });
+    }
+  };
+
+  return (
+    <button
+      onClick={togglePlay}
+      disabled={!hasTrack}
+      aria-label={isPlaying ? "Pause" : "Play"}
+      className="md:hidden bg-[var(--mrms-rust)] text-[var(--mrms-paper)] rounded-full size-10 inline-flex items-center justify-center border-0 cursor-pointer disabled:opacity-40"
+    >
+      {isPlaying ? (
+        <Pause className="size-4 fill-current" />
+      ) : (
+        <Play className="size-4 fill-current" />
+      )}
+    </button>
+  );
+}
+
+
 function VolumeBlock() {
   const volume = usePlayerStore((s) => s.volume);
   return (
@@ -354,7 +387,7 @@ export function PlayerBar() {
   }, [user]);
 
   return (
-    <div className="fixed bottom-0 left-60 right-0 bg-[var(--mrms-ink)] text-[var(--mrms-paper)] px-14 py-3 border-t border-[var(--mrms-rust)] z-40">
+    <div className="fixed bottom-0 left-0 md:left-60 right-0 bg-[var(--mrms-ink)] text-[var(--mrms-paper)] px-4 md:px-14 py-2.5 md:py-3 border-t border-[var(--mrms-rust)] z-40">
       {/* error / loading row */}
       {errorMsg && (
         <div className="absolute bottom-full left-0 right-0 px-14 py-2 bg-[var(--mrms-rust)] text-[var(--mrms-paper)] text-xs flex items-center gap-2">
@@ -375,13 +408,23 @@ export function PlayerBar() {
         </div>
       )}
 
-      <div className="grid grid-cols-[280px_1fr_240px] gap-7 items-center">
+      <div className="grid grid-cols-[1fr_auto] md:grid-cols-[280px_1fr_240px] gap-3 md:gap-7 items-center">
         <NowPlaying />
-        <Controls />
-        <div className="flex justify-end items-center gap-3.5">
-          <PlayerActions />
-          <VolumeBlock />
-          <span className="border-l border-[var(--mrms-paper)]/20 pl-3.5">
+        <div className="hidden md:block">
+          <Controls />
+        </div>
+        <div className="flex justify-end items-center gap-2 md:gap-3.5">
+          <div className="hidden md:flex">
+            <PlayerActions />
+          </div>
+          <MobilePlayPause />
+          <div className="hidden md:flex">
+            <VolumeBlock />
+          </div>
+          <span className="hidden md:flex border-l border-[var(--mrms-paper)]/20 pl-3.5">
+            <QueueDrawer />
+          </span>
+          <span className="md:hidden">
             <QueueDrawer />
           </span>
         </div>
