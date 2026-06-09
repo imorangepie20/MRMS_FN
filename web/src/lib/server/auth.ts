@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import type { MrtLatestResponse, UserInfo } from "@/lib/types";
 
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api";
+// SSR 전용 — 절대 URL로 백엔드에 직접 (브라우저에 노출되지 않도록 NEXT_PUBLIC_ 안 씀)
+const API_BASE = process.env.INTERNAL_API_BASE ?? "http://127.0.0.1:8001/api";
 
 
 async function authHeaders(): Promise<Record<string, string>> {
