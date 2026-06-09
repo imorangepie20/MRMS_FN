@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { AuthCard } from "@/components/auth/auth-card";
@@ -15,7 +15,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 
-export default function LoginPage() {
+function LoginContent() {
   const params = useSearchParams();
   const errorKey = params.get("error") ?? "";
   const errorMsg = ERROR_MESSAGES[errorKey];
@@ -50,5 +50,14 @@ export default function LoginPage() {
       </div>
       <TidalConnectModal open={tidalOpen} onOpenChange={setTidalOpen} />
     </AuthCard>
+  );
+}
+
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginContent />
+    </Suspense>
   );
 }
