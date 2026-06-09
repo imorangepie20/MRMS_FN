@@ -27,13 +27,9 @@ export function AppHeader() {
             <>
               {current.num.replace("§ ", "Section ")}
               <span className="text-[var(--mrms-rust)] mx-1.5 normal-case tracking-normal">/</span>
-              {current.italic ? (
-                <em className="font-display not-italic text-[var(--mrms-rust)] normal-case tracking-normal text-sm">
-                  {current.title}
-                </em>
-              ) : (
-                <span className="text-[var(--mrms-ink)]">{current.title}</span>
-              )}
+              <span className="font-display font-semibold normal-case tracking-normal text-[13px] text-[var(--mrms-ink)]">
+                {current.title}
+              </span>
             </>
           ) : (
             "MRMS"

@@ -12,19 +12,14 @@ interface Props {
 }
 
 
-// 첫 줄 카피 — 페르소나 top 1에 따라 다르게 (간단한 mock)
-function heroCopy(top?: string): { l1: string; em: string; l2: string } {
-  if (!top) return { l1: "This week,", em: "you are still listening", l2: "." };
-  return { l1: "This week, you", em: `sound like ${top.toLowerCase()}`, l2: "." };
-}
-
-
 export function MrtDashboard({ user, mrt }: Props) {
   const [personaFilter, setPersonaFilter] = useState<number | null>(null);
   const [selectedTracks, setSelectedTracks] = useState<Set<string>>(new Set());
 
-  const personaTop = mrt.personas[0]?.label ?? null;
-  const hero = heroCopy(personaTop ?? undefined);
+  const generatedDate = mrt.generated_at ? new Date(mrt.generated_at) : null;
+  const generatedLabel = generatedDate
+    ? generatedDate.toLocaleDateString("en-US", { month: "long", day: "numeric" })
+    : "Not yet generated";
 
   const filteredTracks = useMemo(
     () =>
@@ -62,40 +57,30 @@ export function MrtDashboard({ user, mrt }: Props) {
         <span>Curated by MRMS · v0.7</span>
       </div>
 
-      {/* === HERO + side stats === */}
-      <div className="grid grid-cols-[1fr_280px] gap-10 mb-10 items-start">
+      {/* === HERO — data forward === */}
+      <div className="grid grid-cols-[1fr_320px] gap-10 mb-8 items-start">
         <div>
-          <h1 className="font-display font-medium text-[64px] leading-[0.95] tracking-[-0.025em] text-[var(--mrms-ink)] mb-4">
-            {hero.l1}
-            <br />
-            <em className="not-italic font-display italic font-medium text-[var(--mrms-rust)]">
-              {hero.em}
-            </em>
-            {hero.l2}
+          <div className="font-mono text-[10px] tracking-editorial uppercase text-[var(--mrms-ink-mute)] mb-2">
+            Section 01 / MRT — Model Recommendation Tracks
+          </div>
+          <h1 className="font-display font-bold text-[44px] leading-[1.05] tracking-[-0.015em] text-[var(--mrms-ink)] mb-3">
+            {generatedLabel} curation
           </h1>
-          <p className="font-display text-[15px] italic font-medium text-[var(--mrms-ink-soft)] leading-snug max-w-[480px] border-l-2 border-[var(--mrms-rust)] pl-3.5">
-            Three personas · {mrt.recommended_tracks.length} fresh tracks ·
-            {" "}{mrt.recommended_albums.length} albums · 6 playlists. Tap a
-            persona to filter, multi-select tracks to forge a playlist of your
-            own.
+          <p className="text-[14px] font-normal text-[var(--mrms-ink-soft)] leading-relaxed max-w-[560px] border-l-2 border-[var(--mrms-rust)] pl-3.5">
+            {mrt.personas.length} personas, learned at signup and refined over time,
+            inform this week's picks: {mrt.recommended_tracks.length} tracks,
+            {" "}{mrt.recommended_albums.length} albums,
+            {" "}{mrt.recommended_playlists?.length ?? mrt.personas.length} playlists.
+            Tap a persona below to filter. Multi-select tracks to save them as a
+            new playlist.
           </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-px bg-[var(--mrms-rule)] border border-[var(--mrms-rule)]">
-          {[
-            { label: "Personas", value: user.personas_count },
-            { label: "UserTracks", value: user.user_tracks_count },
-            { label: "Matches", value: 15 },
-          ].map((s) => (
-            <div key={s.label} className="bg-[var(--mrms-bg)] px-3 py-2.5">
-              <div className="font-mono text-[8.5px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
-                {s.label}
-              </div>
-              <div className="font-display text-[28px] leading-none mt-1 text-[var(--mrms-ink)]">
-                {s.value}
-              </div>
-            </div>
-          ))}
+        <div className="grid grid-cols-2 gap-px bg-[var(--mrms-rule)] border border-[var(--mrms-rule)]">
+          <StatCell label="Personas" value={user.personas_count} />
+          <StatCell label="UserTracks" value={user.user_tracks_count} />
+          <StatCell label="Tracks" value={mrt.recommended_tracks.length} />
+          <StatCell label="Albums" value={mrt.recommended_albums.length} />
         </div>
       </div>
 
@@ -126,12 +111,8 @@ export function MrtDashboard({ user, mrt }: Props) {
                 P–{String(p.persona_idx + 1).padStart(2, "0")} ·{" "}
                 {p.track_count} tracks
               </div>
-              <div className="font-display font-medium text-[22px] leading-[1.15] mb-2.5">
-                {p.label ? (
-                  <em className="not-italic font-display italic font-medium">{p.label}</em>
-                ) : (
-                  <span>Persona {p.persona_idx + 1}</span>
-                )}
+              <div className="font-display font-semibold text-[18px] leading-[1.2] mb-2.5">
+                {p.label ?? `Persona ${p.persona_idx + 1}`}
               </div>
               <div
                 className={`font-mono text-[9px] tracking-editorial uppercase flex justify-between ${active ? "text-[var(--mrms-paper)]/70" : "text-[var(--mrms-ink-soft)]"}`}
@@ -196,7 +177,7 @@ export function MrtDashboard({ user, mrt }: Props) {
       {/* === ALBUMS + PLAYLISTS === */}
       <div className="grid grid-cols-2 gap-10 mt-10">
         <div>
-          <h3 className="font-display italic font-medium text-[28px] mb-3 pb-2 border-b border-[var(--mrms-ink)] flex justify-between items-baseline">
+          <h3 className="font-display font-bold text-[20px] mb-3 pb-2 border-b border-[var(--mrms-ink)] flex justify-between items-baseline">
             Albums
             <span className="font-mono text-[10px] not-italic tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
               PT 03 / {filteredAlbums.length}
@@ -214,7 +195,7 @@ export function MrtDashboard({ user, mrt }: Props) {
                     />
                   )}
                 </div>
-                <div className="font-display text-[16px] font-medium leading-tight">
+                <div className="font-display text-[14px] font-semibold leading-tight">
                   {a.title}
                 </div>
                 <div className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5">
@@ -231,7 +212,7 @@ export function MrtDashboard({ user, mrt }: Props) {
         </div>
 
         <div>
-          <h3 className="font-display italic font-medium text-[28px] mb-3 pb-2 border-b border-[var(--mrms-ink)] flex justify-between items-baseline">
+          <h3 className="font-display font-bold text-[20px] mb-3 pb-2 border-b border-[var(--mrms-ink)] flex justify-between items-baseline">
             Playlists
             <span className="font-mono text-[10px] not-italic tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
               PT 04
@@ -241,15 +222,15 @@ export function MrtDashboard({ user, mrt }: Props) {
             {/* Recommended playlists are added in Task 6 backend; render placeholder for now */}
             {mrt.personas.map((p, i) => (
               <div key={p.persona_idx} className="cursor-pointer">
-                <div className="aspect-square bg-[var(--mrms-ink)] text-[var(--mrms-paper)] p-3.5 flex flex-col justify-between mb-2.5">
-                  <span className="font-mono text-[11px] tracking-editorial opacity-60">
+                <div className="aspect-square bg-[var(--mrms-ink)] text-[var(--mrms-paper)] p-3 flex flex-col justify-between mb-2">
+                  <span className="font-mono text-[10px] tracking-editorial opacity-65">
                     P {String(p.persona_idx + 1).padStart(2, "0")}
                   </span>
-                  <span className="font-display italic text-[22px] leading-[1.05]">
+                  <span className="font-display font-semibold text-[16px] leading-[1.15]">
                     {p.label ?? `Mix ${i + 1}`}
                   </span>
                 </div>
-                <div className="font-display text-[16px] font-medium leading-tight">
+                <div className="font-display text-[14px] font-semibold leading-tight">
                   {p.label ? `${p.label} mix` : `Persona ${p.persona_idx + 1}`}
                 </div>
                 <div className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5">
@@ -259,6 +240,20 @@ export function MrtDashboard({ user, mrt }: Props) {
             ))}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+function StatCell({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="bg-[var(--mrms-bg)] px-3 py-2.5">
+      <div className="font-mono text-[8.5px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
+        {label}
+      </div>
+      <div className="font-display font-medium text-[28px] leading-none mt-1 text-[var(--mrms-ink)]">
+        {value}
       </div>
     </div>
   );
@@ -281,7 +276,7 @@ function SectionHeader({
           {num}
         </span>
         &nbsp;&nbsp;
-        <span className="font-display italic font-medium text-[28px]">
+        <span className="font-display font-bold text-[20px]">
           {title}
         </span>
       </div>
@@ -364,7 +359,7 @@ function TrackRow({
         )}
       </div>
       <div className="min-w-0">
-        <div className="font-display font-medium text-[17px] leading-tight truncate">
+        <div className="font-display font-semibold text-[15px] leading-tight truncate">
           {track.title}
         </div>
         <div className="text-xs text-[var(--mrms-ink-soft)] mt-0.5 truncate">
@@ -372,7 +367,7 @@ function TrackRow({
           {track.album_title && (
             <>
               {" — "}
-              <em className="font-display italic">{track.album_title}</em>
+              <span className="font-display">{track.album_title}</span>
             </>
           )}
         </div>

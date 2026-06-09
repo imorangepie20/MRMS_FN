@@ -16,11 +16,11 @@ export function AppSidebar() {
       {/* Brand head */}
       <div className="px-6 pt-7 pb-5 border-b border-[var(--mrms-rule)]">
         <Link href="/mrt" className="block">
-          <div className="font-display italic text-[22px] leading-none text-[var(--mrms-ink)] mb-1">
+          <div className="font-display font-bold text-[20px] leading-none text-[var(--mrms-ink)] mb-1.5">
             MRMS
           </div>
           <div className="font-mono text-[9px] tracking-editorial-wide uppercase text-[var(--mrms-ink-mute)]">
-            Vol 01 · {today}
+            Music Rec · {today}
           </div>
         </Link>
       </div>
@@ -57,7 +57,7 @@ export function AppSidebar() {
                     {item.num}
                   </span>
                   <span
-                    className={`font-display text-[15px] font-medium leading-tight ${active ? "text-[var(--mrms-ink)] font-medium" : "text-[var(--mrms-ink-soft)]"} ${item.italic ? "italic" : ""}`}
+                    className={`font-display text-[14px] leading-tight ${active ? "text-[var(--mrms-ink)] font-semibold" : "text-[var(--mrms-ink-soft)] font-medium"}`}
                   >
                     {item.title}
                   </span>
@@ -83,7 +83,7 @@ export function AppSidebar() {
             Spotify
           </span>
         </div>
-        <div className="font-display italic text-[15px] text-[var(--mrms-ink)] leading-tight">
+        <div className="font-display font-semibold text-[15px] text-[var(--mrms-ink)] leading-tight">
           {user?.displayName || "—"}
         </div>
         <div className="font-mono text-[9px] text-[var(--mrms-ink-mute)] tracking-[0.05em] mt-0.5 truncate">
