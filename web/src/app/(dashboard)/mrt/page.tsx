@@ -1,6 +1,4 @@
-import { PersonaCard } from "@/components/mrms/PersonaCard";
-import { RecommendedAlbumCard } from "@/components/mrms/RecommendedAlbumCard";
-import { RecommendedTracksTable } from "@/components/mrms/RecommendedTracksTable";
+import { MrtDashboard } from "@/components/mrms/MrtDashboard";
 import { getServerSideMrt, getServerSideUser } from "@/lib/server/auth";
 
 
@@ -12,49 +10,20 @@ export default async function MrtPage() {
 
   if (mrt.personas.length === 0) {
     return (
-      <div className="p-8 space-y-4">
-        <h1 className="text-2xl font-bold">MRT</h1>
-        <p className="text-muted-foreground">
-          MRT 데이터 없음. 다음 명령 실행 필요:
+      <div className="px-14 py-14 max-w-[680px]">
+        <h1 className="font-display font-light text-[64px] leading-[0.95] text-[var(--mrms-ink)] mb-6">
+          <em className="font-display italic text-[var(--mrms-rust)]">No data</em>
+          <br />yet.
+        </h1>
+        <p className="font-mono text-[12px] text-[var(--mrms-ink-soft)] leading-relaxed mb-4">
+          MRT data needs to be generated. Run the script:
         </p>
-        <pre className="rounded bg-muted p-4 text-sm">
+        <pre className="bg-[var(--mrms-ink)] text-[var(--mrms-paper)] p-4 font-mono text-[12px] leading-relaxed">
 {`python3 scripts/09_generate_mrt.py --email ${user.email}`}
         </pre>
       </div>
     );
   }
 
-  return (
-    <div className="p-8 space-y-8">
-      <header>
-        <h1 className="text-2xl font-bold">MRT</h1>
-        <p className="text-sm text-muted-foreground">
-          {user.email} · 페르소나 {user.personas_count} · UserTrack {user.user_tracks_count}곡
-        </p>
-      </header>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold">페르소나</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {mrt.personas.map((p) => (
-            <PersonaCard key={p.persona_idx} persona={p} />
-          ))}
-        </div>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold">추천 트랙</h2>
-        <RecommendedTracksTable tracks={mrt.recommended_tracks} />
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold">추천 앨범</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          {mrt.recommended_albums.map((a) => (
-            <RecommendedAlbumCard key={a.album_id} album={a} />
-          ))}
-        </div>
-      </section>
-    </div>
-  );
+  return <MrtDashboard user={user} mrt={mrt} />;
 }

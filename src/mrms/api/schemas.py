@@ -51,9 +51,20 @@ class RecommendedAlbum(BaseModel):
     track_count: int
 
 
+class RecommendedPlaylist(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    cover_url: str | None = None
+    track_count: int
+    persona_idx: int | None = None
+    persona_score: float | None = None
+
+
 class MrtLatestResponse(BaseModel):
     generated_at: datetime | None = None
     model_version: str | None = None
     personas: list[Persona]
     recommended_tracks: list[RecommendedTrack]
     recommended_albums: list[RecommendedAlbum]
+    recommended_playlists: list[RecommendedPlaylist] = []

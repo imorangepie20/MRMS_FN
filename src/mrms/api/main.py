@@ -6,16 +6,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import psycopg
 
+from mrms.api.albums import router as albums_router
 from mrms.api.auth_session import router as auth_session_router
 from mrms.api.auth_spotify import router as auth_spotify_router
 from mrms.api.auth_tidal import playback_router as tidal_playback_router, router as tidal_router
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.api.onboarding_api import router as onboarding_router
+from mrms.api.playlists import router as playlists_router
+from mrms.api.user_tracks import router as user_tracks_router
 from mrms.api.schemas import (
     MrtLatestResponse,
     Persona,
     PersonaTrack,
     RecommendedAlbum,
+    RecommendedPlaylist,
     RecommendedTrack,
     UserInfo,
 )
@@ -36,6 +40,9 @@ app.include_router(tidal_playback_router)
 app.include_router(auth_session_router)
 app.include_router(auth_spotify_router)
 app.include_router(onboarding_router)
+app.include_router(user_tracks_router)
+app.include_router(playlists_router)
+app.include_router(albums_router)
 
 
 @app.get("/api/health")
@@ -137,7 +144,7 @@ def mrt_latest(
     user_id: str = Depends(get_current_user_id),
     conn: psycopg.Connection = Depends(db_conn),
     top_n: int = 20,
-    top_tracks_n: int = 30,
+    top_tracks_n: int = 20,
     top_albums_n: int = 15,
 ) -> MrtLatestResponse:
     # user의 primary_platform 확인
@@ -247,10 +254,25 @@ def mrt_latest(
         for r in rec_albums_raw
     ]
 
+    # 각 페르소나를 추천 플레이리스트로 그대로 노출 (id, name, cover, count + persona_idx)
+    recommended_playlists = [
+        RecommendedPlaylist(
+            id=f"mrt_persona_{p.persona_idx}",
+            name=f"Persona {p.persona_idx + 1}",
+            description=f"{p.track_count} tracks from your persona cluster",
+            cover_url=None,
+            track_count=p.track_count,
+            persona_idx=p.persona_idx,
+            persona_score=None,
+        )
+        for p in personas
+    ]
+
     return MrtLatestResponse(
         generated_at=playlists_sorted[0].get("generatedAt"),
         model_version=playlists_sorted[0].get("modelVersion"),
         personas=personas,
         recommended_tracks=recommended_tracks,
         recommended_albums=recommended_albums,
+        recommended_playlists=recommended_playlists,
     )

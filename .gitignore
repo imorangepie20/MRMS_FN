@@ -79,3 +79,4 @@ web/test-results/
 .env.bak*
 .env.production
 catalog_dump.sql
+.superpowers/

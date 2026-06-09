@@ -8,7 +8,11 @@ export type QueueTrack = {
   title: string;
   artist: string;
   album_title: string | null;
+  album_cover?: string | null;
 };
+
+
+export type RepeatMode = "off" | "all" | "one";
 
 
 export type PlayerState = {
@@ -23,6 +27,11 @@ export type PlayerState = {
   sdkReady: boolean;
   errorMsg: string | null;
   isPreview: boolean;       // PREVIEW 재생 중인지 (FULL access 없을 때)
+  shuffleMode: boolean;
+  repeatMode: RepeatMode;
+  currentTrackLiked: boolean;
+  currentTrackPCT: boolean;
+  audioQuality: string | null;
 
   // 액션 (setter 위주, async 로직은 SDK wrapper에서)
   setQueue: (tracks: QueueTrack[], startIdx: number) => void;
@@ -50,6 +59,11 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   sdkReady: false,
   errorMsg: null,
   isPreview: false,
+  shuffleMode: false,
+  repeatMode: "off",
+  currentTrackLiked: false,
+  currentTrackPCT: false,
+  audioQuality: null,
 
   setQueue: (tracks, startIdx) =>
     set({

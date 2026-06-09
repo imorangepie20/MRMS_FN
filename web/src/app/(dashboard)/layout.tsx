@@ -1,17 +1,39 @@
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+"use client";
+
+import { useState } from "react";
+
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
 import { PlayerBar } from "@/components/player/PlayerBar";
 
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <AppHeader />
-        <main className="flex flex-1 flex-col gap-4 p-4 pb-20 md:pb-24">{children}</main>
-      </SidebarInset>
+    <div className="md:grid md:grid-cols-[240px_1fr] min-h-screen bg-[var(--mrms-bg)]">
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-[var(--mrms-ink)]/30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — desktop static, mobile slide-over */}
+      <div
+        className={`fixed inset-y-0 left-0 z-50 transition-transform md:static md:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        }`}
+      >
+        <AppSidebar />
+      </div>
+
+      <div className="flex flex-col min-h-screen">
+        <AppHeader onMenuClick={() => setSidebarOpen((v) => !v)} menuOpen={sidebarOpen} />
+        <main className="flex-1 pb-32 md:pb-36">{children}</main>
+      </div>
       <PlayerBar />
-    </SidebarProvider>
+    </div>
   );
 }
