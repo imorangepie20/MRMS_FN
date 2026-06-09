@@ -23,6 +23,7 @@ export interface Persona {
   persona_idx: number;
   track_count: number;
   playlist: PersonaTrack[];
+  label?: string | null;
 }
 
 export interface RecommendedTrack {
@@ -34,6 +35,10 @@ export interface RecommendedTrack {
   persona_idx: number | null;
   tidal_track_id: string | null;
   spotify_track_id: string | null;
+  album_title?: string | null;
+  album_cover?: string | null;
+  duration_sec?: number | null;
+  persona_score?: number | null;
 }
 
 export interface RecommendedAlbum {
@@ -41,6 +46,18 @@ export interface RecommendedAlbum {
   title: string;
   artist: string;
   track_count: number;
+  cover_url?: string | null;
+  persona_idx?: number | null;
+}
+
+export interface RecommendedPlaylist {
+  id: string;
+  name: string;
+  description?: string | null;
+  cover_url?: string | null;
+  track_count: number;
+  persona_idx?: number | null;
+  persona_score?: number | null;
 }
 
 export interface MrtLatestResponse {
@@ -49,6 +66,7 @@ export interface MrtLatestResponse {
   personas: Persona[];
   recommended_tracks: RecommendedTrack[];
   recommended_albums: RecommendedAlbum[];
+  recommended_playlists?: RecommendedPlaylist[];
 }
 
 export interface TidalTokenResponse {

@@ -1,17 +1,17 @@
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
 import { PlayerBar } from "@/components/player/PlayerBar";
 
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <SidebarProvider>
+    <div className="grid grid-cols-[240px_1fr] min-h-screen bg-[var(--mrms-bg)]">
       <AppSidebar />
-      <SidebarInset>
+      <div className="flex flex-col min-h-screen">
         <AppHeader />
-        <main className="flex flex-1 flex-col gap-4 p-4 pb-20 md:pb-24">{children}</main>
-      </SidebarInset>
+        <main className="flex-1 pb-32">{children}</main>
+      </div>
       <PlayerBar />
-    </SidebarProvider>
+    </div>
   );
 }

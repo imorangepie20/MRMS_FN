@@ -73,7 +73,7 @@ export function CommandPalette() {
                         router.push(item.href);
                       }}
                     >
-                      {item.icon && <item.icon className="size-4" />}
+                      <span className="font-mono text-[10px] text-muted-foreground mr-2">{item.num}</span>
                       <span>{item.title}</span>
                     </CommandItem>
                   ))}
