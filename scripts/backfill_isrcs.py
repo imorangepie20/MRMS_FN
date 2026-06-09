@@ -87,14 +87,14 @@ async def main(limit: int | None) -> None:
         if limit:
             cur.execute(
                 """SELECT id, isrc FROM "Track"
-                   WHERE isrc LIKE 'spotify\_%%' ESCAPE '\'
+                   WHERE isrc LIKE 'spotify_%%'
                    ORDER BY id LIMIT %s""",
                 (limit,),
             )
         else:
             cur.execute(
                 """SELECT id, isrc FROM "Track"
-                   WHERE isrc LIKE 'spotify\_%%' ESCAPE '\'"""
+                   WHERE isrc LIKE 'spotify_%%'"""
             )
         rows = cur.fetchall()
 
