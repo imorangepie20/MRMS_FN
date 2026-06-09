@@ -38,6 +38,8 @@ class RecommendedTrack(BaseModel):
     title: str
     artist: str
     album_id: str | None = None
+    album_title: str | None = None
+    duration_ms: int | None = None
     score: float
     persona_idx: int | None = None
     tidal_track_id: str | None = None

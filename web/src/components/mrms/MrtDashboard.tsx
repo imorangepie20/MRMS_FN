@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Heart, Play, Sparkles } from "lucide-react";
 
 import { AlbumDetailModal } from "@/components/album/AlbumDetailModal";
+import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { CreatePlaylistModal } from "@/components/playlist/CreatePlaylistModal";
 import { PlaylistDetailModal } from "@/components/playlist/PlaylistDetailModal";
 import type { MrtLatestResponse, UserInfo } from "@/lib/types";
@@ -176,15 +177,12 @@ export function MrtDashboard({ user, mrt }: Props) {
                 onClick={() => setAlbumModal(a.album_id)}
                 className="cursor-pointer text-left bg-transparent border-0 p-0"
               >
-                <div className="aspect-square bg-[var(--mrms-rule)] mb-2.5 relative">
-                  {a.cover_url && (
-                    <img
-                      src={a.cover_url}
-                      alt=""
-                      className="size-full object-cover"
-                    />
-                  )}
-                </div>
+                <AlbumArt
+                  artist={a.artist}
+                  album={a.title}
+                  initialUrl={a.cover_url ?? null}
+                  className="aspect-square mb-2.5"
+                />
                 <div
                   className="font-display text-[14px] font-semibold leading-tight truncate"
                   title={a.title}
@@ -367,8 +365,10 @@ function TrackRow({
     }
   };
 
-  const dur = track.duration_sec
-    ? `${Math.floor(track.duration_sec / 60)}:${String(Math.floor(track.duration_sec % 60)).padStart(2, "0")}`
+  const durMs = (track as { duration_ms?: number | null }).duration_ms ?? null;
+  const durSec = durMs != null ? Math.floor(durMs / 1000) : null;
+  const dur = durSec != null
+    ? `${Math.floor(durSec / 60)}:${String(durSec % 60).padStart(2, "0")}`
     : "—";
 
   return (
@@ -386,15 +386,12 @@ function TrackRow({
           </span>
         )}
       </button>
-      <div className="size-14 bg-[var(--mrms-rule)] relative">
-        {track.album_cover && (
-          <img
-            src={track.album_cover}
-            alt=""
-            className="size-full object-cover"
-          />
-        )}
-      </div>
+      <AlbumArt
+        artist={track.artist}
+        album={track.album_title ?? null}
+        initialUrl={track.album_cover ?? null}
+        className="size-14"
+      />
       <div className="min-w-0">
         <div
           className="font-display font-semibold text-[15px] leading-tight truncate"

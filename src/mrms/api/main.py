@@ -116,7 +116,7 @@ def _fetch_track_metadata(
         )
     sql = (
         'SELECT t.id, t.title, a.name, t."albumId", alb.title, '
-        '       tp_t."platformTrackId", tp_s."platformTrackId" '
+        '       tp_t."platformTrackId", tp_s."platformTrackId", t."durationMs" '
         'FROM "Track" t '
         'JOIN "Artist" a ON a.id = t."artistId" '
         'LEFT JOIN "Album" alb ON alb.id = t."albumId" '
@@ -134,6 +134,7 @@ def _fetch_track_metadata(
             "album_title": r[4],
             "tidal_track_id": r[5],
             "spotify_track_id": r[6],
+            "duration_ms": r[7],
         }
         for r in rows
     }
@@ -220,6 +221,8 @@ def mrt_latest(
             title=meta[r["track_id"]]["title"],
             artist=meta[r["track_id"]]["artist"],
             album_id=meta[r["track_id"]]["album_id"],
+            album_title=meta[r["track_id"]]["album_title"],
+            duration_ms=meta[r["track_id"]]["duration_ms"],
             score=float(r["score"]),
             persona_idx=r.get("persona_idx"),
             tidal_track_id=meta[r["track_id"]]["tidal_track_id"],

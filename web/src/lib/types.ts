@@ -37,6 +37,7 @@ export interface RecommendedTrack {
   spotify_track_id: string | null;
   album_title?: string | null;
   album_cover?: string | null;
+  duration_ms?: number | null;
   duration_sec?: number | null;
   persona_score?: number | null;
 }
