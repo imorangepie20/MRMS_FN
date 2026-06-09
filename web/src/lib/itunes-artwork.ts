@@ -1,5 +1,5 @@
 /**
- * iTunes Search API로 앨범 아트워크 조회 (free, no auth, CORS OK).
+ * 앨범 아트워크 조회 — `/api/artwork` 백엔드 경유 (서버측 캐시 + iTunes proxy).
  * In-memory cache: 같은 (artist, album) 조합은 한 번만 fetch.
  */
 
@@ -7,17 +7,14 @@ const cache = new Map<string, Promise<string | null>>();
 
 
 async function _fetch(artist: string, album: string): Promise<string | null> {
-  const term = encodeURIComponent(`${artist} ${album}`.trim());
   try {
-    const r = await fetch(
-      `https://itunes.apple.com/search?term=${term}&entity=album&limit=1`,
-    );
+    const q = new URLSearchParams({ artist, album });
+    const r = await fetch(`/api/artwork?${q.toString()}`, {
+      credentials: "include",
+    });
     if (!r.ok) return null;
     const data = await r.json();
-    const first = data.results?.[0];
-    if (!first?.artworkUrl100) return null;
-    // 100x100 → 600x600 (URL 패턴 교체)
-    return (first.artworkUrl100 as string).replace("100x100", "600x600");
+    return data.url ?? null;
   } catch {
     return null;
   }

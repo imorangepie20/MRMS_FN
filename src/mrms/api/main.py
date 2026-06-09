@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import psycopg
 
 from mrms.api.albums import router as albums_router
+from mrms.api.artwork import router as artwork_router
 from mrms.api.auth_session import router as auth_session_router
 from mrms.api.auth_spotify import router as auth_spotify_router
 from mrms.api.auth_tidal import playback_router as tidal_playback_router, router as tidal_router
@@ -43,6 +44,7 @@ app.include_router(onboarding_router)
 app.include_router(user_tracks_router)
 app.include_router(playlists_router)
 app.include_router(albums_router)
+app.include_router(artwork_router)
 
 
 @app.get("/api/health")
