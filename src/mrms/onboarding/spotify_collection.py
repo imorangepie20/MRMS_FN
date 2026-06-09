@@ -61,10 +61,16 @@ async def fetch_spotify_playlist_tracks(
     playlist_id: str,
     page_size: int = 100,
 ) -> list[str]:
-    """GET /playlists/{id}/tracks — 트랙만 (local + episode 제외)."""
+    """GET /playlists/{id}/items — 트랙만 (local + episode 제외).
+
+    /items + additional_types=track 사용 (Spotify 권장 — /tracks는 deprecated).
+    """
     headers = {"Authorization": f"Bearer {access_token}"}
     track_ids: list[str] = []
-    url = f"{SPOTIFY_API_BASE}/playlists/{playlist_id}/tracks?limit={page_size}&offset=0"
+    url = (
+        f"{SPOTIFY_API_BASE}/playlists/{playlist_id}/items"
+        f"?limit={page_size}&offset=0&additional_types=track"
+    )
 
     async with httpx.AsyncClient(timeout=15.0) as http:
         while url:
