@@ -144,7 +144,7 @@ def mrt_latest(
     user_id: str = Depends(get_current_user_id),
     conn: psycopg.Connection = Depends(db_conn),
     top_n: int = 20,
-    top_tracks_n: int = 30,
+    top_tracks_n: int = 20,
     top_albums_n: int = 15,
 ) -> MrtLatestResponse:
     # user의 primary_platform 확인

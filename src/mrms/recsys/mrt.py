@@ -62,12 +62,12 @@ def search_for_persona(
 
 def derive_recommended_tracks(
     playlists: list[dict[str, Any]],
-    top_n: int = 30,
+    top_n: int = 20,
 ) -> list[dict[str, Any]]:
     """페르소나 플레이리스트들에서 dedup + max score.
 
     playlists 각 항목: {context: {personaIdx}, trackIds, scores}
-    반환: [{track_id, score, persona_idx}, ...] sorted desc.
+    반환: [{track_id, score, persona_idx}, ...] sorted desc — 총 top_n개.
     """
     best: dict[str, dict[str, Any]] = {}
     for pl in playlists:
