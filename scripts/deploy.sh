@@ -29,6 +29,9 @@ source scripts/lib/migrations.sh
 apply_pending_migrations prisma/migrations
 
 echo "[4/6] frontend install + build..."
+# Next.js는 web/ 안의 .env.production을 build-time에 읽음.
+# /opt/mrms/.env.production을 web/.env.production.local로 심볼릭링크 (없으면 생성).
+ln -sfn "$ROOT/.env.production" web/.env.production.local
 cd web
 pnpm install --frozen-lockfile --config.strict-dep-builds=false
 pnpm build
