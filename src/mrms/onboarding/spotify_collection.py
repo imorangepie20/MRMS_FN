@@ -93,3 +93,37 @@ async def fetch_spotify_playlist_tracks(
             url = data.get("next")
 
     return track_ids
+
+
+async def fetch_spotify_tracks_isrcs(
+    access_token: str,
+    spotify_track_ids: list[str],
+    chunk_size: int = 50,
+) -> dict[str, str]:
+    """Spotify track ID 리스트 → {spotify_id: isrc} 매핑.
+
+    /tracks?ids=a,b,c (max 50 IDs per call) 배치 호출.
+    """
+    if not spotify_track_ids:
+        return {}
+    headers = {"Authorization": f"Bearer {access_token}"}
+    result: dict[str, str] = {}
+    async with httpx.AsyncClient(timeout=15.0) as http:
+        for i in range(0, len(spotify_track_ids), chunk_size):
+            chunk = spotify_track_ids[i:i + chunk_size]
+            ids_param = ",".join(chunk)
+            r = await http.get(
+                f"{SPOTIFY_API_BASE}/tracks?ids={ids_param}",
+                headers=headers,
+            )
+            if r.status_code != 200:
+                raise RuntimeError(f"Spotify tracks failed: {r.status_code} {r.text[:200]}")
+            data = r.json()
+            for track in data.get("tracks") or []:
+                if not track:
+                    continue
+                tid = track.get("id")
+                isrc = (track.get("external_ids") or {}).get("isrc")
+                if tid and isrc:
+                    result[tid] = isrc
+    return result

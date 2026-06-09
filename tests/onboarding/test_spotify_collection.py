@@ -6,6 +6,7 @@ import pytest
 from mrms.onboarding.spotify_collection import (
     fetch_spotify_favorite_tracks,
     fetch_spotify_playlist_tracks,
+    fetch_spotify_tracks_isrcs,
     fetch_spotify_user_playlists,
 )
 
@@ -80,3 +81,36 @@ async def test_fetch_playlist_tracks_skips_local_and_episodes():
     with patch("httpx.AsyncClient", return_value=fake_client):
         ids = await fetch_spotify_playlist_tracks(access_token="fake", playlist_id="PL_X")
     assert ids == ["TR_X", "TR_W"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_isrcs_returns_spotify_id_to_isrc_map():
+    """GET /tracks?ids=... → {spotify_id: isrc} 매핑."""
+    fake = MagicMock()
+    fake.status_code = 200
+    fake.json = MagicMock(return_value={
+        "tracks": [
+            {"id": "TR_A", "external_ids": {"isrc": "USRC10000001"}},
+            {"id": "TR_B", "external_ids": {"isrc": "USRC10000002"}},
+            {"id": "TR_C", "external_ids": {}},  # ISRC 없음 → skip
+            None,  # null 트랙 → skip
+        ],
+    })
+    fake_client = MagicMock()
+    fake_client.__aenter__ = AsyncMock(return_value=fake_client)
+    fake_client.__aexit__ = AsyncMock(return_value=None)
+    fake_client.get = AsyncMock(return_value=fake)
+
+    with patch("httpx.AsyncClient", return_value=fake_client):
+        result = await fetch_spotify_tracks_isrcs(
+            access_token="fake",
+            spotify_track_ids=["TR_A", "TR_B", "TR_C", "TR_D"],
+        )
+    assert result == {"TR_A": "USRC10000001", "TR_B": "USRC10000002"}
+
+
+@pytest.mark.asyncio
+async def test_fetch_isrcs_empty_input_returns_empty():
+    """입력 빈 list면 API 호출 안 하고 빈 dict 반환."""
+    result = await fetch_spotify_tracks_isrcs(access_token="fake", spotify_track_ids=[])
+    assert result == {}

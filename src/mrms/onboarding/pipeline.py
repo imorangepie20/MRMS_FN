@@ -17,6 +17,7 @@ from mrms.db.user_track import get_oauth, upsert_user_track
 from mrms.onboarding.spotify_collection import (
     fetch_spotify_favorite_tracks,
     fetch_spotify_playlist_tracks,
+    fetch_spotify_tracks_isrcs,
     fetch_spotify_user_playlists,
 )
 from mrms.onboarding.status import OnboardingStatus
@@ -288,10 +289,53 @@ async def _run_spotify_collection(
         )
         rows = cur.fetchall()
     internal_to_spotify = {r[0]: r[1] for r in rows}
+    direct_match_count = len(internal_to_spotify)
+
+    # ISRC fallback — Spotify ID로 매칭 안 된 곡들을 Spotify API에서 ISRC 받아 Track.isrc로 재매칭
+    isrc_match_count = 0
+    matched_spotify_ids = set(internal_to_spotify.values())
+    unmatched_spotify_ids = [sid for sid in all_spotify_ids if sid not in matched_spotify_ids]
+    if unmatched_spotify_ids:
+        status.set(
+            "matching_tracks", 28,
+            f"ISRC로 catalog 재매칭 중... ({len(unmatched_spotify_ids)}곡)",
+        )
+        try:
+            spotify_isrcs = await fetch_spotify_tracks_isrcs(
+                access_token=access_token,
+                spotify_track_ids=unmatched_spotify_ids,
+            )
+        except Exception:
+            spotify_isrcs = {}
+        if spotify_isrcs:
+            isrc_to_spotify = {isrc: sid for sid, isrc in spotify_isrcs.items()}
+            with conn.cursor() as cur:
+                cur.execute(
+                    'SELECT id, isrc FROM "Track" WHERE isrc = ANY(%s)',
+                    (list(spotify_isrcs.values()),),
+                )
+                isrc_rows = cur.fetchall()
+                for internal_id, isrc in isrc_rows:
+                    sid = isrc_to_spotify.get(isrc)
+                    if sid and internal_id not in internal_to_spotify:
+                        internal_to_spotify[internal_id] = sid
+                        isrc_match_count += 1
+                        # 다음 사용자 위해 캐시
+                        cur.execute(
+                            '''INSERT INTO "TrackPlatform"
+                                 (id, "trackId", platform, "platformTrackId")
+                               VALUES (%s, %s, 'spotify', %s)
+                               ON CONFLICT ("trackId", platform) DO NOTHING''',
+                            (f"tp_spotify_{sid}", internal_id, sid),
+                        )
+            if isrc_match_count:
+                conn.commit()
+
     internal_track_ids = list(internal_to_spotify.keys())
     if len(internal_track_ids) < 10:
         diag = (
             f"playlists 발견={len(playlist_ids)}, fetch 실패={playlist_fetch_errors}"
+            f", direct 매칭={direct_match_count}, ISRC 매칭={isrc_match_count}"
             + (f", last_err=[{last_playlist_error}]" if last_playlist_error else "")
         )
         raise RuntimeError(
