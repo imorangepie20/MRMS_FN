@@ -13,7 +13,6 @@ interface Props {
 
 
 export function MrtDashboard({ user, mrt }: Props) {
-  const [personaFilter, setPersonaFilter] = useState<number | null>(null);
   const [selectedTracks, setSelectedTracks] = useState<Set<string>>(new Set());
 
   const generatedDate = mrt.generated_at ? new Date(mrt.generated_at) : null;
@@ -21,21 +20,14 @@ export function MrtDashboard({ user, mrt }: Props) {
     ? generatedDate.toLocaleDateString("en-US", { month: "long", day: "numeric" })
     : "Not yet generated";
 
-  const filteredTracks = useMemo(
-    () =>
-      personaFilter === null
-        ? mrt.recommended_tracks
-        : mrt.recommended_tracks.filter((t) => t.persona_idx === personaFilter),
-    [mrt.recommended_tracks, personaFilter],
-  );
-
-  const filteredAlbums = useMemo(
-    () =>
-      personaFilter === null
-        ? mrt.recommended_albums
-        : mrt.recommended_albums.filter((a) => a.persona_idx === personaFilter),
-    [mrt.recommended_albums, personaFilter],
-  );
+  // 페르소나는 정보 표시 전용 — 필터 X. persona_idx로 트랙 행에서 표시.
+  const personaLabelByIdx = useMemo(() => {
+    const map = new Map<number, string>();
+    mrt.personas.forEach((p) => {
+      map.set(p.persona_idx, p.label ?? `Persona ${p.persona_idx + 1}`);
+    });
+    return map;
+  }, [mrt.personas]);
 
   const toggle = (trackId: string) => {
     setSelectedTracks((prev) => {
@@ -87,51 +79,30 @@ export function MrtDashboard({ user, mrt }: Props) {
       {/* === PERSONAS === */}
       <SectionHeader
         num="PT 01"
-        title="Three sides of you"
-        meta={personaFilter !== null ? "Filtered ↓" : "Tap to filter ↓"}
+        title="Your personas"
+        meta={`${mrt.personas.length} clusters`}
       />
       <div className="grid grid-cols-3 gap-px bg-[var(--mrms-rule)] border-y border-[var(--mrms-rule)] mb-10">
-        {mrt.personas.map((p) => {
-          const active = personaFilter === p.persona_idx;
-          return (
-            <button
-              key={p.persona_idx}
-              onClick={() =>
-                setPersonaFilter(active ? null : p.persona_idx)
-              }
-              className={`text-left p-5 pb-4 transition-colors cursor-pointer border-0 ${
-                active
-                  ? "bg-[var(--mrms-ink)] text-[var(--mrms-paper)]"
-                  : "bg-[var(--mrms-bg)] hover:bg-[var(--mrms-paper)] text-[var(--mrms-ink)]"
-              }`}
-            >
-              <div
-                className={`font-mono text-[10px] tracking-editorial mb-2 ${active ? "text-[var(--mrms-paper)]/70" : "text-[var(--mrms-ink-mute)]"}`}
-              >
-                P–{String(p.persona_idx + 1).padStart(2, "0")} ·{" "}
-                {p.track_count} tracks
-              </div>
-              <div className="font-display font-semibold text-[18px] leading-[1.2] mb-2.5">
-                {p.label ?? `Persona ${p.persona_idx + 1}`}
-              </div>
-              <div
-                className={`font-mono text-[9px] tracking-editorial uppercase flex justify-between ${active ? "text-[var(--mrms-paper)]/70" : "text-[var(--mrms-ink-soft)]"}`}
-              >
-                <span>{p.track_count} tracks</span>
-                <span className={active ? "text-[var(--mrms-rust)]" : ""}>
-                  {active ? "selected" : "—"}
-                </span>
-              </div>
-            </button>
-          );
-        })}
+        {mrt.personas.map((p) => (
+          <div
+            key={p.persona_idx}
+            className="bg-[var(--mrms-bg)] p-5 pb-4 text-[var(--mrms-ink)]"
+          >
+            <div className="font-mono text-[10px] tracking-editorial mb-2 text-[var(--mrms-ink-mute)]">
+              P–{String(p.persona_idx + 1).padStart(2, "0")} · {p.track_count} tracks
+            </div>
+            <div className="font-display font-semibold text-[18px] leading-[1.2]">
+              {p.label ?? `Persona ${p.persona_idx + 1}`}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* === TRACKS === */}
       <SectionHeader
         num="PT 02"
         title="For your ears, this week"
-        meta={`${filteredTracks.length} tracks`}
+        meta={`${mrt.recommended_tracks.length} tracks`}
       />
       <div className="flex justify-between items-baseline font-mono text-[11px] text-[var(--mrms-ink-soft)] mb-1.5">
         <span>
@@ -149,26 +120,31 @@ export function MrtDashboard({ user, mrt }: Props) {
           + playlist
         </button>
       </div>
-      <div className="grid grid-cols-[18px_56px_1fr_64px_80px_60px_120px] gap-3 px-0 py-1.5 border-b border-[var(--mrms-ink)] font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
+      <div className="grid grid-cols-[18px_56px_1fr_140px_80px_60px_120px] gap-3 px-0 py-1.5 border-b border-[var(--mrms-ink)] font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
         <span />
         <span />
         <span>Title</span>
-        <span>P</span>
+        <span>Persona</span>
         <span>Match</span>
         <span className="text-right">Time</span>
         <span />
       </div>
 
-      {filteredTracks.map((t) => (
+      {mrt.recommended_tracks.map((t) => (
         <TrackRow
           key={t.track_id}
           track={t}
+          personaLabel={
+            t.persona_idx != null
+              ? personaLabelByIdx.get(t.persona_idx) ?? null
+              : null
+          }
           checked={selectedTracks.has(t.track_id)}
           onToggle={() => toggle(t.track_id)}
         />
       ))}
 
-      {filteredTracks.length === 0 && (
+      {mrt.recommended_tracks.length === 0 && (
         <div className="py-12 text-center font-mono text-[11px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
           — no tracks —
         </div>
@@ -179,12 +155,12 @@ export function MrtDashboard({ user, mrt }: Props) {
         <div>
           <h3 className="font-display font-bold text-[20px] mb-3 pb-2 border-b border-[var(--mrms-ink)] flex justify-between items-baseline">
             Albums
-            <span className="font-mono text-[10px] not-italic tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
-              PT 03 / {filteredAlbums.length}
+            <span className="font-mono text-[10px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
+              PT 03 / {mrt.recommended_albums.length}
             </span>
           </h3>
           <div className="grid grid-cols-4 gap-x-3.5 gap-y-5">
-            {filteredAlbums.map((a) => (
+            {mrt.recommended_albums.map((a) => (
               <div key={a.album_id} className="cursor-pointer">
                 <div className="aspect-square bg-[var(--mrms-rule)] mb-2.5 relative">
                   {a.cover_url && (
@@ -204,7 +180,7 @@ export function MrtDashboard({ user, mrt }: Props) {
               </div>
             ))}
           </div>
-          {filteredAlbums.length === 0 && (
+          {mrt.recommended_albums.length === 0 && (
             <div className="py-8 text-center font-mono text-[11px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
               — no albums —
             </div>
@@ -292,10 +268,12 @@ function SectionHeader({
 
 function TrackRow({
   track,
+  personaLabel,
   checked,
   onToggle,
 }: {
   track: import("@/lib/types").RecommendedTrack;
+  personaLabel: string | null;
   checked: boolean;
   onToggle: () => void;
 }) {
@@ -335,7 +313,7 @@ function TrackRow({
     : "—";
 
   return (
-    <div className="grid grid-cols-[18px_56px_1fr_64px_80px_60px_120px] gap-3 py-2.5 border-b border-[var(--mrms-rule)] items-center hover:bg-[var(--mrms-paper)] transition-colors">
+    <div className="grid grid-cols-[18px_56px_1fr_140px_80px_60px_120px] gap-3 py-2.5 border-b border-[var(--mrms-rule)] items-center hover:bg-[var(--mrms-paper)] transition-colors">
       <button
         onClick={onToggle}
         className={`size-3.5 border-[1.5px] border-[var(--mrms-ink)] relative cursor-pointer p-0 ${
@@ -372,9 +350,16 @@ function TrackRow({
           )}
         </div>
       </div>
-      <span className="font-mono text-[10px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
-        P {String((track.persona_idx ?? 0) + 1).padStart(2, "0")}
-      </span>
+      <div className="min-w-0">
+        <div className="font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-mute)] leading-none">
+          P {String((track.persona_idx ?? 0) + 1).padStart(2, "0")}
+        </div>
+        {personaLabel && (
+          <div className="font-display text-[12px] font-medium text-[var(--mrms-ink-soft)] truncate mt-0.5">
+            {personaLabel}
+          </div>
+        )}
+      </div>
       <span className="font-mono text-[11px] text-[var(--mrms-ink-soft)]">
         {track.persona_score != null
           ? `${Math.round(track.persona_score * 100)}%`
