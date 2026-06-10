@@ -1,8 +1,9 @@
 import type { EmpSection, EmpItemTrack } from "@/lib/types";
 
+import { apiFetch } from "./http";
+
 export async function fetchEmpSections(platform = "tidal"): Promise<EmpSection[]> {
-  const r = await fetch(`/api/emp/sections?platform=${platform}`, { credentials: "include" });
-  if (!r.ok) throw new Error(`sections failed: ${r.status}`);
+  const r = await apiFetch(`/api/emp/sections?platform=${platform}`, {}, "sections");
   return (await r.json()).sections as EmpSection[];
 }
 
@@ -11,10 +12,10 @@ export async function fetchEmpItemTracks(
   itemId: string,
   limit = 100,
 ): Promise<EmpItemTrack[]> {
-  const r = await fetch(
+  const r = await apiFetch(
     `/api/emp/items/${itemType}/${encodeURIComponent(itemId)}/tracks?limit=${limit}`,
-    { credentials: "include" },
+    {},
+    "item tracks",
   );
-  if (!r.ok) throw new Error(`item tracks failed: ${r.status}`);
   return (await r.json()).tracks as EmpItemTrack[];
 }

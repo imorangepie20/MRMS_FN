@@ -1,0 +1,147 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+import { saveEmpSetting } from "@/lib/api/admin-emp";
+import type { EmpSettings, EmpSettingValue } from "@/lib/types";
+
+
+export function SettingsCard({
+  settings,
+  onSaved,
+}: {
+  settings: EmpSettings["settings"] | null;
+  onSaved: () => Promise<void>;
+}) {
+  const [tokenInput, setTokenInput] = useState("");
+  const [sourcesInput, setSourcesInput] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const tokenSetting: EmpSettingValue | undefined = settings?.["tidal_x_token"];
+  const sourcesSetting: EmpSettingValue | undefined = settings?.["tidal_emp_sources"];
+
+  // Initialise sources textarea from server value whenever settings load/refresh
+  useEffect(() => {
+    if (sourcesSetting && "value" in sourcesSetting) {
+      setSourcesInput(sourcesSetting.value ?? "");
+    }
+  }, [sourcesSetting]);
+
+  const saveToken = async () => {
+    if (!tokenInput.trim()) {
+      alert("값을 입력하세요");
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveEmpSetting("tidal_x_token", tokenInput.trim());
+      setTokenInput("");
+      await onSaved();
+      alert("저장됨");
+    } catch (e) {
+      alert(`저장 실패: ${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const clearToken = async () => {
+    if (!confirm("Tidal token 삭제?")) return;
+    setSaving(true);
+    try {
+      await saveEmpSetting("tidal_x_token", null);
+      await onSaved();
+    } catch (e) {
+      alert(`삭제 실패: ${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveSources = async () => {
+    setSaving(true);
+    try {
+      await saveEmpSetting("tidal_emp_sources", sourcesInput.trim() || null);
+      await onSaved();
+      alert("저장됨");
+    } catch (e) {
+      alert(`저장 실패: ${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="mb-10">
+      <h2 className="font-display font-bold text-[20px] mb-3 pb-2 border-b border-(--mrms-ink)">
+        Settings
+      </h2>
+
+      {/* Token row */}
+      <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] py-2 border-b border-(--mrms-rule)">
+        <span className="text-(--mrms-ink-mute) tracking-editorial uppercase min-w-[120px]">
+          tidal_x_token
+        </span>
+        <span className="text-(--mrms-ink-soft) truncate flex-1 min-w-[100px]">
+          {tokenSetting?.present ? `set · ${tokenSetting.preview}` : "— not set —"}
+        </span>
+        <input
+          type="password"
+          value={tokenInput}
+          onChange={(e) => setTokenInput(e.target.value)}
+          placeholder="paste token"
+          className="border border-(--mrms-rule) bg-(--mrms-paper) px-2 py-1 font-mono text-[11px] text-(--mrms-ink) w-[180px]"
+        />
+        <button
+          onClick={saveToken}
+          disabled={saving || !tokenInput.trim()}
+          className="bg-(--mrms-ink) text-(--mrms-paper) border-0 px-3 py-1 font-mono text-[10px] tracking-editorial uppercase cursor-pointer disabled:opacity-50"
+        >
+          Save
+        </button>
+        {tokenSetting?.present && (
+          <button
+            onClick={clearToken}
+            disabled={saving}
+            className="bg-transparent border border-(--mrms-rust) text-(--mrms-rust) px-3 py-1 font-mono text-[10px] tracking-editorial uppercase cursor-pointer"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      {/* Sources row */}
+      <div className="py-2 border-b border-(--mrms-rule)">
+        <div className="font-mono text-[11px] text-(--mrms-ink-mute) tracking-editorial uppercase mb-2">
+          tidal_emp_sources
+        </div>
+        <textarea
+          value={sourcesInput}
+          onChange={(e) => setSourcesInput(e.target.value)}
+          placeholder={`pages/explore\npages/genre_jazz\nplaylist/31885f0b-96dc-41e1-8e1b-f83372043208`}
+          rows={8}
+          className="w-full border border-(--mrms-rule) bg-(--mrms-paper) px-2 py-1 font-mono text-[11px] text-(--mrms-ink) resize-y"
+        />
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={saveSources}
+            disabled={saving}
+            className="bg-(--mrms-ink) text-(--mrms-paper) border-0 px-3 py-1 font-mono text-[10px] tracking-editorial uppercase cursor-pointer disabled:opacity-50"
+          >
+            Save sources
+          </button>
+        </div>
+      </div>
+
+      <p className="mt-2 font-mono text-[10px] text-(--mrms-ink-mute)">
+        Tidal web client의 X-Tidal-Token. 값이 있으면 importer가 editorial playlists 받아옴.
+        <br />
+        <span className="mt-1 block">
+          Sources: 한 줄에 하나씩.{" "}
+          <code>pages/&lt;slug&gt;</code> = 해당 페이지에서 playlist discover.{" "}
+          <code>playlist/&lt;uuid&gt;</code> = 직접 추가. 비우면 default (explore + 17개 장르).
+        </span>
+      </p>
+    </section>
+  );
+}

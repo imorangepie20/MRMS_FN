@@ -5,6 +5,8 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import type { EmpSection, EmpSectionItem } from "@/lib/types";
 
+import { EmpItemCard } from "./EmpItemCard";
+
 
 export function SectionRow({
   section,
@@ -14,7 +16,6 @@ export function SectionRow({
   onItemClick: (it: EmpSectionItem) => void;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const sectionRef = useRef<HTMLElement>(null);
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(false);
   const [cols, setCols] = useState(8);
@@ -71,12 +72,12 @@ export function SectionRow({
   const scrollByPage = (dir: 1 | -1) => {
     const el = scrollerRef.current;
     if (!el) return;
-    // 8개 단위 슬라이딩 (wrapper width = itemPx + 12)
+    // cols개 단위 슬라이딩 (wrapper width = itemPx + 12)
     el.scrollBy({ left: dir * (itemPx + 12) * cols, behavior: "smooth" });
   };
 
   return (
-    <section ref={sectionRef}>
+    <section>
       <div className="flex items-baseline justify-between mb-3 pb-2 border-b border-(--mrms-ink)">
         <div className="flex items-baseline gap-3 min-w-0">
           <h2 className="font-display font-bold text-[20px] text-(--mrms-ink) truncate">
@@ -118,36 +119,13 @@ export function SectionRow({
             className="shrink-0 snap-start px-1.5"
             style={{ width: `${itemPx + 12}px` }}
           >
-            <button
+            <EmpItemCard
+              item={it}
+              coverStyle={{ width: `${itemPx}px`, height: `${itemPx}px` }}
+              labelSizeClassName="text-[9px]"
+              titleTooltip
               onClick={() => onItemClick(it)}
-              className="w-full text-left bg-transparent border-0 p-0 cursor-pointer"
-            >
-              {it.cover_url ? (
-                <img
-                  src={it.cover_url}
-                  alt={it.title ?? ""}
-                  loading="lazy"
-                  style={{ width: `${itemPx}px`, height: `${itemPx}px` }}
-                  className="object-cover bg-(--mrms-rule)"
-                />
-              ) : (
-                <div
-                  style={{ width: `${itemPx}px`, height: `${itemPx}px` }}
-                  className="bg-(--mrms-rule) flex items-center justify-center font-mono text-[10px] text-(--mrms-ink-mute) uppercase"
-                >
-                  {it.item_type}
-                </div>
-              )}
-              <div className="mt-1 font-mono text-[9px] tracking-editorial uppercase text-(--mrms-ink-mute)">
-                {it.item_type}
-              </div>
-              <div
-                className="font-display text-[12px] text-(--mrms-ink) truncate"
-                title={it.title ?? it.item_id}
-              >
-                {it.title ?? it.item_id}
-              </div>
-            </button>
+            />
           </div>
         ))}
       </div>

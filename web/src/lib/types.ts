@@ -153,11 +153,6 @@ export interface EmpStats {
   last_run?: IngestionRun | null;
 }
 
-export interface EmpSettingMasked {
-  present: boolean;
-  preview: string | null;
-}
-
 /** Unified shape for a single setting entry from GET /api/admin/emp/settings.
  *  Masked keys (e.g. tokens) have `preview`; plain keys have `value`. */
 export interface EmpSettingValue {
