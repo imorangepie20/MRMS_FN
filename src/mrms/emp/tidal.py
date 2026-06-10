@@ -1,8 +1,8 @@
-"""Tidal editorial 트랙 임포터 — api.tidal.com + X-Tidal-Token 방식.
+"""Tidal editorial 트랙 임포터 — tidal.com/v1 + X-Tidal-Token 방식.
 
 openapi.tidal.com (3rd-party용)에는 editorial discovery 없음.
-api.tidal.com (Tidal web 클라이언트가 쓰는 비공식 endpoint)에 X-Tidal-Token
-헤더 붙이면 /v1/pages/explore에서 큐레이션 받을 수 있음.
+tidal.com (Tidal web 클라이언트가 직접 호출하는 endpoint)에 X-Tidal-Token
+헤더 붙이면 /v1/pages/* 에서 큐레이션 받을 수 있음.
 
 토큰은 Setting 테이블의 'tidal_x_token' 키에서 읽거나 생성자 인자로 직접 전달.
 없으면 fetch_editorial_playlists가 빈 리스트 반환 (importer는 graceful skip).
@@ -18,8 +18,34 @@ from mrms.db.settings import get_setting
 from mrms.emp.base import EMPImporter
 
 
-TIDAL_API_BASE = "https://api.tidal.com/v1"
+TIDAL_API_BASE = "https://tidal.com/v1"
 TOKEN_SETTING_KEY = "tidal_x_token"
+DEFAULT_COUNTRY = "US"
+DEFAULT_LOCALE = "en_US"
+DEFAULT_DEVICE = "BROWSER"
+
+# 다양한 페르소나를 만족시키려면 풀이 넓어야 함. 장르별 페이지 + explore 페이지 다 훑음.
+DISCOVERY_PAGES = [
+    "explore",
+    "home",
+    "genre_pop",
+    "genre_rock",
+    "genre_hiphop",
+    "genre_rnb",
+    "genre_electronic",
+    "genre_country",
+    "genre_latin",
+    "genre_jazz",
+    "genre_classical",
+    "genre_blues",
+    "genre_folk",
+    "genre_reggae",
+    "genre_metal",
+    "genre_kpop",
+    "genre_jpop",
+    "genre_indie",
+    "genre_world",
+]
 
 
 class TidalEMPImporter(EMPImporter):
@@ -32,15 +58,25 @@ class TidalEMPImporter(EMPImporter):
         self._conn = conn
 
     def _headers(self) -> dict[str, str]:
-        return {"X-Tidal-Token": self.token or ""}
+        return {
+            "X-Tidal-Token": self.token or "",
+            "Accept": "application/json",
+        }
+
+    def _common_params(self) -> dict[str, str]:
+        return {
+            "countryCode": DEFAULT_COUNTRY,
+            "locale": DEFAULT_LOCALE,
+            "deviceType": DEFAULT_DEVICE,
+        }
 
     @staticmethod
     def _walk_playlists(node) -> Iterable[dict]:
-        """페이지 응답 구조에서 {uuid, title} 형태의 playlist 후보를 모두 추출.
+        """페이지 응답 구조에서 {uuid, title} 형태의 playlist 후보 추출.
 
-        Tidal /pages/explore는 rows[].modules[].pagedList.items 또는
+        Tidal /pages/* 응답은 rows[].modules[].pagedList.items 또는
         modules[].playlistList.items 등 다양한 깊이/형태. 재귀로 'uuid' + 'title'
-        있는 객체를 다 끌어모음.
+        있는 객체 모두 수집.
         """
         if isinstance(node, dict):
             uuid = node.get("uuid")
@@ -56,29 +92,31 @@ class TidalEMPImporter(EMPImporter):
     async def fetch_editorial_playlists(self) -> list[dict]:
         if not self.token:
             return []
-        params = {"countryCode": "US", "deviceType": "BROWSER"}
-        async with httpx.AsyncClient(timeout=20.0) as http:
-            r = await http.get(
-                f"{TIDAL_API_BASE}/pages/explore",
-                headers=self._headers(),
-                params=params,
-            )
-            if r.status_code != 200:
-                return []
-            data = r.json()
-
         seen: set[str] = set()
         result: list[dict] = []
-        for cand in self._walk_playlists(data):
-            uuid = cand["uuid"]
-            if uuid in seen:
-                continue
-            seen.add(uuid)
-            result.append({
-                "id": uuid,
-                "name": cand["title"],
-                "source_type": "editorial_playlist",
-            })
+        async with httpx.AsyncClient(timeout=20.0) as http:
+            for page in DISCOVERY_PAGES:
+                try:
+                    r = await http.get(
+                        f"{TIDAL_API_BASE}/pages/{page}",
+                        headers=self._headers(),
+                        params=self._common_params(),
+                    )
+                    if r.status_code != 200:
+                        continue
+                    data = r.json()
+                except Exception:
+                    continue
+                for cand in self._walk_playlists(data):
+                    uuid = cand["uuid"]
+                    if uuid in seen:
+                        continue
+                    seen.add(uuid)
+                    result.append({
+                        "id": uuid,
+                        "name": cand["title"],
+                        "source_type": "editorial_playlist",
+                    })
         return result
 
     async def fetch_playlist_tracks(self, playlist_id: str) -> list[dict]:
@@ -89,8 +127,8 @@ class TidalEMPImporter(EMPImporter):
         async with httpx.AsyncClient(timeout=20.0) as http:
             while True:
                 params = {
-                    "countryCode": "US",
-                    "limit": 100,
+                    **self._common_params(),
+                    "limit": 50,
                     "offset": offset,
                 }
                 r = await http.get(
