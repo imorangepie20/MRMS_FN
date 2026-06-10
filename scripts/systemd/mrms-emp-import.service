@@ -1,0 +1,15 @@
+[Unit]
+Description=MRMS EMP import + embedding pipeline
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=mrms
+Group=mrms
+WorkingDirectory=/opt/mrms
+EnvironmentFile=/opt/mrms/.env.production
+ExecStart=/opt/mrms/.venv/bin/python scripts/run_emp_pipeline.py
+TimeoutStartSec=4h
+StandardOutput=journal
+StandardError=journal
