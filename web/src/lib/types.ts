@@ -40,6 +40,8 @@ export interface RecommendedTrack {
   duration_ms?: number | null;
   duration_sec?: number | null;
   persona_score?: number | null;
+  liked?: boolean;
+  pct?: boolean;
 }
 
 export interface RecommendedAlbum {

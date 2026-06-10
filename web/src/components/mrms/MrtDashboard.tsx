@@ -320,8 +320,8 @@ function TrackRow({
   checked: boolean;
   onToggle: () => void;
 }) {
-  const [liked, setLiked] = useState(false);
-  const [pct, setPct] = useState(false);
+  const [liked, setLiked] = useState(track.liked ?? false);
+  const [pct, setPct] = useState(track.pct ?? false);
 
   const onLike = async () => {
     const prev = liked;

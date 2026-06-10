@@ -217,6 +217,20 @@ def mrt_latest(
         for p in playlists_sorted
     ]
     rec_tracks_raw = derive_recommended_tracks(playlists_with_scores, top_n=top_tracks_n)
+
+    # liked + pct 상태 한 번에 fetch (N+1 회피)
+    rec_track_ids = [r["track_id"] for r in rec_tracks_raw if r["track_id"] in meta]
+    user_track_state: dict[str, tuple[bool, bool]] = {}
+    if rec_track_ids:
+        with conn.cursor() as cur:
+            cur.execute(
+                '''SELECT "trackId", source, "isCore" FROM "UserTrack"
+                   WHERE "userId" = %s AND "trackId" = ANY(%s)''',
+                (user_id, rec_track_ids),
+            )
+            for row in cur.fetchall():
+                user_track_state[row[0]] = (row[1] == "liked", bool(row[2]))
+
     recommended_tracks = [
         RecommendedTrack(
             track_id=r["track_id"],
@@ -229,6 +243,8 @@ def mrt_latest(
             persona_idx=r.get("persona_idx"),
             tidal_track_id=meta[r["track_id"]]["tidal_track_id"],
             spotify_track_id=meta[r["track_id"]]["spotify_track_id"],
+            liked=user_track_state.get(r["track_id"], (False, False))[0],
+            pct=user_track_state.get(r["track_id"], (False, False))[1],
         )
         for r in rec_tracks_raw
         if r["track_id"] in meta  # Tidal 가용한 것만
