@@ -11,7 +11,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="md:grid md:grid-cols-[240px_1fr] min-h-screen bg-[var(--mrms-bg)]">
+    <div className="md:grid md:grid-cols-[240px_minmax(0,1fr)] min-h-screen bg-[var(--mrms-bg)]">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
