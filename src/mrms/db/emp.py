@@ -109,6 +109,47 @@ def finish_run(
     conn.commit()
 
 
+def fail_stale_runs(
+    conn: psycopg.Connection, older_than_hours: int = 5
+) -> int:
+    """watchdog — finish 못 하고 죽은 (kill -9, systemd timeout 등) 좀비 run 정리.
+    'running'인데 시작한 지 older_than_hours 넘은 row를 failed로 마감."""
+    with conn.cursor() as cur:
+        cur.execute(
+            '''UPDATE "IngestionRun"
+               SET status = 'failed', "finishedAt" = NOW(),
+                   stages = stages || %s::jsonb
+               WHERE status = 'running'
+                 AND "startedAt" < NOW() - make_interval(hours => %s)''',
+            (
+                json.dumps([{
+                    "stage": "watchdog",
+                    "status": "failed",
+                    "error": "stale run — process died without finishing",
+                }]),
+                older_than_hours,
+            ),
+        )
+        n = cur.rowcount
+    conn.commit()
+    return n
+
+
+def has_active_run(
+    conn: psycopg.Connection, within_hours: int = 5
+) -> bool:
+    """최근 within_hours 안에 시작해 아직 'running'인 run 존재 여부 — 동시 실행 방지용."""
+    with conn.cursor() as cur:
+        cur.execute(
+            '''SELECT 1 FROM "IngestionRun"
+               WHERE status = 'running'
+                 AND "startedAt" >= NOW() - make_interval(hours => %s)
+               LIMIT 1''',
+            (within_hours,),
+        )
+        return cur.fetchone() is not None
+
+
 def list_recent_runs(
     conn: psycopg.Connection, limit: int = 50
 ) -> list[dict]:

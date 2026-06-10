@@ -79,3 +79,52 @@ async def test_run_pipeline_partial_on_failure(db_conn, cleanup):
     with db_conn.cursor() as cur:
         cur.execute('SELECT status FROM "IngestionRun" WHERE id = %s', (run_id,))
         assert cur.fetchone()[0] == "partial"
+
+
+async def test_run_pipeline_crash_marks_failed(db_conn, cleanup):
+    """SIGTERM(SystemExit) 등으로 중단돼도 run이 failed로 마감 — 좀비 'running' 방지."""
+    import pytest
+    from mrms.emp.runner import run_pipeline
+
+    async def boom(conn):
+        raise SystemExit(143)  # SIGTERM 핸들러 경로
+
+    with patch("mrms.emp.runner._run_importer_tidal", new=boom):
+        with pytest.raises(SystemExit):
+            await run_pipeline(db_conn, platform="tidal", triggered_by="manual")
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            '''SELECT id, status FROM "IngestionRun"
+               WHERE "triggeredBy" = 'manual' ORDER BY "startedAt" DESC LIMIT 1'''
+        )
+        run_id, status = cur.fetchone()
+    cleanup('DELETE FROM "IngestionRun" WHERE id = %s', (run_id,))
+    assert status == "failed"
+
+
+def test_fail_stale_runs_and_has_active(db_conn, cleanup):
+    """watchdog이 오래된 running row만 failed 처리, 최근 run은 active로 감지."""
+    from mrms.db.emp import create_run, fail_stale_runs, finish_run, has_active_run
+
+    run_id = create_run(db_conn, platform="all", triggered_by="manual")
+    cleanup('DELETE FROM "IngestionRun" WHERE id = %s', (run_id,))
+
+    # 방금 만든 run — active로 감지, stale 아님
+    assert has_active_run(db_conn) is True
+    assert fail_stale_runs(db_conn, older_than_hours=5) == 0
+
+    # startedAt을 6시간 전으로 — stale로 처리됨
+    with db_conn.cursor() as cur:
+        cur.execute(
+            '''UPDATE "IngestionRun"
+               SET "startedAt" = NOW() - interval '6 hours' WHERE id = %s''',
+            (run_id,),
+        )
+    db_conn.commit()
+    assert fail_stale_runs(db_conn, older_than_hours=5) == 1
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT status FROM "IngestionRun" WHERE id = %s', (run_id,))
+        assert cur.fetchone()[0] == "failed"
+
+    finish_run(db_conn, run_id, "failed")  # idempotent 확인용

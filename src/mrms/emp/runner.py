@@ -107,36 +107,47 @@ async def run_pipeline(
     platform: str = "all",
     triggered_by: str = "scheduler",
 ) -> str:
-    """전체 파이프라인 한 사이클. run_id 반환."""
+    """전체 파이프라인 한 사이클. run_id 반환.
+
+    crash-safe: SIGTERM(SystemExit)·예외로 중단돼도 run을 failed로 마감해
+    'running' 좀비 row가 남지 않도록 함."""
     run_id = create_run(conn, platform=platform, triggered_by=triggered_by)
     overall_ok = True
 
-    # importers — 모듈 attr로 참조해야 테스트의 patch가 적용됨
-    for plat, stage_name, importer_fn in (
-        ("tidal", "import_tidal", _run_importer_tidal),
-        ("spotify", "import_spotify", _run_importer_spotify),
-    ):
-        if platform in ("all", plat):
-            if not await _import_stage(conn, run_id, stage_name, importer_fn):
-                overall_ok = False
+    try:
+        # importers — 모듈 attr로 참조해야 테스트의 patch가 적용됨
+        for plat, stage_name, importer_fn in (
+            ("tidal", "import_tidal", _run_importer_tidal),
+            ("spotify", "import_spotify", _run_importer_spotify),
+        ):
+            if platform in ("all", plat):
+                if not await _import_stage(conn, run_id, stage_name, importer_fn):
+                    overall_ok = False
 
-    # audio download
-    s = _run_audio_download()
-    append_stage(conn, run_id, {"stage": "download_audio", **s})
-    if s["status"] != "success":
-        overall_ok = False
+        # audio download
+        s = _run_audio_download()
+        append_stage(conn, run_id, {"stage": "download_audio", **s})
+        if s["status"] != "success":
+            overall_ok = False
 
-    # extract embeddings
-    s = _run_extract_embeddings()
-    append_stage(conn, run_id, {"stage": "extract_embeddings", **s})
-    if s["status"] != "success":
-        overall_ok = False
+        # extract embeddings
+        s = _run_extract_embeddings()
+        append_stage(conn, run_id, {"stage": "extract_embeddings", **s})
+        if s["status"] != "success":
+            overall_ok = False
 
-    # load to DB
-    s = _run_load_to_db()
-    append_stage(conn, run_id, {"stage": "load_to_db", **s})
-    if s["status"] != "success":
-        overall_ok = False
+        # load to DB
+        s = _run_load_to_db()
+        append_stage(conn, run_id, {"stage": "load_to_db", **s})
+        if s["status"] != "success":
+            overall_ok = False
+    except BaseException:
+        # SystemExit(SIGTERM)·KeyboardInterrupt 포함 — 마감 후 re-raise
+        try:
+            finish_run(conn, run_id=run_id, status="failed")
+        except Exception:
+            pass  # DB까지 죽은 경우 — watchdog이 다음 run에서 정리
+        raise
 
     finish_run(conn, run_id=run_id, status="success" if overall_ok else "partial")
     return run_id
