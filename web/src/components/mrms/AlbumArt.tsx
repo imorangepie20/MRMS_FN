@@ -48,6 +48,7 @@ export function AlbumArt({ artist, album, initialUrl, className = "" }: Props) {
   return (
     <div
       className={`bg-[var(--mrms-paper)] border border-[var(--mrms-rule)] relative overflow-hidden flex items-center justify-center ${className}`}
+      style={{ containerType: "size" }}
     >
       {url && (
         <img
@@ -60,7 +61,7 @@ export function AlbumArt({ artist, album, initialUrl, className = "" }: Props) {
       {showFallback && (
         <span
           className="font-display font-bold text-[var(--mrms-ink-mute)] leading-none select-none"
-          style={{ fontSize: "55%" }}
+          style={{ fontSize: "60cqw" }}
         >
           {letter}
         </span>
