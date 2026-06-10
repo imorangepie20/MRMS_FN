@@ -77,14 +77,15 @@ export function SectionRow({
 
       <div
         ref={scrollerRef}
-        className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 scroll-smooth snap-x snap-mandatory [&::-webkit-scrollbar]:hidden"
+        className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 scroll-smooth snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [--cols:2] sm:[--cols:4] md:[--cols:6] lg:[--cols:8]"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
         {section.items.map((it) => (
           <button
             key={it.id}
             onClick={() => onItemClick(it)}
-            className="shrink-0 snap-start text-left bg-transparent border-0 p-0 cursor-pointer w-[144px] md:w-[165px]"
+            style={{ width: "calc((100% - 12px * (var(--cols) - 1)) / var(--cols))" }}
+            className="shrink-0 snap-start text-left bg-transparent border-0 p-0 cursor-pointer"
           >
             {it.cover_url ? (
               <img
