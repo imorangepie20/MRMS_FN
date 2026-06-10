@@ -1,109 +1,123 @@
-"""Tidal editorial playlist 임포터.
+"""Tidal editorial 트랙 임포터 — api.tidal.com + X-Tidal-Token 방식.
 
-Note: Tidal API의 정확한 editorial endpoint는 환경에 따라 다를 수 있음.
-실제 응답 형태가 다르면 _parse_* 메서드 조정 필요.
+openapi.tidal.com (3rd-party용)에는 editorial discovery 없음.
+api.tidal.com (Tidal web 클라이언트가 쓰는 비공식 endpoint)에 X-Tidal-Token
+헤더 붙이면 /v1/pages/explore에서 큐레이션 받을 수 있음.
+
+토큰은 Setting 테이블의 'tidal_x_token' 키에서 읽거나 생성자 인자로 직접 전달.
+없으면 fetch_editorial_playlists가 빈 리스트 반환 (importer는 graceful skip).
 """
 from __future__ import annotations
 
-import base64
+from typing import Iterable
 
 import httpx
+import psycopg
 
+from mrms.db.settings import get_setting
 from mrms.emp.base import EMPImporter
 
 
-TIDAL_API_BASE = "https://openapi.tidal.com/v2"
-TIDAL_OAUTH = "https://auth.tidal.com/v1/oauth2/token"
-
-# editorial wellknown playlists — API 실패 시 fallback
-DEFAULT_PLAYLISTS = [
-    {"id": "tidal_rising", "name": "Tidal Rising", "source_type": "editorial_playlist"},
-    {"id": "tidal_discovery", "name": "Tidal Discovery", "source_type": "editorial_playlist"},
-]
+TIDAL_API_BASE = "https://api.tidal.com/v1"
+TOKEN_SETTING_KEY = "tidal_x_token"
 
 
 class TidalEMPImporter(EMPImporter):
-    """Tidal editorial playlist 임포터."""
+    """X-Tidal-Token 방식. token은 생성자 인자 또는 Setting('tidal_x_token')."""
 
     platform = "tidal"
 
-    def __init__(self, client_id: str, client_secret: str):
-        self.client_id = client_id
-        self.client_secret = client_secret
+    def __init__(self, conn: psycopg.Connection, token: str | None = None):
+        self.token = token or get_setting(conn, TOKEN_SETTING_KEY)
+        self._conn = conn
 
-    async def _get_access_token(self) -> str:
-        """client_credentials grant."""
-        basic = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
-        async with httpx.AsyncClient(timeout=15.0) as http:
-            r = await http.post(
-                TIDAL_OAUTH,
-                data={"grant_type": "client_credentials"},
-                headers={
-                    "Authorization": f"Basic {basic}",
-                    "Content-Type": "application/x-www-form-urlencoded",
-                },
-            )
-            r.raise_for_status()
-            return r.json()["access_token"]
+    def _headers(self) -> dict[str, str]:
+        return {"X-Tidal-Token": self.token or ""}
+
+    @staticmethod
+    def _walk_playlists(node) -> Iterable[dict]:
+        """페이지 응답 구조에서 {uuid, title} 형태의 playlist 후보를 모두 추출.
+
+        Tidal /pages/explore는 rows[].modules[].pagedList.items 또는
+        modules[].playlistList.items 등 다양한 깊이/형태. 재귀로 'uuid' + 'title'
+        있는 객체를 다 끌어모음.
+        """
+        if isinstance(node, dict):
+            uuid = node.get("uuid")
+            title = node.get("title")
+            if uuid and title and isinstance(uuid, str) and len(uuid) >= 16:
+                yield {"uuid": uuid, "title": title}
+            for v in node.values():
+                yield from TidalEMPImporter._walk_playlists(v)
+        elif isinstance(node, list):
+            for v in node:
+                yield from TidalEMPImporter._walk_playlists(v)
 
     async def fetch_editorial_playlists(self) -> list[dict]:
-        """기본은 DEFAULT_PLAYLISTS. API 가능하면 거기서 가져옴."""
-        token = await self._get_access_token()
-        async with httpx.AsyncClient(timeout=15.0) as http:
-            try:
-                r = await http.get(
-                    f"{TIDAL_API_BASE}/playlists",
-                    headers={"Authorization": f"Bearer {token}"},
-                    params={"countryCode": "US", "limit": 20},
-                )
-                if r.status_code == 200:
-                    data = r.json()
-                    items = data.get("items") or data.get("data") or []
-                    result = []
-                    for it in items:
-                        pid = it.get("uuid") or it.get("id")
-                        attr = it.get("attributes") or it
-                        name = it.get("title") or attr.get("title")
-                        if pid:
-                            result.append({
-                                "id": str(pid),
-                                "name": name,
-                                "source_type": "editorial_playlist",
-                            })
-                    if result:
-                        return result
-            except Exception:
-                pass
-
-        # fallback
-        return DEFAULT_PLAYLISTS
-
-    async def fetch_playlist_tracks(self, playlist_id: str) -> list[dict]:
-        """한 playlist 트랙들."""
-        token = await self._get_access_token()
-        result: list[dict] = []
-        async with httpx.AsyncClient(timeout=15.0) as http:
+        if not self.token:
+            return []
+        params = {"countryCode": "US", "deviceType": "BROWSER"}
+        async with httpx.AsyncClient(timeout=20.0) as http:
             r = await http.get(
-                f"{TIDAL_API_BASE}/playlists/{playlist_id}/items",
-                headers={"Authorization": f"Bearer {token}"},
-                params={"countryCode": "US", "limit": 100},
+                f"{TIDAL_API_BASE}/pages/explore",
+                headers=self._headers(),
+                params=params,
             )
             if r.status_code != 200:
-                return result
+                return []
             data = r.json()
-            items = data.get("items") or data.get("data") or []
-            for it in items:
-                # v1/v2 응답 형식 차이 흡수
-                tid = it.get("id") or it.get("uuid")
-                attr = it.get("attributes") or it
-                title = attr.get("title")
-                isrc = attr.get("isrc")
-                duration_sec = attr.get("duration") or 0
-                artists = attr.get("artists") or []
-                artist_name = artists[0].get("name") if artists else "Unknown"
-                album = attr.get("album") or {}
-                album_title = album.get("title")
-                if tid and title:
+
+        seen: set[str] = set()
+        result: list[dict] = []
+        for cand in self._walk_playlists(data):
+            uuid = cand["uuid"]
+            if uuid in seen:
+                continue
+            seen.add(uuid)
+            result.append({
+                "id": uuid,
+                "name": cand["title"],
+                "source_type": "editorial_playlist",
+            })
+        return result
+
+    async def fetch_playlist_tracks(self, playlist_id: str) -> list[dict]:
+        if not self.token:
+            return []
+        result: list[dict] = []
+        offset = 0
+        async with httpx.AsyncClient(timeout=20.0) as http:
+            while True:
+                params = {
+                    "countryCode": "US",
+                    "limit": 100,
+                    "offset": offset,
+                }
+                r = await http.get(
+                    f"{TIDAL_API_BASE}/playlists/{playlist_id}/items",
+                    headers=self._headers(),
+                    params=params,
+                )
+                if r.status_code != 200:
+                    break
+                data = r.json()
+                items = data.get("items") or []
+                if not items:
+                    break
+                for entry in items:
+                    tr = entry.get("item") if isinstance(entry.get("item"), dict) else entry
+                    if not tr:
+                        continue
+                    tid = tr.get("id")
+                    title = tr.get("title")
+                    if not tid or not title:
+                        continue
+                    isrc = tr.get("isrc")
+                    duration_sec = tr.get("duration") or 0
+                    artists = tr.get("artists") or []
+                    artist_name = artists[0].get("name") if artists else "Unknown"
+                    album = tr.get("album") or {}
+                    album_title = album.get("title")
                     result.append({
                         "platform_track_id": str(tid),
                         "title": title,
@@ -112,4 +126,8 @@ class TidalEMPImporter(EMPImporter):
                         "album_title": album_title,
                         "duration_ms": int(duration_sec) * 1000 if duration_sec else None,
                     })
+                total = data.get("totalNumberOfItems") or len(items)
+                offset += len(items)
+                if offset >= total:
+                    break
         return result

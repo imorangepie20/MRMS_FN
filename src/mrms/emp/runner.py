@@ -16,10 +16,7 @@ def _ms_since(t0: float) -> int:
 
 async def _run_importer_tidal(conn) -> dict:
     from mrms.emp.tidal import TidalEMPImporter
-    importer = TidalEMPImporter(
-        client_id=os.environ["TIDAL_CLIENT_ID"],
-        client_secret=os.environ["TIDAL_CLIENT_SECRET"],
-    )
+    importer = TidalEMPImporter(conn=conn)  # token 자동 로딩 from Setting
     return await importer.import_all(conn)
 
 

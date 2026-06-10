@@ -23,10 +23,7 @@ def get_conn() -> psycopg.Connection:
 async def run_platform(platform: str, conn: psycopg.Connection) -> dict:
     if platform == "tidal":
         from mrms.emp.tidal import TidalEMPImporter
-        importer = TidalEMPImporter(
-            client_id=os.environ["TIDAL_CLIENT_ID"],
-            client_secret=os.environ["TIDAL_CLIENT_SECRET"],
-        )
+        importer = TidalEMPImporter(conn=conn)  # token 자동 로딩 from Setting
     elif platform == "spotify":
         from mrms.emp.spotify import SpotifyEMPImporter
         importer = SpotifyEMPImporter(
