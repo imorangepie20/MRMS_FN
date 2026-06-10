@@ -2,9 +2,26 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _expand_env_refs(value: str) -> str:
+    """${VAR} 참조 재귀 확장.
+
+    systemd EnvironmentFile은 변수 참조를 확장하지 않고 literal 전달
+    (bash source/dotenv와 다름) — AUDIO_DIR=${DATA_ROOT}/audio 가 문자
+    그대로 들어와 '${DATA_ROOT}' 디렉토리를 만들려다 죽는 사고 방지.
+    DATA_ROOT 자체가 ${PROJECT_ROOT} 참조라 고정점까지 반복."""
+    for _ in range(10):
+        expanded = os.path.expandvars(value)
+        if expanded == value:
+            return expanded
+        value = expanded
+    return value
 
 # ─── 카탈로그 임베딩 모델 버전 (TrackEmbedding.modelVersion 값) ────
 # 버전 범프 시 여기 한 곳만 수정. 파생 버전(예: '+persona-K3')은
@@ -46,6 +63,24 @@ class Settings(BaseSettings):
     embed_dir: Path = Path("data/embeddings")
     checkpoint_dir: Path = Path("checkpoints")
     log_dir: Path = Path("logs")
+
+    @field_validator(
+        "project_root",
+        "data_root",
+        "audio_dir",
+        "mel_dir",
+        "embed_dir",
+        "checkpoint_dir",
+        "log_dir",
+        "tracks_110k_path",
+        "tracks_90k_path",
+        mode="before",
+    )
+    @classmethod
+    def _expand_path_env_refs(cls, v: object) -> object:
+        if isinstance(v, str):
+            return _expand_env_refs(v)
+        return v
 
     # ─── Model ───────────────────────────────────────
     encoder_model_id: str = "m-a-p/MERT-v1-95M"
