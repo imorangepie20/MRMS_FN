@@ -32,15 +32,26 @@ export function SectionRow({
     if (!el) return;
 
     const compute = () => {
-      const w = window.innerWidth;
-      // breakpoint별 고정 px — 측정 의존 X (피드백 루프 회피)
-      let px = 100;
-      if (w >= 1536) px = 170;
-      else if (w >= 1280) px = 150;
-      else if (w >= 1024) px = 130;
-      else if (w >= 768) px = 115;
-      else if (w >= 640) px = 100;
-      else px = 95;
+      const vw = window.innerWidth;
+      // viewport - sidebar - page padding 으로 사용 가능 폭 계산
+      // sidebar 240px (md+), 0 (mobile). EmpBrowse padding px-5(40)/md:px-10(80)
+      const isDesktop = vw >= 768;
+      const sidebar = isDesktop ? 240 : 0;
+      const padding = isDesktop ? 80 : 40;
+      const available = vw - sidebar - padding;
+
+      // cols: 정확히 N개 보이도록
+      let c = 8;
+      if (vw < 640) c = 2;
+      else if (vw < 768) c = 3;
+      else if (vw < 1024) c = 4;
+      else if (vw < 1280) c = 6;
+
+      setCols(c);
+      // wrapper 너비 = available / cols (padding 포함)
+      const wrapper = Math.floor(available / c);
+      // image = wrapper - left/right px-1.5 (12px 총)
+      const px = Math.max(wrapper - 12, 80);
       setItemPx(px);
       updateArrows();
     };
@@ -60,7 +71,8 @@ export function SectionRow({
   const scrollByPage = (dir: 1 | -1) => {
     const el = scrollerRef.current;
     if (!el) return;
-    el.scrollBy({ left: dir * el.clientWidth, behavior: "smooth" });
+    // 8개 단위 슬라이딩 (wrapper width = itemPx + 12)
+    el.scrollBy({ left: dir * (itemPx + 12) * cols, behavior: "smooth" });
   };
 
   return (
@@ -75,7 +87,7 @@ export function SectionRow({
           </span>
         </div>
 
-        <div className="flex gap-1 flex-shrink-0">
+        <div className="flex gap-1 shrink-0">
           <button
             onClick={() => scrollByPage(-1)}
             disabled={!canLeft}
