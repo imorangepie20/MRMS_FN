@@ -141,7 +141,10 @@ export function SectionRow({
               <div className="mt-1 font-mono text-[9px] tracking-editorial uppercase text-(--mrms-ink-mute)">
                 {it.item_type}
               </div>
-              <div className="font-display text-[12px] text-(--mrms-ink) line-clamp-2">
+              <div
+                className="font-display text-[12px] text-(--mrms-ink) truncate"
+                title={it.title ?? it.item_id}
+              >
                 {it.title ?? it.item_id}
               </div>
             </button>
