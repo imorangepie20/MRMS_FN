@@ -15,6 +15,7 @@ from mrms.api.auth_spotify import router as auth_spotify_router
 from mrms.api.auth_tidal import playback_router as tidal_playback_router, router as tidal_router
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.api.onboarding_api import router as onboarding_router
+from mrms.api.playback_resolve import router as playback_resolve_router
 from mrms.api.playlists import router as playlists_router
 from mrms.api.user_tracks import router as user_tracks_router
 from mrms.api.schemas import (
@@ -40,6 +41,7 @@ app.add_middleware(
 )
 app.include_router(tidal_router)
 app.include_router(tidal_playback_router)
+app.include_router(playback_resolve_router)
 app.include_router(auth_session_router)
 app.include_router(auth_spotify_router)
 app.include_router(onboarding_router)

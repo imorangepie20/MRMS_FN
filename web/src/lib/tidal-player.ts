@@ -10,12 +10,20 @@ let audioEl: HTMLAudioElement | null = null;
 // auto-next 판단(큐 진행, 교차 플랫폼 포함)은 전적으로 facade 책임.
 let onTrackEnd: (() => void) | null = null;
 
+// 재생 에러 콜백 — facade가 타 플랫폼 재시도/스킵 판단
+let onTrackError: (() => void) | null = null;
+
 // 교차 재생 시 비활성 플랫폼의 이벤트가 store를 덮어쓰지 않도록 facade가 제어
 let active = true;
 
 
 export function setOnTrackEnd(cb: (() => void) | null): void {
   onTrackEnd = cb;
+}
+
+
+export function setOnTrackError(cb: (() => void) | null): void {
+  onTrackError = cb;
 }
 
 
@@ -68,7 +76,12 @@ function ensureAudio(): HTMLAudioElement {
       ? `audio error code=${err.code} ${err.message ?? ""}`
       : "audio error";
     usePlayerStore.setState({ errorMsg: msg, isPlaying: false });
-    // auto-next on error — 큐 진행 여부는 facade가 판단
+    // 재생 에러 → facade가 타 플랫폼 재시도/스킵 판단 (즉시 호출)
+    if (onTrackError) {
+      onTrackError();
+      return;
+    }
+    // onTrackError 미등록 시 기존 동작: auto-next on error
     if (onTrackEnd) {
       const cb = onTrackEnd;
       setTimeout(() => {
