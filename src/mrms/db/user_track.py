@@ -83,6 +83,28 @@ def find_track_id_by_isrc(conn: psycopg.Connection, isrc: str) -> str | None:
     return row[0] if row else None
 
 
+def get_user_track_states(
+    conn: psycopg.Connection, user_id: str, track_ids: list[str]
+) -> dict[str, tuple[bool, bool]]:
+    """trackId → (liked, pct) 매핑. 한 번에 fetch (N+1 회피).
+
+    liked = source == 'liked', pct = isCore.
+    UserTrack row 없는 트랙은 키 자체가 없음 — 호출부에서 (False, False) 기본.
+    """
+    states: dict[str, tuple[bool, bool]] = {}
+    if not track_ids:
+        return states
+    with conn.cursor() as cur:
+        cur.execute(
+            '''SELECT "trackId", source, "isCore" FROM "UserTrack"
+               WHERE "userId" = %s AND "trackId" = ANY(%s)''',
+            (user_id, track_ids),
+        )
+        for row in cur.fetchall():
+            states[row[0]] = (row[1] == "liked", bool(row[2]))
+    return states
+
+
 def upsert_user_track(
     conn: psycopg.Connection,
     user_id: str,

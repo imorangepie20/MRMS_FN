@@ -79,6 +79,37 @@ def test_get_playlist_tracks_returns_tracks(db_conn, login):
     tracks = r.json()["tracks"]
     assert [t["track_id"] for t in tracks] == track_ids
     assert r.json()["playlist"]["name"] == "Z"
+    # 사용자별 liked/pct 상태 — boolean 필수
+    for t in tracks:
+        assert isinstance(t["liked"], bool)
+        assert isinstance(t["pct"], bool)
+    client.cookies.clear()
+
+
+def test_playlist_tracks_reflect_liked_state(db_conn, login, cleanup):
+    """좋아요한 트랙만 liked=True, 나머지는 False."""
+    user_id, session_id = login()  # per-test 고유 email → UserTrack 잔여물 없음
+    cleanup('DELETE FROM "UserTrack" WHERE "userId" = %s', (user_id,))
+    track_ids = _pick_track_ids(db_conn, 2)
+    if len(track_ids) < 2:
+        pytest.skip("Track 데이터 부족")
+    client.cookies.set("mrms_session", session_id)
+
+    create_r = client.post(
+        "/api/user/playlists",
+        json={"name": "LikedState", "track_ids": track_ids},
+    )
+    pid = create_r.json()["playlist"]["id"]
+    like_r = client.post(f"/api/user/tracks/{track_ids[0]}/like")
+    assert like_r.status_code == 200, like_r.text
+
+    r = client.get(f"/api/playlists/{pid}/tracks")
+    assert r.status_code == 200
+    by_id = {t["track_id"]: t for t in r.json()["tracks"]}
+    assert by_id[track_ids[0]]["liked"] is True
+    assert by_id[track_ids[1]]["liked"] is False
+    assert by_id[track_ids[0]]["pct"] is False
+    assert by_id[track_ids[1]]["pct"] is False
     client.cookies.clear()
 
 

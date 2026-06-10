@@ -11,6 +11,7 @@ from mrms.db.playlist import (
     get_playlist_tracks,
     list_user_playlists,
 )
+from mrms.db.user_track import get_user_track_states
 
 
 router = APIRouter(tags=["playlists"])
@@ -63,4 +64,7 @@ def playlist_tracks_endpoint(
     if pl["user_id"] != user_id:
         raise HTTPException(403, "forbidden")
     tracks = get_playlist_tracks(conn, playlist_id)
+    states = get_user_track_states(conn, user_id, [t["track_id"] for t in tracks])
+    for t in tracks:
+        t["liked"], t["pct"] = states.get(t["track_id"], (False, False))
     return {"playlist": pl, "tracks": tracks}

@@ -41,6 +41,9 @@ def test_get_album_tracks(db_conn, login):
     # album_cover 키 존재 (값은 None 허용 — coverUrl 컬럼 없음)
     for t in data["tracks"]:
         assert "album_cover" in t
+        # 사용자별 liked/pct 상태 — boolean 필수
+        assert isinstance(t["liked"], bool)
+        assert isinstance(t["pct"], bool)
     client.cookies.clear()
 
 

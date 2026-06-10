@@ -1,7 +1,9 @@
 """EMP browse API tests — /api/emp/sections + /api/emp/items/{type}/{id}/tracks."""
+import pytest
 from fastapi.testclient import TestClient
 
 from mrms.api.main import app
+from mrms.db.emp import upsert_emp_source
 from mrms.db.emp_section import upsert_section, upsert_section_item
 
 
@@ -41,6 +43,37 @@ def test_item_tracks_invalid_type(login):
     try:
         r = client.get("/api/emp/items/invalid_type/some_id/tracks")
         assert r.status_code == 400
+    finally:
+        client.cookies.clear()
+
+
+def test_item_tracks_include_liked_pct(db_conn, login, cleanup):
+    """tracks 응답의 각 트랙에 사용자별 liked/pct boolean 필드 존재."""
+    _, session_id = login()  # per-test 고유 email → UserTrack 잔여물 없음
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT id FROM "Track" LIMIT 1')
+        row = cur.fetchone()
+    if not row:
+        pytest.skip("Track 데이터 부족")
+    track_id = row[0]
+
+    item_id = "uuid_likedpct_xx"
+    source_id = f"playlist:{item_id}"
+    cleanup('DELETE FROM "EMPSource" WHERE source_id = %s', (source_id,))
+    upsert_emp_source(db_conn, track_id, "tidal", "playlist", source_id, "LikedPct")
+
+    client.cookies.set("mrms_session", session_id)
+    try:
+        r = client.get(f"/api/emp/items/playlist/{item_id}/tracks")
+        assert r.status_code == 200, r.text
+        tracks = r.json()["tracks"]
+        assert tracks, "EMPSource로 넣은 트랙이 응답에 없음"
+        for t in tracks:
+            assert isinstance(t["liked"], bool)
+            assert isinstance(t["pct"], bool)
+        # 새 사용자 — UserTrack row 없으므로 둘 다 False
+        assert tracks[0]["liked"] is False
+        assert tracks[0]["pct"] is False
     finally:
         client.cookies.clear()
 

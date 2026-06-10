@@ -73,6 +73,8 @@ export interface TrackInfo {
   tidal_track_id: string | null;
   spotify_track_id: string | null;
   duration_ms?: number | null;
+  liked?: boolean;
+  pct?: boolean;
 }
 
 
@@ -194,4 +196,6 @@ export interface EmpItemTrack {
   duration_ms: number | null;
   tidal_track_id: string | null;
   spotify_track_id: string | null;
+  liked?: boolean;
+  pct?: boolean;
 }

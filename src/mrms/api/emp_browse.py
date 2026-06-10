@@ -7,6 +7,7 @@ import psycopg
 
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.db.emp_section import list_sections_with_items
+from mrms.db.user_track import get_user_track_states
 
 
 router = APIRouter(prefix="/api/emp", tags=["emp_browse"])
@@ -60,6 +61,7 @@ def get_item_tracks(
         )
         rows = cur.fetchall()
 
+    states = get_user_track_states(conn, user_id, [r[0] for r in rows])
     tracks = [
         {
             "track_id": r[0],
@@ -73,6 +75,8 @@ def get_item_tracks(
             "duration_ms": r[5],
             "tidal_track_id": r[6],
             "spotify_track_id": r[7],
+            "liked": states.get(r[0], (False, False))[0],
+            "pct": states.get(r[0], (False, False))[1],
         }
         for r in rows
     ]

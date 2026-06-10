@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 
+import { ModalTrackList, PlayAllButton } from "@/components/track/ModalTrackList";
 import { fetchEmpItemTracks } from "@/lib/api/emp";
 import type { EmpItemTrack, EmpSectionItem } from "@/lib/types";
 
@@ -39,8 +40,8 @@ export function ItemTracksModal({
         onClick={(e) => e.stopPropagation()}
         className="bg-(--mrms-paper) max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6 border border-(--mrms-rule)"
       >
-        <div className="flex justify-between items-start mb-4 pb-2 border-b border-(--mrms-ink)">
-          <div>
+        <div className="flex justify-between items-start mb-4 pb-2 border-b border-(--mrms-ink) gap-3">
+          <div className="min-w-0">
             <div className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute)">
               {item.item_type}
             </div>
@@ -48,12 +49,15 @@ export function ItemTracksModal({
               {item.title ?? item.item_id}
             </h3>
           </div>
-          <button
-            onClick={onClose}
-            className="bg-transparent border-0 cursor-pointer text-(--mrms-ink-soft)"
-          >
-            <X className="size-4" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <PlayAllButton tracks={tracks} />
+            <button
+              onClick={onClose}
+              className="bg-transparent border-0 cursor-pointer text-(--mrms-ink-soft)"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
         </div>
 
         {loading && (
@@ -74,29 +78,7 @@ export function ItemTracksModal({
           </div>
         )}
 
-        {tracks.length > 0 && (
-          <ol className="font-mono text-[11px]">
-            {tracks.map((t, i) => (
-              <li
-                key={t.track_id}
-                className="grid grid-cols-[24px_1fr_120px] gap-3 py-1.5 border-b border-(--mrms-rule)"
-              >
-                <span className="text-(--mrms-ink-mute)">{i + 1}</span>
-                <div className="min-w-0">
-                  <div className="text-(--mrms-ink) truncate">{t.title}</div>
-                  <div className="text-(--mrms-ink-soft) truncate">{t.artist}</div>
-                </div>
-                <span className="text-(--mrms-ink-mute) text-right">
-                  {t.duration_ms
-                    ? `${Math.floor(t.duration_ms / 60000)}:${String(
-                        Math.floor((t.duration_ms % 60000) / 1000),
-                      ).padStart(2, "0")}`
-                    : "—"}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
+        {!loading && <ModalTrackList tracks={tracks} />}
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from mrms.api.deps import db_conn, get_current_user_id
+from mrms.db.user_track import get_user_track_states
 
 
 router = APIRouter(tags=["albums"])
@@ -12,7 +13,7 @@ router = APIRouter(tags=["albums"])
 @router.get("/api/albums/{album_id}/tracks")
 def album_tracks_endpoint(
     album_id: str,
-    _user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(get_current_user_id),
     conn=Depends(db_conn),
 ):
     """앨범의 트랙들. Album에 coverUrl 컬럼 없어서 album_cover는 None."""
@@ -45,6 +46,7 @@ def album_tracks_endpoint(
         )
         rows = cur.fetchall()
 
+    states = get_user_track_states(conn, user_id, [r[0] for r in rows])
     tracks = [
         {
             "track_id": r[0],
@@ -56,6 +58,8 @@ def album_tracks_endpoint(
             "tidal_track_id": r[5],
             "spotify_track_id": r[6],
             "duration_ms": r[7],
+            "liked": states.get(r[0], (False, False))[0],
+            "pct": states.get(r[0], (False, False))[1],
         }
         for r in rows
     ]
