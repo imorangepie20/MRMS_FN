@@ -29,29 +29,26 @@ export function SectionRow({
 
   useEffect(() => {
     const el = scrollerRef.current;
-    const sec = sectionRef.current;
-    if (!el || !sec) return;
+    if (!el) return;
 
     const compute = () => {
       const w = window.innerWidth;
-      let c = 8;
-      if (w < 640) c = 2;
-      else if (w < 768) c = 4;
-      else if (w < 1024) c = 5;
-      else if (w < 1280) c = 7;
-      setCols(c);
-
-      // section은 block element라 부모 폭과 일치 (flex circular 없음)
-      const px = Math.floor(sec.clientWidth / c) - 12;
-      setItemPx(Math.max(px, 80));
-
+      // breakpoint별 고정 px — 측정 의존 X (피드백 루프 회피)
+      let px = 100;
+      if (w >= 1536) px = 170;
+      else if (w >= 1280) px = 150;
+      else if (w >= 1024) px = 130;
+      else if (w >= 768) px = 115;
+      else if (w >= 640) px = 100;
+      else px = 95;
+      setItemPx(px);
       updateArrows();
     };
 
     compute();
     el.addEventListener("scroll", updateArrows, { passive: true });
-    const ro = new ResizeObserver(compute);
-    ro.observe(sec);
+    const ro = new ResizeObserver(updateArrows);
+    ro.observe(el);
     window.addEventListener("resize", compute);
     return () => {
       el.removeEventListener("scroll", updateArrows);
