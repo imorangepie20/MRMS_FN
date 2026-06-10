@@ -169,3 +169,34 @@ export interface EmpSettingValue {
 export interface EmpSettings {
   settings: Record<string, EmpSettingValue>;
 }
+
+export interface EmpSectionItem {
+  id: string;
+  item_type: "playlist" | "album" | "mix";
+  item_id: string;
+  title: string | null;
+  cover_url: string | null;
+  display_order: number;
+}
+
+export interface EmpSection {
+  id: string;
+  platform: string;
+  section_key: string;
+  display_title: string | null;
+  display_order: number;
+  last_synced_at: string | null;
+  items: EmpSectionItem[];
+}
+
+export interface EmpItemTrack {
+  track_id: string;
+  title: string;
+  artist: string;
+  album_id: string | null;
+  album_title: string | null;
+  album_cover: string | null;
+  duration_ms: number | null;
+  tidal_track_id: string | null;
+  spotify_track_id: string | null;
+}

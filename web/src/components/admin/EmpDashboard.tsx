@@ -10,13 +10,15 @@ import {
   saveEmpSetting,
   triggerEmpImport,
 } from "@/lib/api/admin-emp";
-import type { EmpSettings, EmpSettingValue, EmpStats, IngestionRun } from "@/lib/types";
+import { fetchEmpSections } from "@/lib/api/emp";
+import type { EmpSection, EmpSectionItem, EmpSettings, EmpSettingValue, EmpStats, IngestionRun } from "@/lib/types";
 
 
 export function EmpDashboard() {
   const [stats, setStats] = useState<EmpStats | null>(null);
   const [runs, setRuns] = useState<IngestionRun[]>([]);
   const [settings, setSettings] = useState<EmpSettings["settings"] | null>(null);
+  const [sections, setSections] = useState<EmpSection[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,10 +26,16 @@ export function EmpDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [s, r, st] = await Promise.all([fetchEmpStats(), fetchEmpRuns(50), fetchEmpSettings()]);
+      const [s, r, st, sec] = await Promise.all([
+        fetchEmpStats(),
+        fetchEmpRuns(50),
+        fetchEmpSettings(),
+        fetchEmpSections().catch(() => [] as EmpSection[]),
+      ]);
       setStats(s);
       setRuns(r);
       setSettings(st.settings);
+      setSections(sec);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -99,6 +107,10 @@ export function EmpDashboard() {
       </section>
 
       <SettingsCard settings={settings} onSaved={refresh} />
+
+      {sections && sections.length > 0 && (
+        <SectionsTree sections={sections} />
+      )}
 
       <section>
         <h2 className="font-display font-bold text-[20px] mb-3 pb-2 border-b border-[var(--mrms-ink)]">
@@ -269,6 +281,68 @@ function SettingsCard({
         </span>
       </p>
     </section>
+  );
+}
+
+
+function SectionsTree({ sections }: { sections: EmpSection[] }) {
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+
+  return (
+    <section className="mb-10">
+      <h2 className="font-display font-bold text-[20px] mb-3 pb-2 border-b border-(--mrms-ink)">
+        Sections ({sections.length})
+      </h2>
+      {sections.map((sec, idx) => {
+        const open = openIdx === idx;
+        return (
+          <div key={sec.id} className="border-b border-(--mrms-rule)">
+            <button
+              onClick={() => setOpenIdx(open ? null : idx)}
+              className="w-full text-left grid grid-cols-[140px_1fr_60px_80px] gap-3 py-2.5 items-baseline bg-transparent border-0 cursor-pointer font-mono text-[11px]"
+            >
+              <span className="text-(--mrms-ink) font-medium truncate">{sec.section_key}</span>
+              <span className="text-(--mrms-ink-soft) truncate">{sec.display_title}</span>
+              <span className="text-(--mrms-ink-mute)">{sec.items.length} items</span>
+              <span className="text-(--mrms-ink-mute)">{open ? "−" : "+"}</span>
+            </button>
+            {open && (
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 pb-4">
+                {sec.items.map((item) => (
+                  <ItemCard key={item.id} item={item} />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+
+function ItemCard({ item }: { item: EmpSectionItem }) {
+  return (
+    <div className="flex flex-col">
+      {item.cover_url ? (
+        <img
+          src={item.cover_url}
+          alt={item.title ?? ""}
+          loading="lazy"
+          className="aspect-square w-full object-cover bg-(--mrms-rule)"
+        />
+      ) : (
+        <div className="aspect-square w-full bg-(--mrms-rule) flex items-center justify-center font-mono text-[10px] text-(--mrms-ink-mute) uppercase">
+          {item.item_type}
+        </div>
+      )}
+      <div className="mt-1 font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute)">
+        {item.item_type}
+      </div>
+      <div className="font-display text-[12px] text-(--mrms-ink) truncate">
+        {item.title ?? item.item_id}
+      </div>
+    </div>
   );
 }
 
