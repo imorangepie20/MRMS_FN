@@ -4,15 +4,11 @@ cuid 대신 sha1 기반 결정론적 ID 사용 (재실행 멱등성).
 """
 from __future__ import annotations
 
-import hashlib
 from datetime import datetime
 
 import psycopg
 
-
-def _id(value: str) -> str:
-    h = hashlib.sha1(value.encode()).hexdigest()[:24]
-    return f"c{h}"
+from mrms.db.ids import stable_id as _id
 
 
 def get_or_create_user(conn: psycopg.Connection, email: str) -> str:

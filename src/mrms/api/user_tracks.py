@@ -1,18 +1,13 @@
 """User tracks API — like/pct toggle + state."""
 from __future__ import annotations
 
-import hashlib
-
 from fastapi import APIRouter, Depends
 
 from mrms.api.deps import db_conn, get_current_user_id
+from mrms.db.ids import stable_id as _id
 
 
 router = APIRouter(prefix="/api/user/tracks", tags=["user_tracks"])
-
-
-def _id(value: str) -> str:
-    return f"c{hashlib.sha1(value.encode()).hexdigest()[:24]}"
 
 
 @router.post("/{track_id}/like")

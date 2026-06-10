@@ -1,13 +1,9 @@
 """EMPSection + EMPSectionItem helpers."""
 from __future__ import annotations
 
-import hashlib
-
 import psycopg
 
-
-def _id(value: str) -> str:
-    return f"c{hashlib.sha1(value.encode(), usedforsecurity=False).hexdigest()[:24]}"
+from mrms.db.ids import stable_id as _id
 
 
 def upsert_section(

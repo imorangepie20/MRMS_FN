@@ -1,16 +1,17 @@
 """EMP importer base + Track upsert 로직."""
 from __future__ import annotations
 
-import hashlib
 from abc import ABC, abstractmethod
 
 import psycopg
 
 from mrms.db.emp import upsert_emp_source
+from mrms.db.ids import stable_id as _id
 
 
-def _id(value: str) -> str:
-    return f"c{hashlib.sha1(value.encode(), usedforsecurity=False).hexdigest()[:24]}"
+def fmt_exc(e: BaseException, limit: int = 200) -> str:
+    """예외를 'ExcType: message' 형식으로 — message는 limit자에서 truncate."""
+    return f"{type(e).__name__}: {str(e)[:limit]}"
 
 
 def _get_or_create_artist(conn: psycopg.Connection, name: str) -> str:
@@ -114,9 +115,24 @@ def upsert_track_and_emp_source(
 
 
 class EMPImporter(ABC):
-    """Editorial playlist 임포터 base."""
+    """EMP 임포터 base — 플랫폼별 진입점은 import_all 하나.
+
+    playlist 목록 기반 플랫폼은 PlaylistEMPImporter를 상속할 것."""
 
     platform: str
+
+    @abstractmethod
+    async def import_all(self, conn: psycopg.Connection) -> dict:
+        """모든 editorial source + 트랙 적재.
+        Returns: {tracks_new, tracks_existing, playlists_processed, errors}."""
+        ...
+
+
+class PlaylistEMPImporter(EMPImporter):
+    """Editorial playlist 목록 기반 임포터 (Spotify 등).
+
+    fetch_editorial_playlists / fetch_playlist_tracks만 구현하면
+    import_all이 playlist 루프 + upsert를 처리."""
 
     @abstractmethod
     async def fetch_editorial_playlists(self) -> list[dict]:
@@ -141,7 +157,7 @@ class EMPImporter(ABC):
         try:
             playlists = await self.fetch_editorial_playlists()
         except Exception as e:
-            errors.append(f"fetch_playlists: {type(e).__name__}: {str(e)[:120]}")
+            errors.append(f"fetch_playlists: {fmt_exc(e, 120)}")
             return {
                 "tracks_new": 0,
                 "tracks_existing": 0,
@@ -172,7 +188,7 @@ class EMPImporter(ABC):
                         tracks_existing += 1
                 playlists_processed += 1
             except Exception as e:
-                errors.append(f"playlist {pl.get('id')}: {type(e).__name__}: {str(e)[:120]}")
+                errors.append(f"playlist {pl.get('id')}: {fmt_exc(e, 120)}")
                 continue
 
         return {

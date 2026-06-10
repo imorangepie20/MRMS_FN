@@ -1,8 +1,7 @@
 """Tidal 인증 endpoint 테스트."""
-import uuid as _uuid_helper
 from datetime import datetime, timedelta, timezone
-from datetime import datetime as _dt_helper, timedelta as _td_helper, timezone as _tz_helper
 
+import pytest
 from fastapi.testclient import TestClient
 
 from mrms.api.main import app
@@ -11,27 +10,22 @@ from mrms.api.main import app
 client = TestClient(app)
 
 
-def _set_session_cookie(db_conn, email: str) -> str:
-    """테스트용 — User 생성 + AuthSession + cookie set. user_id 반환."""
-    from mrms.db.user_track import get_or_create_user
-    user_id = get_or_create_user(db_conn, email)
-    session_id = _uuid_helper.uuid4().hex
-    expires_at = _dt_helper.now(_tz_helper.utc) + _td_helper(days=30)
-    with db_conn.cursor() as cur:
-        cur.execute(
-            'INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
-            (session_id, user_id, expires_at),
-        )
-    db_conn.commit()
-    client.cookies.set("mrms_session", session_id)
-    return user_id
+@pytest.fixture
+def set_session_cookie(login):
+    """공용 login + cookie set factory. user_id 반환."""
+    def _make(email: str) -> str:
+        user_id, session_id = login(email)
+        client.cookies.set("mrms_session", session_id)
+        return user_id
+
+    return _make
 
 
-def test_tidal_token_returns_existing_valid_token(db_conn):
+def test_tidal_token_returns_existing_valid_token(db_conn, set_session_cookie):
     """UserOAuth에 유효한 토큰 있으면 그대로 반환 + premium 필드."""
     from mrms.db.user_track import upsert_oauth
 
-    user_id = _set_session_cookie(db_conn, "tidal_auth@example.com")
+    user_id = set_session_cookie("tidal_auth@example.com")
 
     expires = datetime.now(timezone.utc) + timedelta(hours=1)
     upsert_oauth(
@@ -53,9 +47,9 @@ def test_tidal_token_returns_existing_valid_token(db_conn):
     assert "premium" in body  # bool or None
 
 
-def test_tidal_token_404_when_no_oauth(db_conn):
+def test_tidal_token_404_when_no_oauth(set_session_cookie):
     """UserOAuth 없으면 404."""
-    _set_session_cookie(db_conn, "tidal_auth_b@example.com")
+    set_session_cookie("tidal_auth_b@example.com")
 
     r = client.get("/api/auth/tidal/token")
     client.cookies.clear()

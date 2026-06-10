@@ -12,6 +12,7 @@ import psycopg
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.db.emp import get_emp_stats, list_recent_runs
 from mrms.db.settings import list_settings, set_setting
+from mrms.emp.tidal import SOURCES_SETTING_KEY, TOKEN_SETTING_KEY
 
 
 router = APIRouter(prefix="/api/admin/emp", tags=["admin_emp"])
@@ -51,10 +52,10 @@ def admin_runs(
 
 
 # Whitelisted keys — never let arbitrary keys be set via admin
-ALLOWED_SETTING_KEYS = ["tidal_x_token", "tidal_emp_sources"]
+ALLOWED_SETTING_KEYS = [TOKEN_SETTING_KEY, SOURCES_SETTING_KEY]
 
 # Keys whose value should be masked in GET response (tokens etc.)
-MASKED_KEYS: set[str] = {"tidal_x_token"}
+MASKED_KEYS: set[str] = {TOKEN_SETTING_KEY}
 
 
 @router.get("/settings")
@@ -95,16 +96,16 @@ def admin_put_setting(
     return {"message": "saved", "key": body.key}
 
 
-class TriggerBody(BaseModel):
-    platform: str | None = "all"
-
-
 @router.post("/trigger")
 def admin_trigger(
-    body: TriggerBody,
     user_id: str = Depends(get_current_user_id),
     conn: psycopg.Connection = Depends(db_conn),
 ):
+    """EMP 파이프라인 수동 트리거.
+
+    mrms-emp-import.service는 항상 전체 파이프라인(platform='all')을 실행 —
+    platform 선택은 지원하지 않음 (run_emp_pipeline.py가 'all' 고정).
+    """
     _require_admin(conn, user_id)
     try:
         subprocess.Popen(
@@ -114,4 +115,4 @@ def admin_trigger(
         )
     except Exception as e:
         raise HTTPException(500, f"trigger failed: {e}")
-    return {"message": "triggered", "platform": body.platform}
+    return {"message": "triggered"}

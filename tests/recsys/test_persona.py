@@ -3,7 +3,6 @@ import numpy as np
 import pytest
 
 from mrms.recsys.persona import (
-    PersonaResult,
     cluster_user_tracks,
     aggregate_user_vector,
     NotEnoughTracksError,

@@ -8,6 +8,7 @@ import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
 
+from mrms.config import EMBEDDING_MODEL_VERSION
 from mrms.db.user_embedding import (
     insert_playlist_history,
     upsert_user_embedding,
@@ -33,8 +34,8 @@ from mrms.recsys.persona import (
 )
 
 
-MODEL_VERSION = "our-v1.0+persona-K3"
-CATALOG_MODEL_VERSION = "our-v1.0"
+MODEL_VERSION = f"{EMBEDDING_MODEL_VERSION}+persona-K3"
+CATALOG_MODEL_VERSION = EMBEDDING_MODEL_VERSION
 DEFAULT_K = 3
 DEFAULT_TOP_N = 20
 DEFAULT_CANDIDATE_POOL = 30

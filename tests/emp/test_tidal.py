@@ -1,6 +1,4 @@
 """TidalEMPImporter — Tidal Web API."""
-import pytest
-
 from mrms.db.settings import set_setting
 from mrms.emp.tidal import (
     DEFAULT_SOURCES,
@@ -11,7 +9,6 @@ from mrms.emp.tidal import (
 )
 
 
-@pytest.mark.asyncio
 async def test_no_token_returns_empty(db_conn):
     """토큰 없으면 import_all 빈 summary."""
     with db_conn.cursor() as cur:
@@ -38,19 +35,19 @@ def test_classify_album():
 
 
 def test_classify_mix():
-    """string id (long) + mixType → mix (4-tuple)."""
-    r = _classify_item({"id": "00042cc52d0397491c4b9a4a87286a", "title": "My Mix", "mixType": "ARTIST"})
+    """dash 없는 16자+ string id → mix (4-tuple). 현재 분류 기준은 id 휴리스틱."""
+    r = _classify_item({"id": "00042cc52d0397491c4b9a4a87286a", "title": "My Mix"})
     assert r == ("mix", "00042cc52d0397491c4b9a4a87286a", "My Mix", None)
 
 
 def test_classify_track_returns_none():
     """ISRC있는 트랙은 classify 안 됨 (item-level discovery용 함수)."""
     r = _classify_item({"id": 100, "title": "Track", "isrc": "USRC1", "artists": [{"name": "A"}]})
-    assert r is None  # because no uuid, no releaseDate, no mixType
+    assert r is None  # isrc 존재 가드 때문 — 트랙은 항상 isrc를 들고 와서 album으로 오분류 안 됨
 
 
 def test_classify_returns_cover_from_image_url():
-    """imageUrl 필드가 있으면 cover_url에 반영."""
+    """image 필드(직접 URL 문자열)가 있으면 cover_url에 반영."""
     r = _classify_item({
         "uuid": "31885f0b-96dc-41e1-8e1b-f83372043208",
         "title": "Rising",
@@ -173,7 +170,7 @@ def test_load_sources_parses(db_conn):
     )
     try:
         importer = TidalEMPImporter(conn=db_conn, token="fake")
-        sources = importer._load_sources()
+        sources = importer._load_sources(db_conn)
         kinds = {kind for kind, _ in sources}
         assert kinds == {"home", "playlist", "album", "mix"}
         assert len(sources) == 4
@@ -185,6 +182,6 @@ def test_load_sources_default(db_conn):
     """비어 있으면 DEFAULT_SOURCES."""
     set_setting(db_conn, SOURCES_SETTING_KEY, None)
     importer = TidalEMPImporter(conn=db_conn, token="fake")
-    sources = importer._load_sources()
+    sources = importer._load_sources(db_conn)
     assert len(sources) == len(DEFAULT_SOURCES)
     assert all(kind == "home" for kind, _ in sources)

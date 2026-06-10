@@ -1,13 +1,20 @@
 """파이프라인 runner — importers + 02/03/07 호출 + IngestionRun 기록."""
 from __future__ import annotations
 
-import os
 import subprocess
+import sys
 import time
+from pathlib import Path
 
 import psycopg
 
 from mrms.db.emp import append_stage, create_run, finish_run
+from mrms.emp import make_importer
+from mrms.emp.base import fmt_exc
+
+# repo 루트 절대 경로 (editable install 기준 src/mrms/emp/runner.py → 3단계 위)
+# — systemd WorkingDirectory 외의 cwd에서 호출돼도 스크립트 경로가 깨지지 않음
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _ms_since(t0: float) -> int:
@@ -15,17 +22,12 @@ def _ms_since(t0: float) -> int:
 
 
 async def _run_importer_tidal(conn) -> dict:
-    from mrms.emp.tidal import TidalEMPImporter
-    importer = TidalEMPImporter(conn=conn)  # token 자동 로딩 from Setting
+    importer = make_importer("tidal", conn)
     return await importer.import_all(conn)
 
 
 async def _run_importer_spotify(conn) -> dict:
-    from mrms.emp.spotify import SpotifyEMPImporter
-    importer = SpotifyEMPImporter(
-        client_id=os.environ["SPOTIFY_CLIENT_ID"],
-        client_secret=os.environ["SPOTIFY_CLIENT_SECRET"],
-    )
+    importer = make_importer("spotify", conn)
     return await importer.import_all(conn)
 
 
@@ -48,14 +50,18 @@ def _run_script(args: list[str]) -> dict:
             "duration_ms": _ms_since(t0),
             "stdout": "",
             "stderr": "",
-            "error": f"{type(e).__name__}: {str(e)[:200]}",
+            "error": fmt_exc(e),
         }
+
+
+def _script_path(name: str) -> str:
+    return str(_REPO_ROOT / "scripts" / name)
 
 
 def _run_audio_download(limit: int = 500) -> dict:
     return _run_script([
-        ".venv/bin/python",
-        "scripts/02_download_audio.py",
+        sys.executable,
+        _script_path("02_download_audio.py"),
         "--emp-only",
         "--limit",
         str(limit),
@@ -63,11 +69,37 @@ def _run_audio_download(limit: int = 500) -> dict:
 
 
 def _run_extract_embeddings() -> dict:
-    return _run_script([".venv/bin/python", "scripts/03_extract_embeddings.py"])
+    return _run_script([sys.executable, _script_path("03_extract_embeddings.py")])
 
 
 def _run_load_to_db() -> dict:
-    return _run_script([".venv/bin/python", "scripts/07_load_to_db.py"])
+    return _run_script([sys.executable, _script_path("07_load_to_db.py")])
+
+
+async def _import_stage(
+    conn: psycopg.Connection, run_id: str, stage_name: str, importer_fn
+) -> bool:
+    """importer 1개 실행 + stage 기록. 에러 없이 끝났으면 True."""
+    t0 = time.monotonic()
+    try:
+        s = await importer_fn(conn)
+        append_stage(conn, run_id, {
+            "stage": stage_name,
+            "status": "success" if not s["errors"] else "partial",
+            "tracks_new": s["tracks_new"],
+            "tracks_existing": s["tracks_existing"],
+            "duration_ms": _ms_since(t0),
+            "error": "; ".join(s["errors"])[:500] if s["errors"] else None,
+        })
+        return not s["errors"]
+    except Exception as e:
+        append_stage(conn, run_id, {
+            "stage": stage_name,
+            "status": "failed",
+            "duration_ms": _ms_since(t0),
+            "error": fmt_exc(e, 300),
+        })
+        return False
 
 
 async def run_pipeline(
@@ -79,52 +111,14 @@ async def run_pipeline(
     run_id = create_run(conn, platform=platform, triggered_by=triggered_by)
     overall_ok = True
 
-    # importers
-    if platform in ("all", "tidal"):
-        t0 = time.monotonic()
-        try:
-            s = await _run_importer_tidal(conn)
-            append_stage(conn, run_id, {
-                "stage": "import_tidal",
-                "status": "success" if not s["errors"] else "partial",
-                "tracks_new": s["tracks_new"],
-                "tracks_existing": s["tracks_existing"],
-                "duration_ms": _ms_since(t0),
-                "error": "; ".join(s["errors"])[:500] if s["errors"] else None,
-            })
-            if s["errors"]:
+    # importers — 모듈 attr로 참조해야 테스트의 patch가 적용됨
+    for plat, stage_name, importer_fn in (
+        ("tidal", "import_tidal", _run_importer_tidal),
+        ("spotify", "import_spotify", _run_importer_spotify),
+    ):
+        if platform in ("all", plat):
+            if not await _import_stage(conn, run_id, stage_name, importer_fn):
                 overall_ok = False
-        except Exception as e:
-            append_stage(conn, run_id, {
-                "stage": "import_tidal",
-                "status": "failed",
-                "duration_ms": _ms_since(t0),
-                "error": f"{type(e).__name__}: {str(e)[:300]}",
-            })
-            overall_ok = False
-
-    if platform in ("all", "spotify"):
-        t0 = time.monotonic()
-        try:
-            s = await _run_importer_spotify(conn)
-            append_stage(conn, run_id, {
-                "stage": "import_spotify",
-                "status": "success" if not s["errors"] else "partial",
-                "tracks_new": s["tracks_new"],
-                "tracks_existing": s["tracks_existing"],
-                "duration_ms": _ms_since(t0),
-                "error": "; ".join(s["errors"])[:500] if s["errors"] else None,
-            })
-            if s["errors"]:
-                overall_ok = False
-        except Exception as e:
-            append_stage(conn, run_id, {
-                "stage": "import_spotify",
-                "status": "failed",
-                "duration_ms": _ms_since(t0),
-                "error": f"{type(e).__name__}: {str(e)[:300]}",
-            })
-            overall_ok = False
 
     # audio download
     s = _run_audio_download()

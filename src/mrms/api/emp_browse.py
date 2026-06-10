@@ -67,6 +67,8 @@ def get_item_tracks(
             "artist": r[2],
             "album_id": r[3],
             "album_title": r[4],
+            # TODO: Album에 coverUrl 컬럼 없음 — db/artwork.get_cached 연결 전까지
+            # placeholder (프론트 계약 유지용으로 필드 자체는 유지)
             "album_cover": None,
             "duration_ms": r[5],
             "tidal_track_id": r[6],

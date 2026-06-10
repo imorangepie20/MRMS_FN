@@ -23,7 +23,7 @@ import psycopg
 
 from mrms.db.emp_section import prune_stale_items, upsert_section, upsert_section_item
 from mrms.db.settings import get_setting
-from mrms.emp.base import EMPImporter, upsert_track_and_emp_source
+from mrms.emp.base import EMPImporter, fmt_exc, upsert_track_and_emp_source
 
 
 TIDAL_BASE = "https://tidal.com"
@@ -173,8 +173,8 @@ class TidalEMPImporter(EMPImporter):
     platform = "tidal"
 
     def __init__(self, conn: psycopg.Connection, token: str | None = None):
+        # conn은 토큰 로딩에만 사용 — 데이터 적재/설정 조회는 import_all(conn) 기준
         self.token = token or get_setting(conn, TOKEN_SETTING_KEY)
-        self._conn = conn
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -190,9 +190,9 @@ class TidalEMPImporter(EMPImporter):
             "deviceType": DEFAULT_DEVICE,
         }
 
-    def _load_sources(self) -> list[tuple[str, str]]:
+    def _load_sources(self, conn: psycopg.Connection) -> list[tuple[str, str]]:
         """[(kind, identifier), ...]. kind ∈ {home, playlist, album, mix}."""
-        raw = get_setting(self._conn, SOURCES_SETTING_KEY) or ""
+        raw = get_setting(conn, SOURCES_SETTING_KEY) or ""
         sources: list[tuple[str, str]] = []
         for line in raw.splitlines():
             line = line.strip()
@@ -373,22 +373,13 @@ class TidalEMPImporter(EMPImporter):
             "duration_ms": int(duration_sec) * 1000 if duration_sec else None,
         }
 
-    # ----- EMPImporter interface (base requires these but we override import_all) -----
-
-    async def fetch_editorial_playlists(self) -> list[dict]:
-        """Not used directly — see import_all."""
-        return []
-
-    async def fetch_playlist_tracks(self, playlist_id: str) -> list[dict]:
-        """Not used directly — see import_all. Kept for interface compat."""
-        if not self.token:
-            return []
-        async with httpx.AsyncClient(timeout=20.0) as http:
-            return await self._fetch_playlist_tracks(http, playlist_id)
-
-    # ----- Override base import_all to handle multiple source kinds -----
+    # ----- EMPImporter entrypoint — multiple source kinds (home/playlist/album/mix) -----
 
     async def import_all(self, conn: psycopg.Connection) -> dict:
+        """모든 source 적재.
+
+        주의: 반환 dict의 'playlists_processed'는 Tidal에서는 playlist+album+mix
+        합산 아이템 수 (키 이름은 base 인터페이스 호환용)."""
         if not self.token:
             return {
                 "tracks_new": 0,
@@ -396,7 +387,7 @@ class TidalEMPImporter(EMPImporter):
                 "playlists_processed": 0,
                 "errors": ["no tidal_x_token"],
             }
-        sources = self._load_sources()
+        sources = self._load_sources(conn)
 
         # Phase 1: resolve sources → flat list of (kind, id, name, cover_url)
         # Also save EMPSection + EMPSectionItem for home/* sources.
@@ -433,9 +424,7 @@ class TidalEMPImporter(EMPImporter):
                             seen_in_section.add((k, i))
                         prune_stale_items(conn, section_id, seen_in_section)
                     except Exception as e:
-                        errors.append(
-                            f"section save {ident}: {type(e).__name__}: {str(e)[:120]}"
-                        )
+                        errors.append(f"section save {ident}: {fmt_exc(e, 120)}")
 
                     for k, i, n, cover in classified:
                         if (k, i) not in seen_keys:
@@ -464,7 +453,7 @@ class TidalEMPImporter(EMPImporter):
                     else:
                         continue
                 except Exception as e:
-                    errors.append(f"{kind}/{ident}: {type(e).__name__}: {str(e)[:120]}")
+                    errors.append(f"{kind}/{ident}: {fmt_exc(e, 120)}")
                     continue
 
                 for t in tracks:
@@ -489,7 +478,7 @@ class TidalEMPImporter(EMPImporter):
                     except Exception as e:
                         errors.append(
                             f"upsert {kind}/{ident}/{t.get('platform_track_id')}: "
-                            f"{type(e).__name__}: {str(e)[:120]}"
+                            f"{fmt_exc(e, 120)}"
                         )
 
         return {

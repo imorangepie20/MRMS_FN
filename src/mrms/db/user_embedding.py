@@ -5,7 +5,6 @@ fetch 결과는 numpy array로 변환.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import secrets
 from typing import Any
@@ -14,10 +13,7 @@ import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
 
-
-def _id(value: str) -> str:
-    h = hashlib.sha1(value.encode()).hexdigest()[:24]
-    return f"c{h}"
+from mrms.db.ids import stable_id as _id
 
 
 def _ensure_vector_registered(conn: psycopg.Connection) -> None:
@@ -127,9 +123,7 @@ def insert_playlist_history(
     context: dict[str, Any],
 ) -> str:
     # generation별 고유 ID — random salt
-    row_id = "c" + hashlib.sha1(
-        f"{user_id}|{model_version}|{secrets.token_hex(8)}".encode()
-    ).hexdigest()[:24]
+    row_id = _id(f"{user_id}|{model_version}|{secrets.token_hex(8)}")
     with conn.cursor() as cur:
         # clock_timestamp() — 같은 transaction 내 statement별로 다른 시각.
         # NOW()(=transaction_timestamp)는 동일 transaction에서 동일 값.

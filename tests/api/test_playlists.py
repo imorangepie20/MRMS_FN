@@ -1,28 +1,11 @@
 """Playlists API — create + list + get tracks."""
-import uuid
-from datetime import datetime, timedelta, timezone
-
 import pytest
 from fastapi.testclient import TestClient
 
 from mrms.api.main import app
-from mrms.db.user_track import get_or_create_user
 
 
 client = TestClient(app)
-
-
-def _login(db_conn, email: str) -> tuple[str, str]:
-    user_id = get_or_create_user(db_conn, email)
-    session_id = uuid.uuid4().hex
-    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
-    with db_conn.cursor() as cur:
-        cur.execute(
-            'INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
-            (session_id, user_id, expires_at),
-        )
-    db_conn.commit()
-    return user_id, session_id
 
 
 def _pick_track_ids(db_conn, n: int) -> list[str]:
@@ -31,9 +14,9 @@ def _pick_track_ids(db_conn, n: int) -> list[str]:
         return [r[0] for r in cur.fetchall()]
 
 
-def test_create_playlist_returns_playlist_meta(db_conn):
+def test_create_playlist_returns_playlist_meta(db_conn, login):
     """POST /api/user/playlists → 새 playlist 생성, meta 반환."""
-    _, session_id = _login(db_conn, "create-pl@test.com")
+    _, session_id = login("create-pl@test.com")
     track_ids = _pick_track_ids(db_conn, 3)
     if len(track_ids) < 3:
         pytest.skip("Track 데이터 부족")
@@ -51,18 +34,18 @@ def test_create_playlist_returns_playlist_meta(db_conn):
     client.cookies.clear()
 
 
-def test_create_playlist_rejects_empty_name(db_conn):
+def test_create_playlist_rejects_empty_name(login):
     """이름 비어있으면 400."""
-    _, session_id = _login(db_conn, "no-name@test.com")
+    _, session_id = login("no-name@test.com")
     client.cookies.set("mrms_session", session_id)
     r = client.post("/api/user/playlists", json={"name": "  ", "track_ids": []})
     assert r.status_code == 400
     client.cookies.clear()
 
 
-def test_list_user_playlists(db_conn):
+def test_list_user_playlists(db_conn, login):
     """GET /api/user/playlists → 본인 playlist 목록."""
-    _, session_id = _login(db_conn, "list-pl@test.com")
+    _, session_id = login("list-pl@test.com")
     track_ids = _pick_track_ids(db_conn, 1)
     if not track_ids:
         pytest.skip("Track 데이터 부족")
@@ -77,9 +60,9 @@ def test_list_user_playlists(db_conn):
     client.cookies.clear()
 
 
-def test_get_playlist_tracks_returns_tracks(db_conn):
+def test_get_playlist_tracks_returns_tracks(db_conn, login):
     """GET /api/playlists/{id}/tracks → 안 트랙 + playlist meta."""
-    _, session_id = _login(db_conn, "get-pl@test.com")
+    _, session_id = login("get-pl@test.com")
     track_ids = _pick_track_ids(db_conn, 2)
     if len(track_ids) < 2:
         pytest.skip("Track 데이터 부족")
@@ -99,9 +82,9 @@ def test_get_playlist_tracks_returns_tracks(db_conn):
     client.cookies.clear()
 
 
-def test_get_playlist_other_user_forbidden(db_conn):
+def test_get_playlist_other_user_forbidden(db_conn, login):
     """다른 사용자 playlist 접근 → 403."""
-    _, session_a = _login(db_conn, "owner@test.com")
+    _, session_a = login("owner@test.com")
     track_ids = _pick_track_ids(db_conn, 1)
     if not track_ids:
         pytest.skip("Track 데이터 부족")
@@ -113,7 +96,7 @@ def test_get_playlist_other_user_forbidden(db_conn):
     pid = create_r.json()["playlist"]["id"]
 
     # 다른 사용자
-    _, session_b = _login(db_conn, "stranger@test.com")
+    _, session_b = login("stranger@test.com")
     client.cookies.set("mrms_session", session_b)
     r = client.get(f"/api/playlists/{pid}/tracks")
     assert r.status_code == 403

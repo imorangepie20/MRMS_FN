@@ -1,7 +1,5 @@
 """FastAPI endpoint 테스트 (TestClient)."""
-import uuid as _uuid_helper
-from datetime import datetime as _dt_helper, timedelta as _td_helper, timezone as _tz_helper
-
+import pytest
 from fastapi.testclient import TestClient
 
 from mrms.api.main import app
@@ -10,20 +8,15 @@ from mrms.api.main import app
 client = TestClient(app)
 
 
-def _set_session_cookie(db_conn, email: str) -> str:
-    """테스트용 — User 생성 + AuthSession + cookie set. user_id 반환."""
-    from mrms.db.user_track import get_or_create_user
-    user_id = get_or_create_user(db_conn, email)
-    session_id = _uuid_helper.uuid4().hex
-    expires_at = _dt_helper.now(_tz_helper.utc) + _td_helper(days=30)
-    with db_conn.cursor() as cur:
-        cur.execute(
-            'INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
-            (session_id, user_id, expires_at),
-        )
-    db_conn.commit()
-    client.cookies.set("mrms_session", session_id)
-    return user_id
+@pytest.fixture
+def set_session_cookie(login):
+    """공용 login + cookie set factory. user_id 반환."""
+    def _make(email: str) -> str:
+        user_id, session_id = login(email)
+        client.cookies.set("mrms_session", session_id)
+        return user_id
+
+    return _make
 
 
 def test_health():
@@ -32,11 +25,11 @@ def test_health():
     assert r.json() == {"status": "ok"}
 
 
-def test_user_endpoint_returns_default_user(db_conn):
+def test_user_endpoint_returns_default_user(db_conn, set_session_cookie):
     """Session에서 user_id 추출 → 사용자 정보 반환."""
     from mrms.db import user_embedding as ue
 
-    user_id = _set_session_cookie(db_conn, "test_api@example.com")
+    user_id = set_session_cookie("test_api@example.com")
     # 3 personas
     import numpy as np
     rng = np.random.default_rng(99)
@@ -56,12 +49,12 @@ def test_user_endpoint_returns_default_user(db_conn):
     assert "user_tracks_count" in body  # 0 이상
 
 
-def test_mrt_latest_returns_personas_and_derives(db_conn):
+def test_mrt_latest_returns_personas_and_derives(db_conn, set_session_cookie):
     """MRT latest endpoint — 페르소나 + 추천 트랙/앨범 derive."""
     import numpy as np
     from mrms.db import user_embedding as ue
 
-    user_id = _set_session_cookie(db_conn, "test_mrt@example.com")
+    user_id = set_session_cookie("test_mrt@example.com")
 
     # 3 personas + 3 playlist history (각 persona 당 1)
     rng = np.random.default_rng(123)
@@ -107,12 +100,12 @@ def test_mrt_latest_returns_personas_and_derives(db_conn):
     assert "artist" in body["personas"][0]["playlist"][0]
 
 
-def test_mrt_latest_includes_tidal_track_id_and_filters(db_conn):
+def test_mrt_latest_includes_tidal_track_id_and_filters(db_conn, set_session_cookie):
     """Tidal-only filter — Tidal 가용 트랙만 반환 + tidal_track_id 필드 포함."""
     import numpy as np
     from mrms.db import user_embedding as ue
 
-    user_id = _set_session_cookie(db_conn, "tidal_filter@example.com")
+    user_id = set_session_cookie("tidal_filter@example.com")
 
     rng = np.random.default_rng(456)
     for idx in range(3):
@@ -180,9 +173,9 @@ def test_mrt_latest_includes_tidal_track_id_and_filters(db_conn):
         assert all(t["tidal_track_id"] for t in body["recommended_tracks"])
 
 
-def test_user_endpoint_includes_primary_platform(db_conn):
+def test_user_endpoint_includes_primary_platform(db_conn, set_session_cookie):
     """/api/user 응답에 primary_platform 필드 포함."""
-    user_id = _set_session_cookie(db_conn, "primary_main@example.com")
+    user_id = set_session_cookie("primary_main@example.com")
     with db_conn.cursor() as cur:
         cur.execute(
             'UPDATE "User" SET "primaryPlatform" = %s WHERE id = %s',
@@ -195,13 +188,12 @@ def test_user_endpoint_includes_primary_platform(db_conn):
     assert r.json()["primary_platform"] == "tidal"
 
 
-def test_mrt_latest_includes_spotify_track_id(db_conn):
+def test_mrt_latest_includes_spotify_track_id(db_conn, set_session_cookie):
     """/api/mrt/latest 응답 트랙들이 spotify_track_id 필드 포함."""
     import numpy as np
-    from mrms.db.user_track import get_or_create_user
     from mrms.db import user_embedding as ue
 
-    user_id = _set_session_cookie(db_conn, "spotify_track_test@example.com")
+    user_id = set_session_cookie("spotify_track_test@example.com")
 
     rng = np.random.default_rng(789)
     for idx in range(3):
@@ -239,13 +231,12 @@ def test_mrt_latest_includes_spotify_track_id(db_conn):
     assert any(t.get("spotify_track_id") for t in persona_0["playlist"])
 
 
-def test_mrt_latest_spotify_user_gets_spotify_tracks(db_conn):
+def test_mrt_latest_spotify_user_gets_spotify_tracks(db_conn, set_session_cookie):
     """primaryPlatform='spotify'인 사용자는 Spotify-가용 트랙을 받음 (Tidal-only 트랙은 제외)."""
     import numpy as np
-    from mrms.db.user_track import get_or_create_user
     from mrms.db import user_embedding as ue
 
-    user_id = _set_session_cookie(db_conn, "spotify_filter_test@example.com")
+    user_id = set_session_cookie("spotify_filter_test@example.com")
     # Spotify primary로 설정
     with db_conn.cursor() as cur:
         cur.execute(

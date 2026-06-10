@@ -8,6 +8,8 @@ import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
 
+from mrms.config import EMBEDDING_MODEL_VERSION
+
 
 def _ensure_vector_registered(conn: psycopg.Connection) -> None:
     """idempotent register_vector."""
@@ -21,7 +23,7 @@ def search_for_persona(
     conn: psycopg.Connection,
     user_id: str,
     centroid: np.ndarray,
-    catalog_model_version: str = "our-v1.0",
+    catalog_model_version: str = EMBEDDING_MODEL_VERSION,
     candidate_pool: int = 30,
     top_n: int = 20,
 ) -> list[dict[str, Any]]:

@@ -1,12 +1,9 @@
 """SpotifyEMPImporter — hardcoded editorial playlist IDs (Spotify가 /browse/featured-playlists 차단)."""
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from mrms.emp.spotify import DEFAULT_PLAYLISTS, SpotifyEMPImporter
 
 
-@pytest.mark.asyncio
 async def test_default_playlists_returned():
     """env var 없으면 DEFAULT_PLAYLISTS 기반."""
     importer = SpotifyEMPImporter(client_id="x", client_secret="y")
@@ -17,7 +14,6 @@ async def test_default_playlists_returned():
     assert {pid for pid, _ in DEFAULT_PLAYLISTS} == ids
 
 
-@pytest.mark.asyncio
 async def test_env_override(monkeypatch):
     """SPOTIFY_EMP_PLAYLISTS env로 override."""
     monkeypatch.setenv(
@@ -33,7 +29,6 @@ async def test_env_override(monkeypatch):
     assert name_map["ghi"] == "ghi"
 
 
-@pytest.mark.asyncio
 async def test_fetch_playlist_tracks_extracts_isrc_inline():
     importer = SpotifyEMPImporter(client_id="x", client_secret="y")
     fake_resp = MagicMock()

@@ -6,6 +6,11 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# ─── 카탈로그 임베딩 모델 버전 (TrackEmbedding.modelVersion 값) ────
+# 버전 범프 시 여기 한 곳만 수정. 파생 버전(예: '+persona-K3')은
+# f"{EMBEDDING_MODEL_VERSION}+..." 형태로 유도해 단일 출처 유지.
+EMBEDDING_MODEL_VERSION = "our-v1.0"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(

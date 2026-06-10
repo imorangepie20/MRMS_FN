@@ -1,11 +1,8 @@
 """Pipeline runner — orchestrates importers + audio + extract + load, records IngestionRun."""
-from unittest.mock import AsyncMock, patch
-
-import pytest
+from unittest.mock import patch
 
 
-@pytest.mark.asyncio
-async def test_run_pipeline_records_run(db_conn):
+async def test_run_pipeline_records_run(db_conn, cleanup):
     """run_pipeline → IngestionRun row 생성 + stages append + finish."""
     from mrms.emp.runner import run_pipeline
 
@@ -40,6 +37,8 @@ async def test_run_pipeline_records_run(db_conn):
          patch("mrms.emp.runner._run_load_to_db", return_value=ok_stage):
         run_id = await run_pipeline(db_conn, platform="all", triggered_by="manual")
 
+    cleanup('DELETE FROM "IngestionRun" WHERE id = %s', (run_id,))
+
     with db_conn.cursor() as cur:
         cur.execute(
             'SELECT status, stages FROM "IngestionRun" WHERE id = %s',
@@ -54,14 +53,8 @@ async def test_run_pipeline_records_run(db_conn):
     assert "extract_embeddings" in stage_names
     assert "load_to_db" in stage_names
 
-    # cleanup
-    with db_conn.cursor() as cur:
-        cur.execute('DELETE FROM "IngestionRun" WHERE id = %s', (run_id,))
-    db_conn.commit()
 
-
-@pytest.mark.asyncio
-async def test_run_pipeline_partial_on_failure(db_conn):
+async def test_run_pipeline_partial_on_failure(db_conn, cleanup):
     """한 stage 실패 시 status = partial."""
     from mrms.emp.runner import run_pipeline
 
@@ -81,11 +74,8 @@ async def test_run_pipeline_partial_on_failure(db_conn):
          patch("mrms.emp.runner._run_load_to_db", return_value=ok_stage):
         run_id = await run_pipeline(db_conn, platform="all", triggered_by="scheduler")
 
+    cleanup('DELETE FROM "IngestionRun" WHERE id = %s', (run_id,))
+
     with db_conn.cursor() as cur:
         cur.execute('SELECT status FROM "IngestionRun" WHERE id = %s', (run_id,))
         assert cur.fetchone()[0] == "partial"
-
-    # cleanup
-    with db_conn.cursor() as cur:
-        cur.execute('DELETE FROM "IngestionRun" WHERE id = %s', (run_id,))
-    db_conn.commit()

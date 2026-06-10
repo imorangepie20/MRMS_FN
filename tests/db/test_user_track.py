@@ -5,7 +5,6 @@
 """
 from datetime import datetime, timedelta, timezone
 
-import psycopg
 import pytest
 
 from mrms.db.user_track import (

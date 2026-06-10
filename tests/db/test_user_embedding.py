@@ -4,7 +4,6 @@
 각 테스트는 트랜잭션 롤백.
 """
 import numpy as np
-import pytest
 
 from mrms.db.user_track import get_or_create_user
 from mrms.db.user_embedding import (

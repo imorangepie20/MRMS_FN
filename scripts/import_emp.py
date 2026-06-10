@@ -15,24 +15,15 @@ import sys
 
 import psycopg
 
+from mrms.emp import make_importer
+
 
 def get_conn() -> psycopg.Connection:
     return psycopg.connect(os.environ["DATABASE_URL"])
 
 
 async def run_platform(platform: str, conn: psycopg.Connection) -> dict:
-    if platform == "tidal":
-        from mrms.emp.tidal import TidalEMPImporter
-        importer = TidalEMPImporter(conn=conn)  # token 자동 로딩 from Setting
-    elif platform == "spotify":
-        from mrms.emp.spotify import SpotifyEMPImporter
-        importer = SpotifyEMPImporter(
-            client_id=os.environ["SPOTIFY_CLIENT_ID"],
-            client_secret=os.environ["SPOTIFY_CLIENT_SECRET"],
-        )
-    else:
-        raise ValueError(f"unknown platform: {platform}")
-
+    importer = make_importer(platform, conn)  # unknown platform → ValueError
     print(f"[import] {platform}…")
     summary = await importer.import_all(conn)
     print(

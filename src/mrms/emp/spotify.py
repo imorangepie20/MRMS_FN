@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import base64
 import os
+import time
 
 import httpx
 
-from mrms.emp.base import EMPImporter
+from mrms.emp.base import PlaylistEMPImporter
 
 
 SPOTIFY_API_BASE = "https://api.spotify.com/v1"
@@ -51,14 +52,20 @@ def _load_playlists_from_env() -> list[tuple[str, str]] | None:
     return out or None
 
 
-class SpotifyEMPImporter(EMPImporter):
+class SpotifyEMPImporter(PlaylistEMPImporter):
     platform = "spotify"
 
     def __init__(self, client_id: str, client_secret: str):
         self.client_id = client_id
         self.client_secret = client_secret
+        # client_credentials 토큰 캐시 — playlist마다 재발급하지 않음
+        self._access_token: str | None = None
+        self._token_expires_at: float = 0.0
 
     async def _get_access_token(self) -> str:
+        """client_credentials 토큰. 만료 전이면 캐시 재사용 (기본 1시간 유효)."""
+        if self._access_token and time.monotonic() < self._token_expires_at:
+            return self._access_token
         basic = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
         async with httpx.AsyncClient(timeout=10.0) as http:
             r = await http.post(
@@ -70,7 +77,11 @@ class SpotifyEMPImporter(EMPImporter):
                 },
             )
             r.raise_for_status()
-            return r.json()["access_token"]
+            payload = r.json()
+        self._access_token = payload["access_token"]
+        # 60초 마진 두고 만료 처리
+        self._token_expires_at = time.monotonic() + int(payload.get("expires_in", 3600)) - 60
+        return self._access_token
 
     async def fetch_editorial_playlists(self) -> list[dict]:
         playlists = _load_playlists_from_env() or DEFAULT_PLAYLISTS

@@ -1,33 +1,16 @@
 """Albums API."""
-import uuid
-from datetime import datetime, timedelta, timezone
-
 import pytest
 from fastapi.testclient import TestClient
 
 from mrms.api.main import app
-from mrms.db.user_track import get_or_create_user
 
 
 client = TestClient(app)
 
 
-def _login(db_conn, email: str) -> tuple[str, str]:
-    user_id = get_or_create_user(db_conn, email)
-    session_id = uuid.uuid4().hex
-    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
-    with db_conn.cursor() as cur:
-        cur.execute(
-            'INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
-            (session_id, user_id, expires_at),
-        )
-    db_conn.commit()
-    return user_id, session_id
-
-
-def test_get_album_tracks(db_conn):
+def test_get_album_tracks(db_conn, login):
     """GET /api/albums/{id}/tracks → 그 앨범 트랙들."""
-    _, session_id = _login(db_conn, "album@test.com")
+    _, session_id = login("album@test.com")
     client.cookies.set("mrms_session", session_id)
 
     with db_conn.cursor() as cur:
@@ -61,8 +44,8 @@ def test_get_album_tracks(db_conn):
     client.cookies.clear()
 
 
-def test_album_not_found_returns_404(db_conn):
-    _, session_id = _login(db_conn, "nf-album@test.com")
+def test_album_not_found_returns_404(login):
+    _, session_id = login("nf-album@test.com")
     client.cookies.set("mrms_session", session_id)
     r = client.get("/api/albums/nonexistent-album-id/tracks")
     assert r.status_code == 404

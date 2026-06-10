@@ -1,17 +1,14 @@
 """EMP DB helpers — EMPSource upsert, stats, IngestionRun."""
 from __future__ import annotations
 
-import hashlib
 import json
 import uuid
 
 import psycopg
 
-EMBEDDING_MODEL_VERSION = "our-v1.0"
-
-
-def _id(value: str) -> str:
-    return f"c{hashlib.sha1(value.encode(), usedforsecurity=False).hexdigest()[:24]}"
+# re-export — 기존 `from mrms.db.emp import EMBEDDING_MODEL_VERSION` 경로 유지
+from mrms.config import EMBEDDING_MODEL_VERSION  # noqa: F401
+from mrms.db.ids import stable_id as _id
 
 
 def upsert_emp_source(

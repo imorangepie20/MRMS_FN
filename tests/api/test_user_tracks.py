@@ -1,33 +1,24 @@
 """user_tracks API — like/pct toggle + state."""
-import uuid
-from datetime import datetime, timedelta, timezone
-
 import pytest
 from fastapi.testclient import TestClient
 
 from mrms.api.main import app
-from mrms.db.user_track import get_or_create_user
 
 
 client = TestClient(app)
 
 
-def _login(db_conn, email: str) -> tuple[str, str]:
-    """User + AuthSession 생성. (user_id, session_id) 반환.
+@pytest.fixture
+def login_clean(db_conn, login):
+    """공용 login + 이전 run의 UserTrack 잔여물 정리 (commit 후 rollback 안 됨)."""
+    def _make(email: str) -> tuple[str, str]:
+        user_id, session_id = login(email)
+        with db_conn.cursor() as cur:
+            cur.execute('DELETE FROM "UserTrack" WHERE "userId" = %s', (user_id,))
+        db_conn.commit()
+        return user_id, session_id
 
-    이전 run의 UserTrack 잔여물 정리 (commit 후 rollback 안 됨).
-    """
-    user_id = get_or_create_user(db_conn, email)
-    session_id = uuid.uuid4().hex
-    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
-    with db_conn.cursor() as cur:
-        cur.execute('DELETE FROM "UserTrack" WHERE "userId" = %s', (user_id,))
-        cur.execute(
-            'INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
-            (session_id, user_id, expires_at),
-        )
-    db_conn.commit()
-    return user_id, session_id
+    return _make
 
 
 def _pick_track(db_conn) -> str | None:
@@ -37,8 +28,8 @@ def _pick_track(db_conn) -> str | None:
     return row[0] if row else None
 
 
-def test_like_toggle_adds_then_removes(db_conn):
-    _, session_id = _login(db_conn, "like-toggle@test.com")
+def test_like_toggle_adds_then_removes(db_conn, login_clean):
+    _, session_id = login_clean("like-toggle@test.com")
     track_id = _pick_track(db_conn)
     if not track_id:
         pytest.skip("Track 데이터 부족")
@@ -55,8 +46,8 @@ def test_like_toggle_adds_then_removes(db_conn):
     client.cookies.clear()
 
 
-def test_pct_toggle(db_conn):
-    _, session_id = _login(db_conn, "pct-toggle@test.com")
+def test_pct_toggle(db_conn, login_clean):
+    _, session_id = login_clean("pct-toggle@test.com")
     track_id = _pick_track(db_conn)
     if not track_id:
         pytest.skip("Track 데이터 부족")
@@ -73,8 +64,8 @@ def test_pct_toggle(db_conn):
     client.cookies.clear()
 
 
-def test_track_state_returns_current(db_conn):
-    _, session_id = _login(db_conn, "state@test.com")
+def test_track_state_returns_current(db_conn, login_clean):
+    _, session_id = login_clean("state@test.com")
     track_id = _pick_track(db_conn)
     if not track_id:
         pytest.skip("Track 데이터 부족")

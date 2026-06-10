@@ -1,15 +1,11 @@
 """Playlist + PlaylistTrack DB 헬퍼."""
 from __future__ import annotations
 
-import hashlib
 from datetime import datetime, timezone
 
 import psycopg
 
-
-def _id(value: str) -> str:
-    h = hashlib.sha1(value.encode()).hexdigest()[:24]
-    return f"c{h}"
+from mrms.db.ids import stable_id as _id
 
 
 def create_playlist(

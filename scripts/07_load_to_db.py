@@ -47,12 +47,12 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from mrms.config import settings
+from mrms.config import EMBEDDING_MODEL_VERSION, settings
 from mrms.data.catalog import derive_track_key, load_catalog
 
 console = Console()
 
-MODEL_VERSION = "our-v1.0"
+MODEL_VERSION = EMBEDDING_MODEL_VERSION
 
 
 def cuid_id(_prefix: str, value: str) -> str:

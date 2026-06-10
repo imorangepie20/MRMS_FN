@@ -10,6 +10,13 @@ from mrms.recsys.mrt import (
 )
 
 
+def _parse_vec(raw) -> np.ndarray:
+    """embedding 컬럼 — register_vector 호출 상태에 따라 str '[x,y,...]' 또는 array."""
+    if isinstance(raw, str):
+        return np.array(raw.strip("[]").split(","), dtype=np.float32)
+    return np.asarray(raw, dtype=np.float32)
+
+
 def test_search_for_persona_returns_results(db_conn):
     """실제 카탈로그에 대해 random unit vector로 검색 → top-N 트랙 반환."""
     user_id = get_or_create_user(db_conn, email="mrt_a@example.com")
@@ -48,13 +55,7 @@ def test_search_excludes_user_tracks(db_conn):
         row = cur.fetchone()
     if row is None:
         pytest.skip("TrackEmbedding 미존재")
-    # row[0]은 string '[0.1, 0.2, ...]' 또는 array (register_vector 호출 상태에 따라)
-    centroid_raw = row[0]
-    if isinstance(centroid_raw, str):
-        # parse "[x,y,z]"
-        centroid = np.fromstring(centroid_raw.strip("[]"), sep=",", dtype=np.float32)
-    else:
-        centroid = np.asarray(centroid_raw, dtype=np.float32)
+    centroid = _parse_vec(row[0])
     results = search_for_persona(
         db_conn, user_id, centroid,
         catalog_model_version="our-v1.0",
@@ -77,17 +78,17 @@ def test_search_excludes_non_emp(db_conn):
     if not row:
         pytest.skip("non-EMP 임베딩 트랙 부족 (모두 EMP거나 데이터 부족)")
     target_id = row[0]
-    target_vec_raw = row[1]
-    # embedding may come back as a string '[x,y,...]' or array depending on driver/register_vector state
-    if isinstance(target_vec_raw, str):
-        target_vec = np.fromstring(target_vec_raw.strip("[]"), sep=",", dtype=np.float32)
-    else:
-        target_vec = np.asarray(target_vec_raw, dtype=np.float32)
+    target_vec = _parse_vec(row[1])
 
-    user_id = "test_user_emp_filter_xx"
+    # 형제 테스트들과 동일하게 실제 User 생성 (가짜 고정 user_id 사용 금지)
+    user_id = get_or_create_user(db_conn, email="mrt_c@example.com")
 
     # 같은 임베딩으로 검색해도 inEmp=FALSE인 자기 자신은 결과에 없어야
-    results = search_for_persona(db_conn, user_id, target_vec, top_n=20)
+    results = search_for_persona(
+        db_conn, user_id, target_vec,
+        catalog_model_version="our-v1.0",
+        top_n=20,
+    )
     track_ids = [r["track_id"] for r in results]
     assert target_id not in track_ids
 

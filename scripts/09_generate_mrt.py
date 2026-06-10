@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 from pgvector.psycopg import register_vector
 from rich.console import Console
 
+from mrms.config import EMBEDDING_MODEL_VERSION
 from mrms.db.user_embedding import (
     upsert_user_embedding,
     upsert_user_persona,
@@ -38,8 +39,8 @@ from mrms.recsys.persona import (
 )
 
 
-MODEL_VERSION = "our-v1.0+persona-K3"
-CATALOG_MODEL_VERSION = "our-v1.0"
+MODEL_VERSION = f"{EMBEDDING_MODEL_VERSION}+persona-K3"
+CATALOG_MODEL_VERSION = EMBEDDING_MODEL_VERSION
 
 load_dotenv(override=True)
 console = Console()
