@@ -134,14 +134,15 @@ def main() -> None:
         console.print("[green]Nothing to do.[/green]")
         return
 
-    # 모델 로드
-    console.print(
-        f"loading MERT-v1-95M on [cyan]{args.device}[/cyan] ({args.precision})..."
-    )
+    # 모델 로드 — device는 머신 가용성에 따라 fallback될 수 있음 (mps→cuda→cpu)
     encoder = MERTEncoder(
         device=args.device,
         precision=args.precision,
         max_audio_seconds=args.duration,
+    )
+    resolved_device = encoder.device.type  # fallback 반영된 실제 device
+    console.print(
+        f"loading MERT-v1-95M on [cyan]{resolved_device}[/cyan] ({args.precision})..."
     )
     console.print(f"  hidden_dim = {encoder.hidden_dim}")
 
@@ -160,8 +161,10 @@ def main() -> None:
         task = progress.add_task("MERT 임베딩 추출", total=len(todo))
 
         buffer: list[tuple[str, np.ndarray]] = []
-        is_mps = args.device == "mps" and hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache")
-        is_cuda = args.device == "cuda" and torch.cuda.is_available()
+        # 요청 device가 아니라 fallback 반영된 실제 device 기준 —
+        # Linux에서 args.device='mps'여도 cpu로 떨어졌으면 mps cache 호출 금지
+        is_mps = resolved_device == "mps" and torch.backends.mps.is_available()
+        is_cuda = resolved_device == "cuda" and torch.cuda.is_available()
 
         def flush_batch() -> None:
             """버퍼의 트랙들을 batch 단위로 MERT에 통과시킴."""
