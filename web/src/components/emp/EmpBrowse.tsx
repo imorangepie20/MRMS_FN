@@ -33,11 +33,11 @@ export function EmpBrowse() {
         <span>{sections.length} sections</span>
       </div>
 
-      <h1 className="font-display font-bold text-[32px] md:text-[40px] leading-tight text-(--mrms-ink) mb-4">
+      <h1 className="font-display font-bold text-[32px] md:text-[40px] leading-tight text-(--mrms-ink) mb-1">
         External pool
       </h1>
 
-      <div className="text-center my-8 md:my-12">
+      <div className="text-center mt-2 mb-4 md:mt-3 md:mb-6">
         <p className="font-display italic text-[24px] md:text-[36px] text-(--mrms-ink) leading-tight">
           Tidal is Good
         </p>
