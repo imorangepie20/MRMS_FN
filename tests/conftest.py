@@ -42,7 +42,18 @@ def cleanup(db_conn):
 
     if stmts:
         db_conn.rollback()  # 실패한 statement가 트랜잭션을 abort했어도 cleanup은 수행
-        with db_conn.cursor() as cur:
-            for sql, params in reversed(stmts):
-                cur.execute(sql, params)
-        db_conn.commit()
+        failed: list[str] = []
+        for sql, params in reversed(stmts):
+            # statement별 독립 실행 — 하나가 FK 등으로 실패해도 나머지는 정리
+            try:
+                with db_conn.cursor() as cur:
+                    cur.execute(sql, params)
+                db_conn.commit()
+            except Exception as e:
+                db_conn.rollback()
+                failed.append(f"{sql} — {type(e).__name__}")
+        if failed:
+            pytest.fail(
+                "cleanup 일부 실패 (테스트 DB 잔여물 가능):\n  " + "\n  ".join(failed),
+                pytrace=False,
+            )
