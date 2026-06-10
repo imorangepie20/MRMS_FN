@@ -14,12 +14,14 @@ Output:
 Usage:
     python scripts/02_download_audio.py
     python scripts/02_download_audio.py --limit 100   # 테스트 모드
+    python scripts/02_download_audio.py --emp-only --limit 50  # EMP 풀 DB에서 직접
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,12 +49,78 @@ from tenacity import (
 
 from mrms.config import settings
 from mrms.data.catalog import derive_track_key, load_catalog
+from mrms.db.emp import EMBEDDING_MODEL_VERSION
 from mrms.ingest.deezer import lookup_by_isrc as deezer_lookup_isrc
 from mrms.ingest.deezer import search_by_text as deezer_search_text
 from mrms.ingest.itunes import search_by_isrc as itunes_isrc
 from mrms.ingest.itunes import search_by_text as itunes_text
 
 console = Console()
+
+
+# ─── EMP DB 쿼리 ────────────────────────────────────────
+def fetch_emp_pending(limit: int) -> list[dict]:
+    """DB에서 EMP 풀 중 아직 임베딩 없는 트랙을 조회해 DataFrame-호환 dict 목록 반환.
+
+    반환 dict 컬럼: title, artists, isrc, preview_url, source, platform_track_id
+    (build_targets / derive_track_key 가 기대하는 형태와 동일)
+    """
+    import psycopg  # 런타임 import — CSV 경로에선 불필요
+
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        console.print("[red]DATABASE_URL 환경변수가 설정되지 않았습니다.[/red]")
+        sys.exit(1)
+
+    sql = """
+        SELECT t.id, t.title, ar.name AS artist, t.isrc,
+               tp_tidal."platformTrackId" AS tidal_id,
+               tp_spotify."platformTrackId" AS spotify_id
+        FROM "Track" t
+        JOIN "Artist" ar ON ar.id = t."artistId"
+        LEFT JOIN "TrackPlatform" tp_tidal
+          ON tp_tidal."trackId" = t.id AND tp_tidal.platform = 'tidal'
+        LEFT JOIN "TrackPlatform" tp_spotify
+          ON tp_spotify."trackId" = t.id AND tp_spotify.platform = 'spotify'
+        WHERE t."inEmp" = TRUE
+          AND NOT EXISTS (
+            SELECT 1 FROM "TrackEmbedding" te
+            WHERE te."trackId" = t.id AND te."modelVersion" = %s
+          )
+        ORDER BY t."createdAt" DESC
+        LIMIT %s
+    """
+
+    rows: list[dict] = []
+    conn = psycopg.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (EMBEDDING_MODEL_VERSION, limit))
+            for track_id, title, artist, isrc, tidal_id, spotify_id in cur.fetchall():
+                # platform_track_id / source: tidal 우선, spotify 차선, DB id 최후
+                if tidal_id:
+                    source = "tidal"
+                    platform_track_id = tidal_id
+                elif spotify_id:
+                    source = "spotify"
+                    platform_track_id = spotify_id
+                else:
+                    source = "db"
+                    platform_track_id = track_id
+                rows.append(
+                    {
+                        "title": title or "",
+                        "artists": artist or "",
+                        "isrc": isrc,
+                        "preview_url": None,  # DB엔 없음 — fallback chain 사용
+                        "source": source,
+                        "platform_track_id": platform_track_id,
+                    }
+                )
+    finally:
+        conn.close()
+
+    return rows
 
 
 # ─── Target row 정규화 ──────────────────────────────────
@@ -294,22 +362,37 @@ def main() -> None:
     parser.add_argument("--log-dir", type=Path, default=settings.log_dir)
     parser.add_argument("--concurrency", type=int, default=settings.download_concurrency)
     parser.add_argument(
-        "--limit", type=int, default=0, help="테스트 모드: 첫 N개만"
+        "--limit", type=int, default=0, help="테스트 모드: 첫 N개만 (--emp-only 시 DB LIMIT)"
+    )
+    parser.add_argument(
+        "--emp-only",
+        action="store_true",
+        help="CSV 대신 DB에서 EMP 풀 미임베딩 트랙을 직접 조회",
     )
     args = parser.parse_args()
 
-    catalog = args.catalog if args.catalog.exists() else args.fallback_catalog
-    if not catalog.exists():
-        console.print(f"[red]Catalog not found:[/red] {catalog}")
-        sys.exit(1)
-    console.print(f"Catalog:    [cyan]{catalog}[/cyan]")
     console.print(f"Audio out:  [cyan]{args.audio_dir}[/cyan]")
     console.print(f"Concurrent: [cyan]{args.concurrency}[/cyan]")
 
-    df = load_catalog(catalog)
-    if args.limit:
-        df = df.head(args.limit)
-        console.print(f"[yellow]LIMIT MODE: only {args.limit} rows[/yellow]")
+    if args.emp_only:
+        limit = args.limit if args.limit else 1000
+        console.print(f"[bold yellow]EMP-ONLY MODE[/bold yellow] — DB 조회 (limit={limit})")
+        rows = fetch_emp_pending(limit)
+        console.print(f"EMP pending: [bold]{len(rows):,}[/bold] 트랙")
+        if not rows:
+            console.print("[green]EMP 풀에 미처리 트랙이 없습니다.[/green]")
+            return
+        df = pd.DataFrame(rows)
+    else:
+        catalog = args.catalog if args.catalog.exists() else args.fallback_catalog
+        if not catalog.exists():
+            console.print(f"[red]Catalog not found:[/red] {catalog}")
+            sys.exit(1)
+        console.print(f"Catalog:    [cyan]{catalog}[/cyan]")
+        df = load_catalog(catalog)
+        if args.limit:
+            df = df.head(args.limit)
+            console.print(f"[yellow]LIMIT MODE: only {args.limit} rows[/yellow]")
 
     asyncio.run(run(df, args.audio_dir, args.log_dir, args.concurrency))
 
