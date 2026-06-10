@@ -14,6 +14,7 @@ export function SectionRow({
   onItemClick: (it: EmpSectionItem) => void;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(false);
   const [cols, setCols] = useState(8);
@@ -28,7 +29,8 @@ export function SectionRow({
 
   useEffect(() => {
     const el = scrollerRef.current;
-    if (!el) return;
+    const sec = sectionRef.current;
+    if (!el || !sec) return;
 
     const compute = () => {
       const w = window.innerWidth;
@@ -39,7 +41,8 @@ export function SectionRow({
       else if (w < 1280) c = 7;
       setCols(c);
 
-      const px = Math.floor(el.clientWidth / c) - 12;
+      // section은 block element라 부모 폭과 일치 (flex circular 없음)
+      const px = Math.floor(sec.clientWidth / c) - 12;
       setItemPx(Math.max(px, 80));
 
       updateArrows();
@@ -48,7 +51,7 @@ export function SectionRow({
     compute();
     el.addEventListener("scroll", updateArrows, { passive: true });
     const ro = new ResizeObserver(compute);
-    ro.observe(el);
+    ro.observe(sec);
     window.addEventListener("resize", compute);
     return () => {
       el.removeEventListener("scroll", updateArrows);
@@ -64,7 +67,7 @@ export function SectionRow({
   };
 
   return (
-    <section className="mb-10">
+    <section ref={sectionRef} className="mb-10">
       <div className="flex items-baseline justify-between mb-3 pb-2 border-b border-(--mrms-ink)">
         <div className="flex items-baseline gap-3 min-w-0">
           <h2 className="font-display font-bold text-[20px] text-(--mrms-ink) truncate">
