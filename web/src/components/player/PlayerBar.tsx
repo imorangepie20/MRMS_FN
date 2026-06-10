@@ -17,6 +17,7 @@ import {
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { useUser } from "@/lib/hooks/use-user";
 import {
+  getPlatformForTrack,
   initPlayer,
   loadAndPlay,
   pausePlayback,
@@ -34,6 +35,7 @@ function NowPlaying() {
   const currentIdx = usePlayerStore((s) => s.currentIdx);
   const isPreview = usePlayerStore((s) => s.isPreview);
   const track = queue[currentIdx];
+  const platform = track ? getPlatformForTrack(track) : null;
 
   if (!track) {
     return (
@@ -67,6 +69,11 @@ function NowPlaying() {
           {!isPreview && (
             <span className="shrink-0 font-mono text-[9px] tracking-editorial uppercase bg-[var(--mrms-rust)] text-[var(--mrms-paper)] px-1.5 py-0.5">
               HiFi
+            </span>
+          )}
+          {platform && (
+            <span className="shrink-0 font-mono text-[9px] tracking-editorial uppercase border border-[var(--mrms-paper)]/30 text-[var(--mrms-paper)]/60 px-1.5 py-0.5">
+              {platform}
             </span>
           )}
         </div>

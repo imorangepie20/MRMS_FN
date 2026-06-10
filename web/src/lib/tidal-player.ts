@@ -6,6 +6,23 @@ import { usePlayerStore } from "@/store/player";
 // 단일 audio element (페이지 lifetime 동안 재사용)
 let audioEl: HTMLAudioElement | null = null;
 
+// facade(player.ts)가 주입하는 트랙 종료 콜백 — 순환 import 회피.
+// auto-next 판단(큐 진행, 교차 플랫폼 포함)은 전적으로 facade 책임.
+let onTrackEnd: (() => void) | null = null;
+
+// 교차 재생 시 비활성 플랫폼의 이벤트가 store를 덮어쓰지 않도록 facade가 제어
+let active = true;
+
+
+export function setOnTrackEnd(cb: (() => void) | null): void {
+  onTrackEnd = cb;
+}
+
+
+export function setTidalActive(b: boolean): void {
+  active = b;
+}
+
 
 function ensureAudio(): HTMLAudioElement {
   if (audioEl) return audioEl;
@@ -14,24 +31,23 @@ function ensureAudio(): HTMLAudioElement {
   el.crossOrigin = "use-credentials";
 
   el.addEventListener("playing", () => {
+    if (!active) return;
     usePlayerStore.setState({ isPlaying: true });
   });
   el.addEventListener("pause", () => {
+    if (!active) return;
     usePlayerStore.setState({ isPlaying: false });
   });
   el.addEventListener("ended", () => {
-    // auto-next
-    const s = usePlayerStore.getState();
-    if (s.currentIdx + 1 < s.queue.length) {
-      const nextIdx = s.currentIdx + 1;
-      usePlayerStore.setState({ currentIdx: nextIdx, position: 0 });
-      const next = s.queue[nextIdx];
-      if (next.tidal_track_id) void loadAndPlay(next.tidal_track_id);
+    if (!active) return;
+    if (onTrackEnd) {
+      onTrackEnd();
     } else {
       usePlayerStore.setState({ isPlaying: false, position: 0 });
     }
   });
   el.addEventListener("timeupdate", () => {
+    if (!active) return;
     if (el.duration > 0) {
       usePlayerStore.setState({
         position: el.currentTime / el.duration,
@@ -40,24 +56,23 @@ function ensureAudio(): HTMLAudioElement {
     }
   });
   el.addEventListener("loadedmetadata", () => {
+    if (!active) return;
     if (Number.isFinite(el.duration) && el.duration > 0) {
       usePlayerStore.setState({ durationSec: el.duration });
     }
   });
   el.addEventListener("error", () => {
+    if (!active) return;
     const err = el.error;
     const msg = err
       ? `audio error code=${err.code} ${err.message ?? ""}`
       : "audio error";
     usePlayerStore.setState({ errorMsg: msg, isPlaying: false });
-    // auto-next on error
-    const s = usePlayerStore.getState();
-    if (s.currentIdx + 1 < s.queue.length) {
+    // auto-next on error — 큐 진행 여부는 facade가 판단
+    if (onTrackEnd) {
+      const cb = onTrackEnd;
       setTimeout(() => {
-        const nextIdx = s.currentIdx + 1;
-        usePlayerStore.setState({ currentIdx: nextIdx, position: 0 });
-        const next = s.queue[nextIdx];
-        if (next.tidal_track_id) void loadAndPlay(next.tidal_track_id);
+        if (active) cb();
       }, 1000);
     }
   });
