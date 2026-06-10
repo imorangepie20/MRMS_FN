@@ -21,6 +21,7 @@ from typing import Iterable
 import httpx
 import psycopg
 
+from mrms.db.emp_section import prune_stale_items, upsert_section, upsert_section_item
 from mrms.db.settings import get_setting
 from mrms.emp.base import EMPImporter, upsert_track_and_emp_source
 
@@ -42,8 +43,34 @@ DEFAULT_SOURCES = [
 ]
 
 
-def _classify_item(node: dict) -> tuple[str, str, str] | None:
-    """Returns (kind, identifier, name) or None if not a recognized item.
+def _extract_cover(node: dict) -> str | None:
+    """Try multiple fields for cover URL. Returns first usable URL or None."""
+    # Direct URL string fields
+    for k in ("imageUrl", "image"):
+        v = node.get(k)
+        if isinstance(v, str) and v.startswith("http"):
+            return v
+    # Tidal cover ID (UUID with dashes, e.g. "b48a8d6f-...") → CDN URL
+    cover = node.get("cover") or node.get("squareImage")
+    if isinstance(cover, str) and "-" in cover and len(cover) >= 16:
+        path = cover.replace("-", "/")
+        return f"https://resources.tidal.com/images/{path}/640x640.jpg"
+    # images / image dict with size keys
+    images = node.get("images") or node.get("image")
+    if isinstance(images, dict):
+        for size_key in ("MEDIUM", "LARGE", "SMALL", "md", "lg", "sm"):
+            entry = images.get(size_key)
+            if isinstance(entry, dict):
+                url = entry.get("url")
+                if isinstance(url, str) and url.startswith("http"):
+                    return url
+            elif isinstance(entry, str) and entry.startswith("http"):
+                return entry
+    return None
+
+
+def _classify_item(node: dict) -> tuple[str, str, str, str | None] | None:
+    """Returns (kind, identifier, name, cover_url) or None if not a recognized item.
 
     Tidal items have variable shapes. Heuristics:
     - 'uuid' + 'title' → playlist
@@ -55,9 +82,12 @@ def _classify_item(node: dict) -> tuple[str, str, str] | None:
     title = node.get("title")
     if not title:
         return None
+
+    cover_url = _extract_cover(node)
+
     uuid = node.get("uuid")
     if uuid and isinstance(uuid, str) and len(uuid) >= 16:
-        return ("playlist", uuid, title)
+        return ("playlist", uuid, title, cover_url)
     item_id = node.get("id")
     # Album items typically have numeric id + artists/releaseDate field.
     # Guard on 'isrc' absence — tracks also have artists but always carry isrc.
@@ -67,10 +97,10 @@ def _classify_item(node: dict) -> tuple[str, str, str] | None:
         and (node.get("artists") or node.get("releaseDate"))
         and isinstance(item_id, (int, str))
     ):
-        return ("album", str(item_id), title)
+        return ("album", str(item_id), title, cover_url)
     # Mix items have string id (long alnum) + may have 'mixType'
     if isinstance(item_id, str) and len(item_id) >= 16 and node.get("mixType"):
-        return ("mix", item_id, title)
+        return ("mix", item_id, title, cover_url)
     return None
 
 
@@ -122,8 +152,9 @@ class TidalEMPImporter(EMPImporter):
 
     async def _fetch_section_items(
         self, http: httpx.AsyncClient, section: str
-    ) -> list[tuple[str, str, str]]:
-        """Walk /v2/home/pages/{SECTION}/view-all response. Returns [(kind, id, name), ...]."""
+    ) -> list[tuple[str, str, str, str | None]]:
+        """Walk /v2/home/pages/{SECTION}/view-all response.
+        Returns [(kind, id, name, cover_url), ...]."""
         try:
             r = await http.get(
                 f"{TIDAL_BASE}/v2/home/pages/{section}/view-all",
@@ -143,8 +174,8 @@ class TidalEMPImporter(EMPImporter):
         return list(self._walk_classify(data))
 
     @staticmethod
-    def _walk_classify(node) -> Iterable[tuple[str, str, str]]:
-        """Recursively yield (kind, id, name) for every classifiable item."""
+    def _walk_classify(node) -> Iterable[tuple[str, str, str, str | None]]:
+        """Recursively yield (kind, id, name, cover_url) for every classifiable item."""
         if isinstance(node, dict):
             classified = _classify_item(node)
             if classified is not None:
@@ -303,29 +334,59 @@ class TidalEMPImporter(EMPImporter):
             }
         sources = self._load_sources()
 
-        # Phase 1: resolve sources → flat list of (kind, id, name)
-        items: list[tuple[str, str, str]] = []  # (kind, id, name)
+        # Phase 1: resolve sources → flat list of (kind, id, name, cover_url)
+        # Also save EMPSection + EMPSectionItem for home/* sources.
+        items: list[tuple[str, str, str, str | None]] = []
         seen_keys: set[tuple[str, str]] = set()
         errors: list[str] = []
 
         async with httpx.AsyncClient(timeout=20.0) as http:
-            for kind, ident in sources:
+            for src_idx, (kind, ident) in enumerate(sources):
                 if kind == "home":
                     classified = await self._fetch_section_items(http, ident)
-                    for k, i, n in classified:
+
+                    # Save section hierarchy to DB
+                    display_title = ident.replace("_", " ").title()
+                    try:
+                        section_id = upsert_section(
+                            conn=conn,
+                            platform="tidal",
+                            section_key=ident,
+                            display_title=display_title,
+                            display_order=src_idx,
+                        )
+                        seen_in_section: set[tuple[str, str]] = set()
+                        for item_idx, (k, i, n, cover) in enumerate(classified):
+                            upsert_section_item(
+                                conn=conn,
+                                section_id=section_id,
+                                item_type=k,
+                                item_id=i,
+                                title=n,
+                                cover_url=cover,
+                                display_order=item_idx,
+                            )
+                            seen_in_section.add((k, i))
+                        prune_stale_items(conn, section_id, seen_in_section)
+                    except Exception as e:
+                        errors.append(
+                            f"section save {ident}: {type(e).__name__}: {str(e)[:120]}"
+                        )
+
+                    for k, i, n, cover in classified:
                         if (k, i) not in seen_keys:
                             seen_keys.add((k, i))
-                            items.append((k, i, n))
+                            items.append((k, i, n, cover))
                 else:
-                    # Direct item — fetch name lazily later if needed
+                    # Direct item — no section save
                     if (kind, ident) not in seen_keys:
                         seen_keys.add((kind, ident))
-                        items.append((kind, ident, ident))
+                        items.append((kind, ident, ident, None))
 
             # Phase 2: fetch tracks per item, upsert
             tracks_new = 0
             tracks_existing = 0
-            for kind, ident, name in items:
+            for kind, ident, name, _cover in items:
                 try:
                     if kind == "playlist":
                         tracks = await self._fetch_playlist_tracks(http, ident)
