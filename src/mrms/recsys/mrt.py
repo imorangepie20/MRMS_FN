@@ -39,6 +39,7 @@ def search_for_persona(
                JOIN "Track" t ON t.id = e."trackId"
                JOIN "Artist" a ON a.id = t."artistId"
                WHERE e."modelVersion" = %s
+                 AND t."inEmp" = TRUE
                  AND t.id NOT IN (
                    SELECT "trackId" FROM "UserTrack" WHERE "userId" = %s
                  )

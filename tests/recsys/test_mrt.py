@@ -64,6 +64,34 @@ def test_search_excludes_user_tracks(db_conn):
     assert excluded_track_id not in returned_ids
 
 
+def test_search_excludes_non_emp(db_conn):
+    """inEmp = FALSE인 트랙은 검색 결과 제외."""
+    with db_conn.cursor() as cur:
+        cur.execute(
+            '''SELECT te."trackId", te.embedding FROM "TrackEmbedding" te
+               JOIN "Track" t ON t.id = te."trackId"
+               WHERE te."modelVersion" = 'our-v1.0' AND t."inEmp" = FALSE
+               LIMIT 1'''
+        )
+        row = cur.fetchone()
+    if not row:
+        pytest.skip("non-EMP 임베딩 트랙 부족 (모두 EMP거나 데이터 부족)")
+    target_id = row[0]
+    target_vec_raw = row[1]
+    # embedding may come back as a string '[x,y,...]' or array depending on driver/register_vector state
+    if isinstance(target_vec_raw, str):
+        target_vec = np.fromstring(target_vec_raw.strip("[]"), sep=",", dtype=np.float32)
+    else:
+        target_vec = np.asarray(target_vec_raw, dtype=np.float32)
+
+    user_id = "test_user_emp_filter_xx"
+
+    # 같은 임베딩으로 검색해도 inEmp=FALSE인 자기 자신은 결과에 없어야
+    results = search_for_persona(db_conn, user_id, target_vec, top_n=20)
+    track_ids = [r["track_id"] for r in results]
+    assert target_id not in track_ids
+
+
 def test_derive_recommended_tracks_dedup_and_score():
     """3 페르소나의 top-N → dedup by track_id, score=max similarity."""
     playlists = [
