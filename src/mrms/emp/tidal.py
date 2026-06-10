@@ -89,32 +89,80 @@ class TidalEMPImporter(EMPImporter):
             for v in node:
                 yield from TidalEMPImporter._walk_playlists(v)
 
+    def _load_sources_from_setting(self) -> list[tuple[str, str]]:
+        """Returns [(kind, identifier), ...] where kind is 'pages' or 'playlist'.
+
+        Reads 'tidal_emp_sources' from Setting. Each non-blank, non-comment line
+        must be of the form ``pages/<slug>`` or ``playlist/<uuid>``.
+        Falls back to DISCOVERY_PAGES if setting is empty or unset.
+        """
+        raw = get_setting(self._conn, "tidal_emp_sources") or ""
+        sources: list[tuple[str, str]] = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "/" not in line:
+                continue
+            kind, _, ident = line.partition("/")
+            kind = kind.strip().lower()
+            ident = ident.strip()
+            if kind in ("pages", "playlist") and ident:
+                sources.append((kind, ident))
+        if not sources:
+            sources = [("pages", p) for p in DISCOVERY_PAGES]
+        return sources
+
     async def fetch_editorial_playlists(self) -> list[dict]:
         if not self.token:
             return []
+        sources = self._load_sources_from_setting()
         seen: set[str] = set()
         result: list[dict] = []
         async with httpx.AsyncClient(timeout=20.0) as http:
-            for page in DISCOVERY_PAGES:
-                try:
-                    r = await http.get(
-                        f"{TIDAL_API_BASE}/pages/{page}",
-                        headers=self._headers(),
-                        params=self._common_params(),
-                    )
-                    if r.status_code != 200:
+            for kind, ident in sources:
+                if kind == "pages":
+                    try:
+                        r = await http.get(
+                            f"{TIDAL_API_BASE}/pages/{ident}",
+                            headers=self._headers(),
+                            params=self._common_params(),
+                        )
+                        if r.status_code != 200:
+                            continue
+                        data = r.json()
+                    except Exception:
                         continue
-                    data = r.json()
-                except Exception:
-                    continue
-                for cand in self._walk_playlists(data):
-                    uuid = cand["uuid"]
-                    if uuid in seen:
+                    for cand in self._walk_playlists(data):
+                        uuid = cand["uuid"]
+                        if uuid in seen:
+                            continue
+                        seen.add(uuid)
+                        result.append({
+                            "id": uuid,
+                            "name": cand["title"],
+                            "source_type": "editorial_playlist",
+                        })
+                elif kind == "playlist":
+                    if ident in seen:
                         continue
-                    seen.add(uuid)
+                    seen.add(ident)
+                    # Try to fetch name; ok to fail and fall back to ident
+                    name = ident
+                    try:
+                        r = await http.get(
+                            f"{TIDAL_API_BASE}/playlists/{ident}",
+                            headers=self._headers(),
+                            params=self._common_params(),
+                        )
+                        if r.status_code == 200:
+                            d = r.json()
+                            name = d.get("title") or ident
+                    except Exception:
+                        pass
                     result.append({
-                        "id": uuid,
-                        "name": cand["title"],
+                        "id": ident,
+                        "name": name,
                         "source_type": "editorial_playlist",
                     })
         return result

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mrms.emp.tidal import TOKEN_SETTING_KEY, TidalEMPImporter
+from mrms.emp.tidal import DISCOVERY_PAGES, TOKEN_SETTING_KEY, TidalEMPImporter
 
 
 @pytest.mark.asyncio
@@ -126,3 +126,40 @@ async def test_fetch_playlist_tracks_parses_item_wrapper(db_conn):
     assert tracks[0]["isrc"] == "USRC10000001"
     assert tracks[0]["duration_ms"] == 180_000
     assert tracks[1]["isrc"] is None
+
+
+@pytest.mark.asyncio
+async def test_load_sources_parses_lines(db_conn):
+    """tidal_emp_sources setting parses page + playlist lines."""
+    from mrms.db.settings import set_setting
+
+    importer = TidalEMPImporter(conn=db_conn, token="fake")
+    set_setting(
+        db_conn,
+        "tidal_emp_sources",
+        "pages/explore\npages/genre_jazz\nplaylist/abc-uuid-1234-5678\n#comment\n\n",
+    )
+    db_conn.commit()
+    try:
+        sources = importer._load_sources_from_setting()
+        assert ("pages", "explore") in sources
+        assert ("pages", "genre_jazz") in sources
+        assert ("playlist", "abc-uuid-1234-5678") in sources
+        assert len(sources) == 3
+    finally:
+        set_setting(db_conn, "tidal_emp_sources", None)
+        db_conn.commit()
+
+
+@pytest.mark.asyncio
+async def test_load_sources_default_when_empty(db_conn):
+    """setting unset → DISCOVERY_PAGES default."""
+    from mrms.db.settings import set_setting
+
+    set_setting(db_conn, "tidal_emp_sources", None)
+    db_conn.commit()
+
+    importer = TidalEMPImporter(conn=db_conn, token="fake")
+    sources = importer._load_sources_from_setting()
+    assert len(sources) == len(DISCOVERY_PAGES)
+    assert all(kind == "pages" for kind, _ in sources)

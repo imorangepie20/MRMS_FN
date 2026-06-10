@@ -51,7 +51,10 @@ def admin_runs(
 
 
 # Whitelisted keys — never let arbitrary keys be set via admin
-ALLOWED_SETTING_KEYS = ["tidal_x_token"]
+ALLOWED_SETTING_KEYS = ["tidal_x_token", "tidal_emp_sources"]
+
+# Keys whose value should be masked in GET response (tokens etc.)
+MASKED_KEYS: set[str] = {"tidal_x_token"}
 
 
 @router.get("/settings")
@@ -61,14 +64,17 @@ def admin_get_settings(
 ):
     _require_admin(conn, user_id)
     values = list_settings(conn, ALLOWED_SETTING_KEYS)
-    # Mask token values — return only length / presence
-    masked: dict[str, dict] = {}
+    out: dict[str, dict] = {}
     for k, v in values.items():
-        if v:
-            masked[k] = {"present": True, "preview": f"…{v[-4:]}" if len(v) > 4 else "…"}
+        if k in MASKED_KEYS:
+            if v:
+                out[k] = {"present": True, "preview": f"…{v[-4:]}" if len(v) > 4 else "…"}
+            else:
+                out[k] = {"present": False, "preview": None}
         else:
-            masked[k] = {"present": False, "preview": None}
-    return {"settings": masked}
+            # Plain value — return as-is
+            out[k] = {"present": v is not None, "value": v}
+    return {"settings": out}
 
 
 class SettingUpdate(BaseModel):

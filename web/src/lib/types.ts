@@ -158,6 +158,14 @@ export interface EmpSettingMasked {
   preview: string | null;
 }
 
+/** Unified shape for a single setting entry from GET /api/admin/emp/settings.
+ *  Masked keys (e.g. tokens) have `preview`; plain keys have `value`. */
+export interface EmpSettingValue {
+  present: boolean;
+  preview?: string | null;   // masked keys only
+  value?: string | null;     // unmasked keys only
+}
+
 export interface EmpSettings {
-  settings: Record<string, EmpSettingMasked>;
+  settings: Record<string, EmpSettingValue>;
 }
