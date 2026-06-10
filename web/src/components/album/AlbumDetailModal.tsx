@@ -8,7 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ModalTrackList, PlayAllButton } from "@/components/track/ModalTrackList";
+import { ModalTrackList } from "@/components/track/ModalTrackList";
+import { TrackModalMasthead } from "@/components/track/TrackModalMasthead";
 import { fetchAlbumTracks } from "@/lib/api/playlists";
 import type { TrackInfo } from "@/lib/types";
 
@@ -38,31 +39,24 @@ export function AlbumDetailModal({ open, onOpenChange, albumId }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-(--mrms-paper) border-(--mrms-ink) sm:max-w-[640px] max-h-[80vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <div className="flex justify-between items-start gap-3 pr-8">
-            <div className="min-w-0">
-              <div className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute)">
-                Album
-              </div>
-              <DialogTitle className="font-display font-bold text-(--mrms-ink) text-[22px] leading-tight">
+      <DialogContent className="bg-(--mrms-paper) border-(--mrms-ink) sm:max-w-[720px] max-h-[82vh] overflow-hidden flex flex-col">
+        <DialogHeader className="pr-8">
+          <TrackModalMasthead
+            kicker="Album"
+            title={album?.title ?? "—"}
+            titleSlot={
+              <DialogTitle
+                className="font-display font-bold text-(--mrms-ink) text-[22px] md:text-[26px] leading-[1.1] mt-1 truncate"
+                title={album?.title ?? undefined}
+              >
                 {album?.title ?? "—"}
               </DialogTitle>
-            </div>
-            <PlayAllButton tracks={tracks} />
-          </div>
+            }
+            cover={album?.cover_url}
+            tracks={tracks}
+          />
         </DialogHeader>
-        <div className="flex gap-4">
-          <div className="size-24 bg-(--mrms-rule) shrink-0">
-            {album?.cover_url && (
-              <img src={album.cover_url} alt="" className="size-full object-cover" />
-            )}
-          </div>
-          <div className="font-mono text-[11px] text-(--mrms-ink-soft)">
-            {tracks.length} tracks
-          </div>
-        </div>
-        <div className="overflow-y-auto border-t border-(--mrms-rule) -mx-6 px-6">
+        <div className="overflow-y-auto -mx-6 px-6">
           {loading && (
             <div className="py-8 text-center font-mono text-[11px] tracking-editorial uppercase text-(--mrms-ink-mute)">
               Loading…

@@ -45,6 +45,16 @@ export function formatDuration(ms?: number | null): string {
 }
 
 
+/** 트랙 합산 재생시간 — "47 min" / "2 hr 58 min". duration 없는 트랙뿐이면 null. */
+export function formatTotalDuration(tracks: ModalTrack[]): string | null {
+  const ms = tracks.reduce((acc, t) => acc + (t.duration_ms ?? 0), 0);
+  if (!ms) return null;
+  const min = Math.round(ms / 60000);
+  if (min < 60) return `${min} min`;
+  return `${Math.floor(min / 60)} hr ${min % 60} min`;
+}
+
+
 function isPlayable(t: ModalTrack): boolean {
   return t.tidal_track_id != null || t.spotify_track_id != null;
 }
