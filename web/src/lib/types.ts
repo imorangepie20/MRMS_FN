@@ -121,3 +121,34 @@ export interface OnboardingStatus {
   message: string | null;
   error: string | null;
 }
+
+export interface IngestionStage {
+  stage: string;
+  status: string;
+  tracks_new?: number;
+  tracks_existing?: number;
+  downloaded?: number;
+  failed?: number;
+  embedded?: number;
+  loaded?: number;
+  duration_ms?: number;
+  error?: string | null;
+}
+
+export interface IngestionRun {
+  id: string;
+  started_at: string | null;
+  finished_at: string | null;
+  status: string;
+  platform: string | null;
+  stages: IngestionStage[];
+  triggered_by: string;
+}
+
+export interface EmpStats {
+  total_tracks: number;
+  in_emp: number;
+  with_embedding: number;
+  by_platform: Record<string, number>;
+  last_run?: IngestionRun | null;
+}
