@@ -27,19 +27,9 @@ export function SectionRow({
   };
 
   useEffect(() => {
-    updateArrows();
     const el = scrollerRef.current;
     if (!el) return;
-    el.addEventListener("scroll", updateArrows, { passive: true });
-    const ro = new ResizeObserver(updateArrows);
-    ro.observe(el);
-    return () => {
-      el.removeEventListener("scroll", updateArrows);
-      ro.disconnect();
-    };
-  }, [section.items.length]);
 
-  useEffect(() => {
     const compute = () => {
       const w = window.innerWidth;
       let c = 8;
@@ -49,17 +39,23 @@ export function SectionRow({
       else if (w < 1280) c = 7;
       setCols(c);
 
-      const el = scrollerRef.current;
-      if (el) {
-        // 컨테이너 폭 / cols - 좌우 padding(12px)
-        const px = Math.floor(el.clientWidth / c) - 12;
-        setItemPx(Math.max(px, 80));
-      }
+      const px = Math.floor(el.clientWidth / c) - 12;
+      setItemPx(Math.max(px, 80));
+
+      updateArrows();
     };
+
     compute();
+    el.addEventListener("scroll", updateArrows, { passive: true });
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
     window.addEventListener("resize", compute);
-    return () => window.removeEventListener("resize", compute);
-  }, []);
+    return () => {
+      el.removeEventListener("scroll", updateArrows);
+      ro.disconnect();
+      window.removeEventListener("resize", compute);
+    };
+  }, [section.items.length]);
 
   const scrollByPage = (dir: 1 | -1) => {
     const el = scrollerRef.current;
