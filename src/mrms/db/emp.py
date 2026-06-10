@@ -1,0 +1,139 @@
+"""EMP DB helpers — EMPSource upsert, stats, IngestionRun."""
+from __future__ import annotations
+
+import hashlib
+import json
+import uuid
+
+import psycopg
+
+EMBEDDING_MODEL_VERSION = "our-v1.0"
+
+
+def _id(value: str) -> str:
+    return f"c{hashlib.sha1(value.encode(), usedforsecurity=False).hexdigest()[:24]}"
+
+
+def upsert_emp_source(
+    conn: psycopg.Connection,
+    track_id: str,
+    platform: str,
+    source_type: str,
+    source_id: str,
+    source_name: str | None,
+) -> str:
+    """EMPSource INSERT (UNIQUE 충돌 시 skip). row_id 반환.
+    trigger가 Track.inEmp = TRUE 자동 설정."""
+    row_id = _id(f"emp|{track_id}|{platform}|{source_id}")
+    with conn.cursor() as cur:
+        cur.execute(
+            '''INSERT INTO "EMPSource"
+                 (id, "trackId", platform, source_type, source_id, source_name)
+               VALUES (%s, %s, %s, %s, %s, %s)
+               ON CONFLICT ("trackId", platform, source_id) DO NOTHING''',
+            (row_id, track_id, platform, source_type, source_id, source_name),
+        )
+    conn.commit()
+    return row_id
+
+
+def get_emp_stats(conn: psycopg.Connection) -> dict:
+    """EMP 풀 통계."""
+    with conn.cursor() as cur:
+        cur.execute('SELECT COUNT(*) FROM "Track"')
+        total = cur.fetchone()[0]
+        cur.execute('SELECT COUNT(*) FROM "Track" WHERE "inEmp" = TRUE')
+        in_emp = cur.fetchone()[0]
+        cur.execute(
+            '''SELECT COUNT(DISTINCT t.id)
+               FROM "Track" t
+               JOIN "TrackEmbedding" te ON te."trackId" = t.id
+                 AND te."modelVersion" = %s
+               WHERE t."inEmp" = TRUE''',
+            (EMBEDDING_MODEL_VERSION,),
+        )
+        with_emb = cur.fetchone()[0]
+        cur.execute(
+            '''SELECT platform, COUNT(DISTINCT "trackId")
+               FROM "EMPSource"
+               GROUP BY platform'''
+        )
+        by_platform = {r[0]: r[1] for r in cur.fetchall()}
+    return {
+        "total_tracks": total,
+        "in_emp": in_emp,
+        "with_embedding": with_emb,
+        "by_platform": by_platform,
+    }
+
+
+def create_run(
+    conn: psycopg.Connection,
+    platform: str | None,
+    triggered_by: str = "scheduler",
+) -> str:
+    """IngestionRun 시작 row. id 반환."""
+    run_id = f"run_{uuid.uuid4().hex[:16]}"
+    with conn.cursor() as cur:
+        cur.execute(
+            '''INSERT INTO "IngestionRun" (id, status, platform, "triggeredBy")
+               VALUES (%s, 'running', %s, %s)''',
+            (run_id, platform, triggered_by),
+        )
+    conn.commit()
+    return run_id
+
+
+def append_stage(
+    conn: psycopg.Connection, run_id: str, stage: dict
+) -> None:
+    """stages JSONB에 한 stage 추가."""
+    with conn.cursor() as cur:
+        cur.execute(
+            '''UPDATE "IngestionRun"
+               SET stages = stages || %s::jsonb
+               WHERE id = %s''',
+            (json.dumps([stage]), run_id),
+        )
+    conn.commit()
+
+
+def finish_run(
+    conn: psycopg.Connection, run_id: str, status: str
+) -> None:
+    """run 종료. status: 'success' | 'failed' | 'partial'."""
+    with conn.cursor() as cur:
+        cur.execute(
+            '''UPDATE "IngestionRun"
+               SET status = %s, "finishedAt" = NOW()
+               WHERE id = %s''',
+            (status, run_id),
+        )
+    conn.commit()
+
+
+def list_recent_runs(
+    conn: psycopg.Connection, limit: int = 50
+) -> list[dict]:
+    """최근 IngestionRun 목록."""
+    with conn.cursor() as cur:
+        cur.execute(
+            '''SELECT id, "startedAt", "finishedAt", status, platform, stages, "triggeredBy"
+               FROM "IngestionRun"
+               ORDER BY "startedAt" DESC
+               LIMIT %s''',
+            (limit,),
+        )
+        rows = cur.fetchall()
+    return [
+        {
+            "id": r[0],
+            "started_at": r[1].isoformat() if r[1] else None,
+            "finished_at": r[2].isoformat() if r[2] else None,
+            "status": r[3],
+            "platform": r[4],
+            "stages": r[5] if isinstance(r[5], list) else json.loads(r[5] or "[]"),
+            "triggered_by": r[6],
+        }
+        for r in rows
+    ]
