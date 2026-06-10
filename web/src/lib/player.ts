@@ -30,7 +30,9 @@ export async function initPlayer(
   tidalPlayer.setOnTrackEnd(() => void advanceToNext());
   spotifyPlayer.setOnTrackEnd(() => void advanceToNext());
   // 재생 시작 후 스트림 실패 (예: 404) → 타 플랫폼 재시도
-  tidalPlayer.setOnTrackError(() => void handleTrackError());
+  tidalPlayer.setOnTrackError(
+    (failedId) => void handleTrackError(failedId),
+  );
   await ensureInit(primaryPlatform);
 }
 
@@ -87,8 +89,9 @@ async function resolveTrackId(
   track: QueueTrack,
 ): Promise<string | null> {
   try {
+    const base = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
     const r = await fetch(
-      `/api/playback/resolve/${track.track_id}?platform=${platform}`,
+      `${base}/playback/resolve/${track.track_id}?platform=${platform}`,
       { credentials: "include" },
     );
     if (!r.ok) return null;
@@ -160,6 +163,9 @@ async function playOn(
       // best effort
     }
   }
+
+  // pause await 동안에도 새 요청이 끼어들 수 있음 — active 덮어쓰기 방지
+  if (generation !== playGeneration) return;
 
   active = platform;
   tidalPlayer.setTidalActive(platform === "tidal");
@@ -257,10 +263,12 @@ export async function loadAndPlay(track: QueueTrack): Promise<void> {
  * 재생 시작 후 비동기 스트림 에러 (예: tidal 404) → 타 플랫폼 재시도.
  * track_id당 1회 — 이미 재시도한 트랙이면 동기 경로에 맡기고 종료.
  */
-async function handleTrackError(): Promise<void> {
+async function handleTrackError(failedTidalId?: string | null): Promise<void> {
   const s = usePlayerStore.getState();
   const track = s.queue[s.currentIdx];
   if (!track) return;
+  // 이전 트랙의 늦은 에러 이벤트 (사용자가 이미 다른 곡 시작) — 무시
+  if (failedTidalId && track.tidal_track_id !== failedTidalId) return;
   if (retriedTrackId === track.track_id) return; // 재시도 1회 소진
   retriedTrackId = track.track_id;
 

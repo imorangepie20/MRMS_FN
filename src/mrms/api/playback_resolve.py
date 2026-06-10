@@ -268,6 +268,7 @@ async def resolve_track(
         return {"platform_track_id": row[0]}
 
     # 3. 플랫폼 토큰 — OAuth 미연결/refresh 실패는 미인증(401) 취급
+    # (tidal refresh 실패는 HTTPException이 아닌 예외로 올라올 수 있어 broad catch)
     try:
         if platform == "spotify":
             token = (await _spotify_token(user_id=user_id, conn=conn))["access_token"]
@@ -275,6 +276,8 @@ async def resolve_track(
             token = await _tidal_token(user_id, conn)
     except HTTPException as e:
         raise HTTPException(401, f"{platform} auth unavailable: {e.detail}")
+    except Exception as e:
+        raise HTTPException(401, f"{platform} auth unavailable: {type(e).__name__}")
 
     # 4. 검색 + 매칭
     with conn.cursor() as cur:

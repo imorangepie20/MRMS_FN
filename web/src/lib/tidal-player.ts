@@ -10,8 +10,12 @@ let audioEl: HTMLAudioElement | null = null;
 // auto-next 판단(큐 진행, 교차 플랫폼 포함)은 전적으로 facade 책임.
 let onTrackEnd: (() => void) | null = null;
 
-// 재생 에러 콜백 — facade가 타 플랫폼 재시도/스킵 판단
-let onTrackError: (() => void) | null = null;
+// 재생 에러 콜백 — facade가 타 플랫폼 재시도/스킵 판단.
+// 실패한 tidal track id를 전달해 facade가 stale 이벤트 (이전 트랙 에러) 를 걸러냄.
+let onTrackError: ((failedTidalId: string | null) => void) | null = null;
+
+// 마지막으로 load한 tidal track id — error 이벤트 발생 시 어떤 트랙 실패인지 식별
+let loadedTidalId: string | null = null;
 
 // 교차 재생 시 비활성 플랫폼의 이벤트가 store를 덮어쓰지 않도록 facade가 제어
 let active = true;
@@ -22,7 +26,9 @@ export function setOnTrackEnd(cb: (() => void) | null): void {
 }
 
 
-export function setOnTrackError(cb: (() => void) | null): void {
+export function setOnTrackError(
+  cb: ((failedTidalId: string | null) => void) | null,
+): void {
   onTrackError = cb;
 }
 
@@ -78,7 +84,7 @@ function ensureAudio(): HTMLAudioElement {
     usePlayerStore.setState({ errorMsg: msg, isPlaying: false });
     // 재생 에러 → facade가 타 플랫폼 재시도/스킵 판단 (즉시 호출)
     if (onTrackError) {
-      onTrackError();
+      onTrackError(loadedTidalId);
       return;
     }
     // onTrackError 미등록 시 기존 동작: auto-next on error
@@ -111,6 +117,7 @@ export async function initTidalSdk(_token?: unknown): Promise<void> {
 
 export async function loadAndPlay(tidalTrackId: string): Promise<void> {
   const el = ensureAudio();
+  loadedTidalId = tidalTrackId;
   usePlayerStore.setState({ position: 0, durationSec: 0, isPreview: false });
   el.src = streamUrl(tidalTrackId);
   el.load();
