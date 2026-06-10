@@ -73,7 +73,7 @@ def test_classify_cover_from_tidal_cover_id():
     })
     assert r is not None
     assert r[0] == "playlist"
-    assert r[3] == "https://resources.tidal.com/images/b48a8d6f/1234/5678/abcd/ef0123456789/640x640.jpg"
+    assert r[3] == "https://resources.tidal.com/images/b48a8d6f/1234/5678/abcd/ef0123456789/320x320.jpg"
 
 
 def test_classify_cover_from_images_dict():
@@ -104,7 +104,7 @@ def test_classify_mix_wrapper():
         },
     }
     r = _classify_item(node)
-    assert r == ("mix", "001cf67080308c21cb4d36b2f95ecc", "Raindance", "https://x/lg.jpg")
+    assert r == ("mix", "001cf67080308c21cb4d36b2f95ecc", "Raindance", "https://x/md.jpg")
 
 
 def test_classify_playlist_wrapper():
