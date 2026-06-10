@@ -152,3 +152,12 @@ export interface EmpStats {
   by_platform: Record<string, number>;
   last_run?: IngestionRun | null;
 }
+
+export interface EmpSettingMasked {
+  present: boolean;
+  preview: string | null;
+}
+
+export interface EmpSettings {
+  settings: Record<string, EmpSettingMasked>;
+}

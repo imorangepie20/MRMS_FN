@@ -5,15 +5,18 @@ import { RefreshCw, Play } from "lucide-react";
 
 import {
   fetchEmpRuns,
+  fetchEmpSettings,
   fetchEmpStats,
+  saveEmpSetting,
   triggerEmpImport,
 } from "@/lib/api/admin-emp";
-import type { EmpStats, IngestionRun } from "@/lib/types";
+import type { EmpSettings, EmpStats, IngestionRun } from "@/lib/types";
 
 
 export function EmpDashboard() {
   const [stats, setStats] = useState<EmpStats | null>(null);
   const [runs, setRuns] = useState<IngestionRun[]>([]);
+  const [settings, setSettings] = useState<EmpSettings["settings"] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,9 +24,10 @@ export function EmpDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [s, r] = await Promise.all([fetchEmpStats(), fetchEmpRuns(50)]);
+      const [s, r, st] = await Promise.all([fetchEmpStats(), fetchEmpRuns(50), fetchEmpSettings()]);
       setStats(s);
       setRuns(r);
+      setSettings(st.settings);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -94,6 +98,8 @@ export function EmpDashboard() {
         </button>
       </section>
 
+      <SettingsCard settings={settings} onSaved={refresh} />
+
       <section>
         <h2 className="font-display font-bold text-[20px] mb-3 pb-2 border-b border-[var(--mrms-ink)]">
           Recent runs
@@ -122,6 +128,95 @@ function StatCell({ label, value }: { label: string; value: number | string }) {
         {value}
       </div>
     </div>
+  );
+}
+
+
+function SettingsCard({
+  settings,
+  onSaved,
+}: {
+  settings: EmpSettings["settings"] | null;
+  onSaved: () => Promise<void>;
+}) {
+  const [tokenInput, setTokenInput] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const current = settings?.["tidal_x_token"];
+
+  const save = async () => {
+    if (!tokenInput.trim()) {
+      alert("값을 입력하세요");
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveEmpSetting("tidal_x_token", tokenInput.trim());
+      setTokenInput("");
+      await onSaved();
+      alert("저장됨");
+    } catch (e) {
+      alert(`저장 실패: ${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const clear = async () => {
+    if (!confirm("Tidal token 삭제?")) return;
+    setSaving(true);
+    try {
+      await saveEmpSetting("tidal_x_token", null);
+      await onSaved();
+    } catch (e) {
+      alert(`삭제 실패: ${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="mb-10">
+      <h2 className="font-display font-bold text-[20px] mb-3 pb-2 border-b border-(--mrms-ink)">
+        Settings
+      </h2>
+
+      <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] py-2 border-b border-(--mrms-rule)">
+        <span className="text-(--mrms-ink-mute) tracking-editorial uppercase min-w-[120px]">
+          tidal_x_token
+        </span>
+        <span className="text-(--mrms-ink-soft) truncate flex-1 min-w-[100px]">
+          {current?.present ? `set · ${current.preview}` : "— not set —"}
+        </span>
+        <input
+          type="password"
+          value={tokenInput}
+          onChange={(e) => setTokenInput(e.target.value)}
+          placeholder="paste token"
+          className="border border-(--mrms-rule) bg-(--mrms-paper) px-2 py-1 font-mono text-[11px] text-(--mrms-ink) w-[180px]"
+        />
+        <button
+          onClick={save}
+          disabled={saving || !tokenInput.trim()}
+          className="bg-(--mrms-ink) text-(--mrms-paper) border-0 px-3 py-1 font-mono text-[10px] tracking-editorial uppercase cursor-pointer disabled:opacity-50"
+        >
+          Save
+        </button>
+        {current?.present && (
+          <button
+            onClick={clear}
+            disabled={saving}
+            className="bg-transparent border border-(--mrms-rust) text-(--mrms-rust) px-3 py-1 font-mono text-[10px] tracking-editorial uppercase cursor-pointer"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      <p className="mt-2 font-mono text-[10px] text-(--mrms-ink-mute)">
+        Tidal web client의 X-Tidal-Token. 값이 있으면 importer가 api.tidal.com /pages/explore에서 editorial playlists 받아옴.
+      </p>
+    </section>
   );
 }
 
