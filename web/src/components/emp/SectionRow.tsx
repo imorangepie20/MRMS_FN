@@ -84,7 +84,7 @@ export function SectionRow({
           <button
             key={it.id}
             onClick={() => onItemClick(it)}
-            className="shrink-0 snap-start text-left bg-transparent border-0 p-0 cursor-pointer w-[96px] md:w-[110px]"
+            className="shrink-0 snap-start text-left bg-transparent border-0 p-0 cursor-pointer w-[144px] md:w-[165px]"
           >
             {it.cover_url ? (
               <img
