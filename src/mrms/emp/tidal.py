@@ -70,37 +70,100 @@ def _extract_cover(node: dict) -> str | None:
 
 
 def _classify_item(node: dict) -> tuple[str, str, str, str | None] | None:
-    """Returns (kind, identifier, name, cover_url) or None if not a recognized item.
+    """Returns (kind, identifier, name, cover_url) or None.
 
-    Tidal items have variable shapes. Heuristics:
-    - 'uuid' + 'title' → playlist
-    - 'id' (numeric) + 'title' + 'artists' or 'releaseDate' → album
-    - 'id' (string with len > 16) without 'uuid', with 'title' → mix
+    Tidal section items are wrapped:
+        {type: "MIX"|"PLAYLIST"|"ALBUM", data: {...}}
     """
     if not isinstance(node, dict):
         return None
+
+    outer = (node.get("type") or "").upper()
+    data = node.get("data")
+
+    if outer == "MIX" and isinstance(data, dict):
+        return _classify_mix(data)
+    if outer == "PLAYLIST" and isinstance(data, dict):
+        return _classify_playlist(data)
+    if outer == "ALBUM" and isinstance(data, dict):
+        return _classify_album(data)
+
+    # No wrapper — fallback for flat shapes (older /v1/pages/* responses)
     title = node.get("title")
     if not title:
         return None
-
     cover_url = _extract_cover(node)
-
     uuid = node.get("uuid")
     if uuid and isinstance(uuid, str) and len(uuid) >= 16:
         return ("playlist", uuid, title, cover_url)
     item_id = node.get("id")
-    # Album items typically have numeric id + artists/releaseDate field.
+    # Album items typically have numeric id + artists/releaseDate.
     # Guard on 'isrc' absence — tracks also have artists but always carry isrc.
     if (
         item_id
         and not node.get("isrc")
-        and (node.get("artists") or node.get("releaseDate"))
-        and isinstance(item_id, (int, str))
+        and (node.get("releaseDate") or node.get("artists"))
     ):
         return ("album", str(item_id), title, cover_url)
-    # Mix items have string id (long alnum) + may have 'mixType'
-    if isinstance(item_id, str) and len(item_id) >= 16 and node.get("mixType"):
+    if isinstance(item_id, str) and len(item_id) >= 16 and "-" not in item_id:
         return ("mix", item_id, title, cover_url)
+    return None
+
+
+def _classify_mix(data: dict) -> tuple[str, str, str, str | None] | None:
+    mix_id = data.get("id")
+    if not isinstance(mix_id, str):
+        return None
+    # Title from titleTextInfo.text, fallback to track.trackTitle, then id
+    title = (
+        (data.get("titleTextInfo") or {}).get("text")
+        or (data.get("track") or {}).get("trackTitle")
+        or mix_id
+    )
+    cover_url = _pick_image_size(
+        data.get("mixImages") or data.get("detailMixImages") or []
+    )
+    return ("mix", mix_id, title, cover_url)
+
+
+def _classify_playlist(data: dict) -> tuple[str, str, str, str | None] | None:
+    # Playlist data has uuid field
+    uuid = data.get("uuid") or data.get("id")
+    if not isinstance(uuid, str) or len(uuid) < 16:
+        return None
+    title = data.get("title") or uuid
+    cover_url = _extract_cover(data) or _pick_image_size(
+        data.get("squareImages") or data.get("images") or []
+    )
+    return ("playlist", uuid, title, cover_url)
+
+
+def _classify_album(data: dict) -> tuple[str, str, str, str | None] | None:
+    album_id = data.get("id")
+    if album_id is None:
+        return None
+    title = data.get("title") or str(album_id)
+    cover_url = _extract_cover(data) or _pick_image_size(
+        data.get("squareImages") or data.get("images") or []
+    )
+    return ("album", str(album_id), title, cover_url)
+
+
+def _pick_image_size(images: list) -> str | None:
+    """Tidal image arrays: [{size: 'SMALL'|'MEDIUM'|'LARGE', url: '...', ...}].
+    Prefer LARGE > MEDIUM > SMALL."""
+    if not isinstance(images, list):
+        return None
+    by_size: dict[str, str] = {}
+    for img in images:
+        if isinstance(img, dict):
+            sz = (img.get("size") or "").upper()
+            url = img.get("url")
+            if isinstance(url, str) and sz:
+                by_size[sz] = url
+    for sz in ("LARGE", "MEDIUM", "SMALL"):
+        if sz in by_size:
+            return by_size[sz]
     return None
 
 
@@ -175,11 +238,12 @@ class TidalEMPImporter(EMPImporter):
 
     @staticmethod
     def _walk_classify(node) -> Iterable[tuple[str, str, str, str | None]]:
-        """Recursively yield (kind, id, name, cover_url) for every classifiable item."""
+        """Recursively walk; yield + STOP recursion when a node classifies."""
         if isinstance(node, dict):
             classified = _classify_item(node)
             if classified is not None:
                 yield classified
+                return  # Don't recurse into matched items
             for v in node.values():
                 yield from TidalEMPImporter._walk_classify(v)
         elif isinstance(node, list):

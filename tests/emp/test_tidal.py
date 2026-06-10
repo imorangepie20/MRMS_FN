@@ -87,6 +87,83 @@ def test_classify_cover_from_images_dict():
     assert r[3] == "https://resources.tidal.com/img/med.jpg"
 
 
+def test_classify_mix_wrapper():
+    """Real Tidal MIX wrapper shape from POPULAR_MIXES."""
+    node = {
+        "type": "MIX",
+        "data": {
+            "type": "TRACK_MIX",
+            "id": "001cf67080308c21cb4d36b2f95ecc",
+            "titleTextInfo": {"text": "Raindance"},
+            "subtitleTextInfo": {"text": "Dave, Tems"},
+            "mixImages": [
+                {"size": "SMALL", "url": "https://x/sm.jpg"},
+                {"size": "MEDIUM", "url": "https://x/md.jpg"},
+                {"size": "LARGE", "url": "https://x/lg.jpg"},
+            ],
+        },
+    }
+    r = _classify_item(node)
+    assert r == ("mix", "001cf67080308c21cb4d36b2f95ecc", "Raindance", "https://x/lg.jpg")
+
+
+def test_classify_playlist_wrapper():
+    node = {
+        "type": "PLAYLIST",
+        "data": {
+            "uuid": "31885f0b-96dc-41e1-8e1b-f83372043208",
+            "title": "Pop Hits",
+            "squareImages": [
+                {"size": "MEDIUM", "url": "https://x/pl.jpg"},
+            ],
+        },
+    }
+    r = _classify_item(node)
+    assert r == ("playlist", "31885f0b-96dc-41e1-8e1b-f83372043208", "Pop Hits", "https://x/pl.jpg")
+
+
+def test_classify_album_wrapper():
+    node = {
+        "type": "ALBUM",
+        "data": {
+            "id": 500612897,
+            "title": "Some Album",
+            "squareImages": [
+                {"size": "LARGE", "url": "https://x/al.jpg"},
+            ],
+        },
+    }
+    r = _classify_item(node)
+    assert r == ("album", "500612897", "Some Album", "https://x/al.jpg")
+
+
+def test_classify_flat_playlist_still_works():
+    """Backwards-compat — flat shape with uuid + title."""
+    r = _classify_item({"uuid": "31885f0b-96dc-41e1-8e1b-f83372043208", "title": "X"})
+    assert r is not None
+    assert r[0] == "playlist"
+
+
+def test_walk_classify_doesnt_recurse_after_match():
+    """Once a wrapper is classified, don't continue into data to find nested items."""
+    node = {
+        "items": [
+            {
+                "type": "MIX",
+                "data": {
+                    "id": "abc1234567890xyz",
+                    "titleTextInfo": {"text": "Mix"},
+                    # nested: pretend there's a playlist UUID embedded somewhere
+                    "track": {"uuid": "99999999-9999-9999-9999-999999999999", "title": "decoy"},
+                },
+            }
+        ]
+    }
+    results = list(TidalEMPImporter._walk_classify(node))
+    assert len(results) == 1
+    assert results[0][0] == "mix"
+
+
 def test_load_sources_parses(db_conn):
     """tidal_emp_sources 4종 kind 다 파싱."""
     set_setting(
