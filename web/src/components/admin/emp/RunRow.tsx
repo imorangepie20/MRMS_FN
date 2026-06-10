@@ -48,6 +48,11 @@ export function RunRow({ run }: { run: IngestionRun }) {
                   ⚠ {s.error}
                 </div>
               )}
+              {s.status === "failed" && s.stderr && (
+                <pre className="mt-1 p-2 bg-(--mrms-bg) text-(--mrms-ink-soft) text-[9px] leading-relaxed whitespace-pre-wrap break-all max-h-40 overflow-y-auto">
+                  {s.stderr.slice(-1500)}
+                </pre>
+              )}
             </div>
           ))}
         </div>

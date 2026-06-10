@@ -135,6 +135,8 @@ export interface IngestionStage {
   loaded?: number;
   duration_ms?: number;
   error?: string | null;
+  stdout?: string;
+  stderr?: string;
 }
 
 export interface IngestionRun {

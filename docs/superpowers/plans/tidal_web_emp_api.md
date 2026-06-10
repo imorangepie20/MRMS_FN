@@ -159,6 +159,7 @@ POPULAR_ALBUMS는 두 번째 album fetch의 referrer에만 등장. tidal.py DEFA
   "credentials": "include"
 });
 
+
 ## Popular playlists on Tidal
 - fetch("https://tidal.com/v2/home/pages/POPULAR_PLAYLISTS/view-all?countryCode=US&locale=en_US&deviceType=BROWSER&platform=WEB&limit=50&offset=0", {
   "headers": {
