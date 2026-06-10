@@ -14,6 +14,17 @@ def fmt_exc(e: BaseException, limit: int = 200) -> str:
     return f"{type(e).__name__}: {str(e)[:limit]}"
 
 
+def safe_rollback(conn: psycopg.Connection) -> None:
+    """SQL 에러를 catch하고 같은 connection을 계속 쓸 때 필수.
+
+    rollback 없이 진행하면 모든 후속 쿼리가 InFailedSqlTransaction으로
+    연쇄 실패해 진짜 원인이 묻힘 (prod 좀비 run 사건의 근본 원인)."""
+    try:
+        conn.rollback()
+    except Exception:
+        pass  # connection 자체가 죽은 경우 — 호출자의 다음 쿼리가 명확히 실패함
+
+
 def _get_or_create_artist(conn: psycopg.Connection, name: str) -> str:
     artist_id = _id(f"artist|{name.lower().strip()}")
     name_normalized = name.lower().strip()
@@ -188,6 +199,7 @@ class PlaylistEMPImporter(EMPImporter):
                         tracks_existing += 1
                 playlists_processed += 1
             except Exception as e:
+                safe_rollback(conn)
                 errors.append(f"playlist {pl.get('id')}: {fmt_exc(e, 120)}")
                 continue
 

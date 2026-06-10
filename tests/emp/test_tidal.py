@@ -185,3 +185,55 @@ def test_load_sources_default(db_conn):
     sources = importer._load_sources(db_conn)
     assert len(sources) == len(DEFAULT_SOURCES)
     assert all(kind == "home" for kind, _ in sources)
+
+
+async def test_import_all_recovers_from_sql_error(db_conn, cleanup):
+    """트랙 upsert가 SQL 에러로 트랜잭션을 깨도 rollback 후 다음 트랙 진행
+    (InFailedSqlTransaction 연쇄실패 — prod 좀비 run 근본 원인 — 재발 방지)."""
+    from unittest.mock import patch
+
+    import psycopg
+
+    from mrms.db.settings import set_setting
+    from mrms.emp import tidal as tidal_mod
+
+    set_setting(db_conn, SOURCES_SETTING_KEY, "mix/testmix1234567890abcdef")
+    cleanup('DELETE FROM "Setting" WHERE key = %s', (SOURCES_SETTING_KEY,))
+    cleanup("DELETE FROM \"EMPSource\" WHERE source_id = 'mix:testmix1234567890abcdef'")
+    cleanup("DELETE FROM \"TrackPlatform\" WHERE \"platformTrackId\" IN ('rb_t1', 'rb_t2')")
+    cleanup("DELETE FROM \"Track\" WHERE isrc IN ('emp_tidal_rb_t1', 'emp_tidal_rb_t2')")
+
+    fake_tracks = [
+        {"platform_track_id": "rb_t1", "title": "T1", "isrc": None,
+         "artist": "RB A1", "album_title": None, "duration_ms": 1000},
+        {"platform_track_id": "rb_t2", "title": "T2", "isrc": None,
+         "artist": "RB A2", "album_title": None, "duration_ms": 1000},
+    ]
+
+    async def fake_fetch_mix(self, http, mix_id):
+        return fake_tracks
+
+    real_upsert = tidal_mod.upsert_track_and_emp_source
+    calls = {"n": 0}
+
+    def flaky_upsert(conn, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # 진짜 SQL 에러로 트랜잭션 abort 재현
+            try:
+                with conn.cursor() as cur:
+                    cur.execute('SELECT no_such_column FROM "Track"')
+            except psycopg.Error:
+                pass  # rollback 없이 — 깨진 상태 유지
+            raise psycopg.errors.UndefinedColumn("simulated abort")
+        return real_upsert(conn, **kw)
+
+    importer = TidalEMPImporter(conn=db_conn, token="fake")
+    with patch.object(TidalEMPImporter, "_fetch_mix_tracks", fake_fetch_mix), \
+         patch.object(tidal_mod, "upsert_track_and_emp_source", flaky_upsert):
+        summary = await importer.import_all(db_conn)
+
+    # 1번 트랙은 에러, 2번 트랙은 rollback 덕에 정상 적재
+    assert len(summary["errors"]) == 1
+    assert "rb_t1" in summary["errors"][0]
+    assert summary["tracks_new"] == 1

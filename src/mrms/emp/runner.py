@@ -10,7 +10,7 @@ import psycopg
 
 from mrms.db.emp import append_stage, create_run, finish_run
 from mrms.emp import make_importer
-from mrms.emp.base import fmt_exc
+from mrms.emp.base import fmt_exc, safe_rollback
 
 # repo 루트 절대 경로 (editable install 기준 src/mrms/emp/runner.py → 3단계 위)
 # — systemd WorkingDirectory 외의 cwd에서 호출돼도 스크립트 경로가 깨지지 않음
@@ -93,6 +93,7 @@ async def _import_stage(
         })
         return not s["errors"]
     except Exception as e:
+        safe_rollback(conn)  # importer가 트랜잭션을 깨뜨린 채 raise한 경우 복구
         append_stage(conn, run_id, {
             "stage": stage_name,
             "status": "failed",
@@ -143,6 +144,7 @@ async def run_pipeline(
             overall_ok = False
     except BaseException:
         # SystemExit(SIGTERM)·KeyboardInterrupt 포함 — 마감 후 re-raise
+        safe_rollback(conn)  # 깨진 트랜잭션이면 finish_run도 실패하므로 먼저 복구
         try:
             finish_run(conn, run_id=run_id, status="failed")
         except Exception:

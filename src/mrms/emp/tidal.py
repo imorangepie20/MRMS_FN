@@ -23,7 +23,12 @@ import psycopg
 
 from mrms.db.emp_section import prune_stale_items, upsert_section, upsert_section_item
 from mrms.db.settings import get_setting
-from mrms.emp.base import EMPImporter, fmt_exc, upsert_track_and_emp_source
+from mrms.emp.base import (
+    EMPImporter,
+    fmt_exc,
+    safe_rollback,
+    upsert_track_and_emp_source,
+)
 
 
 TIDAL_BASE = "https://tidal.com"
@@ -424,6 +429,7 @@ class TidalEMPImporter(EMPImporter):
                             seen_in_section.add((k, i))
                         prune_stale_items(conn, section_id, seen_in_section)
                     except Exception as e:
+                        safe_rollback(conn)  # 깨진 트랜잭션 복구 — 후속 쿼리 연쇄실패 방지
                         errors.append(f"section save {ident}: {fmt_exc(e, 120)}")
 
                     for k, i, n, cover in classified:
@@ -453,6 +459,7 @@ class TidalEMPImporter(EMPImporter):
                     else:
                         continue
                 except Exception as e:
+                    safe_rollback(conn)
                     errors.append(f"{kind}/{ident}: {fmt_exc(e, 120)}")
                     continue
 
@@ -476,6 +483,7 @@ class TidalEMPImporter(EMPImporter):
                         else:
                             tracks_existing += 1
                     except Exception as e:
+                        safe_rollback(conn)
                         errors.append(
                             f"upsert {kind}/{ident}/{t.get('platform_track_id')}: "
                             f"{fmt_exc(e, 120)}"
