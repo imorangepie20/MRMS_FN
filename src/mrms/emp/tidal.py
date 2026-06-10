@@ -54,7 +54,7 @@ def _extract_cover(node: dict) -> str | None:
     cover = node.get("cover") or node.get("squareImage")
     if isinstance(cover, str) and "-" in cover and len(cover) >= 16:
         path = cover.replace("-", "/")
-        return f"https://resources.tidal.com/images/{path}/640x640.jpg"
+        return f"https://resources.tidal.com/images/{path}/320x320.jpg"
     # images / image dict with size keys
     images = node.get("images") or node.get("image")
     if isinstance(images, dict):
@@ -151,7 +151,7 @@ def _classify_album(data: dict) -> tuple[str, str, str, str | None] | None:
 
 def _pick_image_size(images: list) -> str | None:
     """Tidal image arrays: [{size: 'SMALL'|'MEDIUM'|'LARGE', url: '...', ...}].
-    Prefer LARGE > MEDIUM > SMALL."""
+    Prefer MEDIUM (640x640) — LARGE (1500x1500)는 카드용으로 과대, 트래픽 낭비."""
     if not isinstance(images, list):
         return None
     by_size: dict[str, str] = {}
@@ -161,7 +161,7 @@ def _pick_image_size(images: list) -> str | None:
             url = img.get("url")
             if isinstance(url, str) and sz:
                 by_size[sz] = url
-    for sz in ("LARGE", "MEDIUM", "SMALL"):
+    for sz in ("MEDIUM", "LARGE", "SMALL"):
         if sz in by_size:
             return by_size[sz]
     return None
