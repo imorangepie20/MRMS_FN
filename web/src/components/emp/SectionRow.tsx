@@ -16,6 +16,7 @@ export function SectionRow({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(false);
+  const [cols, setCols] = useState(8);
 
   const updateArrows = () => {
     const el = scrollerRef.current;
@@ -36,6 +37,20 @@ export function SectionRow({
       ro.disconnect();
     };
   }, [section.items.length]);
+
+  useEffect(() => {
+    const compute = () => {
+      const w = window.innerWidth;
+      if (w >= 1280) setCols(8);
+      else if (w >= 1024) setCols(7);
+      else if (w >= 768) setCols(5);
+      else if (w >= 640) setCols(4);
+      else setCols(2);
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
+  }, []);
 
   const scrollByPage = (dir: 1 | -1) => {
     const el = scrollerRef.current;
@@ -83,7 +98,8 @@ export function SectionRow({
         {section.items.map((it) => (
           <div
             key={it.id}
-            className="shrink-0 snap-start px-1.5 w-1/2 sm:w-1/4 md:w-1/6 lg:w-[12.5%]"
+            className="shrink-0 snap-start px-1.5"
+            style={{ width: `${100 / cols}%` }}
           >
             <button
               onClick={() => onItemClick(it)}
