@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import psycopg
 
+from mrms.api.admin_emp import router as admin_emp_router
 from mrms.api.albums import router as albums_router
 from mrms.api.artwork import router as artwork_router
 from mrms.api.auth_session import router as auth_session_router
@@ -45,6 +46,7 @@ app.include_router(user_tracks_router)
 app.include_router(playlists_router)
 app.include_router(albums_router)
 app.include_router(artwork_router)
+app.include_router(admin_emp_router)
 
 
 @app.get("/api/health")
