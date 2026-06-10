@@ -1,37 +1,36 @@
-"""SpotifyEMPImporter — featured-playlists 임포터."""
+"""SpotifyEMPImporter — hardcoded editorial playlist IDs (Spotify가 /browse/featured-playlists 차단)."""
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mrms.emp.spotify import SpotifyEMPImporter
+from mrms.emp.spotify import DEFAULT_PLAYLISTS, SpotifyEMPImporter
 
 
 @pytest.mark.asyncio
-async def test_fetch_featured_playlists():
+async def test_default_playlists_returned():
+    """env var 없으면 DEFAULT_PLAYLISTS 기반."""
     importer = SpotifyEMPImporter(client_id="x", client_secret="y")
-    fake_resp = MagicMock()
-    fake_resp.status_code = 200
-    fake_resp.json = MagicMock(
-        return_value={
-            "playlists": {
-                "items": [
-                    {"id": "spl1", "name": "New Music Friday"},
-                    {"id": "spl2", "name": "RapCaviar"},
-                ]
-            }
-        }
-    )
-    fake_resp.raise_for_status = MagicMock()
-    fake_client = MagicMock()
-    fake_client.__aenter__ = AsyncMock(return_value=fake_client)
-    fake_client.__aexit__ = AsyncMock(return_value=None)
-    fake_client.get = AsyncMock(return_value=fake_resp)
+    result = await importer.fetch_editorial_playlists()
+    assert len(result) == len(DEFAULT_PLAYLISTS)
+    assert all(p["source_type"] == "editorial_playlist" for p in result)
+    ids = {p["id"] for p in result}
+    assert {pid for pid, _ in DEFAULT_PLAYLISTS} == ids
 
-    with patch("httpx.AsyncClient", return_value=fake_client), \
-         patch.object(SpotifyEMPImporter, "_get_access_token", AsyncMock(return_value="t")):
-        result = await importer.fetch_editorial_playlists()
-    assert len(result) >= 2
-    assert {p["id"] for p in result} >= {"spl1", "spl2"}
+
+@pytest.mark.asyncio
+async def test_env_override(monkeypatch):
+    """SPOTIFY_EMP_PLAYLISTS env로 override."""
+    monkeypatch.setenv(
+        "SPOTIFY_EMP_PLAYLISTS",
+        "abc:Custom A, def:Custom B, ghi",
+    )
+    importer = SpotifyEMPImporter(client_id="x", client_secret="y")
+    result = await importer.fetch_editorial_playlists()
+    assert len(result) == 3
+    assert {p["id"] for p in result} == {"abc", "def", "ghi"}
+    name_map = {p["id"]: p["name"] for p in result}
+    assert name_map["abc"] == "Custom A"
+    assert name_map["ghi"] == "ghi"
 
 
 @pytest.mark.asyncio
