@@ -77,35 +77,38 @@ export function SectionRow({
 
       <div
         ref={scrollerRef}
-        className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 scroll-smooth snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [--cols:2] sm:[--cols:4] md:[--cols:6] lg:[--cols:8]"
+        className="flex overflow-x-auto pb-2 -mx-1.5 scroll-smooth snap-x snap-mandatory [&::-webkit-scrollbar]:hidden"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
         {section.items.map((it) => (
-          <button
+          <div
             key={it.id}
-            onClick={() => onItemClick(it)}
-            style={{ width: "calc((100% - 12px * (var(--cols) - 1)) / var(--cols))" }}
-            className="shrink-0 snap-start text-left bg-transparent border-0 p-0 cursor-pointer"
+            className="shrink-0 snap-start px-1.5 w-1/2 sm:w-1/4 md:w-1/6 lg:w-[12.5%]"
           >
-            {it.cover_url ? (
-              <img
-                src={it.cover_url}
-                alt={it.title ?? ""}
-                loading="lazy"
-                className="aspect-square w-full object-cover bg-(--mrms-rule)"
-              />
-            ) : (
-              <div className="aspect-square w-full bg-(--mrms-rule) flex items-center justify-center font-mono text-[10px] text-(--mrms-ink-mute) uppercase">
+            <button
+              onClick={() => onItemClick(it)}
+              className="w-full text-left bg-transparent border-0 p-0 cursor-pointer"
+            >
+              {it.cover_url ? (
+                <img
+                  src={it.cover_url}
+                  alt={it.title ?? ""}
+                  loading="lazy"
+                  className="aspect-square w-full object-cover bg-(--mrms-rule)"
+                />
+              ) : (
+                <div className="aspect-square w-full bg-(--mrms-rule) flex items-center justify-center font-mono text-[10px] text-(--mrms-ink-mute) uppercase">
+                  {it.item_type}
+                </div>
+              )}
+              <div className="mt-1 font-mono text-[9px] tracking-editorial uppercase text-(--mrms-ink-mute)">
                 {it.item_type}
               </div>
-            )}
-            <div className="mt-1 font-mono text-[9px] tracking-editorial uppercase text-(--mrms-ink-mute)">
-              {it.item_type}
-            </div>
-            <div className="font-display text-[12px] text-(--mrms-ink) line-clamp-2">
-              {it.title ?? it.item_id}
-            </div>
-          </button>
+              <div className="font-display text-[12px] text-(--mrms-ink) line-clamp-2">
+                {it.title ?? it.item_id}
+              </div>
+            </button>
+          </div>
         ))}
       </div>
     </section>
