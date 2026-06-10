@@ -17,6 +17,7 @@ export function SectionRow({
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(false);
   const [cols, setCols] = useState(8);
+  const [itemPx, setItemPx] = useState(150);
 
   const updateArrows = () => {
     const el = scrollerRef.current;
@@ -41,11 +42,19 @@ export function SectionRow({
   useEffect(() => {
     const compute = () => {
       const w = window.innerWidth;
-      if (w >= 1280) setCols(8);
-      else if (w >= 1024) setCols(7);
-      else if (w >= 768) setCols(5);
-      else if (w >= 640) setCols(4);
-      else setCols(2);
+      let c = 8;
+      if (w < 640) c = 2;
+      else if (w < 768) c = 4;
+      else if (w < 1024) c = 5;
+      else if (w < 1280) c = 7;
+      setCols(c);
+
+      const el = scrollerRef.current;
+      if (el) {
+        // 컨테이너 폭 / cols - 좌우 padding(12px)
+        const px = Math.floor(el.clientWidth / c) - 12;
+        setItemPx(Math.max(px, 80));
+      }
     };
     compute();
     window.addEventListener("resize", compute);
@@ -92,14 +101,14 @@ export function SectionRow({
 
       <div
         ref={scrollerRef}
-        className="flex overflow-x-auto pb-2 -mx-1.5 scroll-smooth snap-x snap-mandatory [&::-webkit-scrollbar]:hidden"
+        className="flex w-full overflow-x-auto pb-2 -mx-1.5 scroll-smooth snap-x snap-mandatory [&::-webkit-scrollbar]:hidden"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
         {section.items.map((it) => (
           <div
             key={it.id}
             className="shrink-0 snap-start px-1.5"
-            style={{ width: `${100 / cols}%` }}
+            style={{ width: `${itemPx + 12}px` }}
           >
             <button
               onClick={() => onItemClick(it)}
@@ -110,10 +119,14 @@ export function SectionRow({
                   src={it.cover_url}
                   alt={it.title ?? ""}
                   loading="lazy"
-                  className="aspect-square w-full object-cover bg-(--mrms-rule)"
+                  style={{ width: `${itemPx}px`, height: `${itemPx}px` }}
+                  className="object-cover bg-(--mrms-rule)"
                 />
               ) : (
-                <div className="aspect-square w-full bg-(--mrms-rule) flex items-center justify-center font-mono text-[10px] text-(--mrms-ink-mute) uppercase">
+                <div
+                  style={{ width: `${itemPx}px`, height: `${itemPx}px` }}
+                  className="bg-(--mrms-rule) flex items-center justify-center font-mono text-[10px] text-(--mrms-ink-mute) uppercase"
+                >
                   {it.item_type}
                 </div>
               )}
