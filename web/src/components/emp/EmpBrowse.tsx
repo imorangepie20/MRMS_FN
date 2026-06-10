@@ -61,13 +61,15 @@ export function EmpBrowse() {
         </div>
       )}
 
-      {sections.map((sec) => (
-        <SectionRow
-          key={sec.id}
-          section={sec}
-          onItemClick={(it) => setOpenItem(it)}
-        />
-      ))}
+      <div className="space-y-5">
+        {sections.map((sec) => (
+          <SectionRow
+            key={sec.id}
+            section={sec}
+            onItemClick={(it) => setOpenItem(it)}
+          />
+        ))}
+      </div>
 
       {openItem && (
         <ItemTracksModal item={openItem} onClose={() => setOpenItem(null)} />

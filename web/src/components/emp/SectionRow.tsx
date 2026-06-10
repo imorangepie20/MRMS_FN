@@ -76,7 +76,7 @@ export function SectionRow({
   };
 
   return (
-    <section ref={sectionRef} className="mb-5">
+    <section ref={sectionRef}>
       <div className="flex items-baseline justify-between mb-3 pb-2 border-b border-(--mrms-ink)">
         <div className="flex items-baseline gap-3 min-w-0">
           <h2 className="font-display font-bold text-[20px] text-(--mrms-ink) truncate">
