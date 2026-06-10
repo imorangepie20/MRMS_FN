@@ -26,6 +26,22 @@ DEFAULT_MODEL = "m-a-p/MERT-v1-95M"
 SAMPLE_RATE = 24_000
 
 
+def resolve_device(requested: str) -> str:
+    """요청 device가 이 머신에서 불가하면 사용 가능한 것으로 fallback.
+
+    설정 파일이 Mac(mps)과 Linux 서버(cuda/cpu)를 오가는 환경에서
+    'PyTorch is not linked with support for mps devices'류 크래시 방지.
+    """
+    if requested.startswith("mps") and not torch.backends.mps.is_available():
+        fallback = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"[encoder] '{requested}' 불가 → '{fallback}' 로 fallback")
+        return fallback
+    if requested.startswith("cuda") and not torch.cuda.is_available():
+        print(f"[encoder] '{requested}' 불가 → 'cpu' 로 fallback")
+        return "cpu"
+    return requested
+
+
 class MERTEncoder(nn.Module):
     """Frozen MERT-95M 인코더 + 시간 평균 풀링."""
 
@@ -38,6 +54,7 @@ class MERTEncoder(nn.Module):
     ):
         super().__init__()
         self.model_id = model_id
+        device = resolve_device(device)
         self.device = torch.device(device)
         self.max_samples = int(max_audio_seconds * SAMPLE_RATE)
 
