@@ -1,4 +1,4 @@
-"""파이프라인 runner — importers + 02/03/07 호출 + IngestionRun 기록."""
+"""파이프라인 runner — importers + 02/03/10 호출 + IngestionRun 기록."""
 from __future__ import annotations
 
 import subprocess
@@ -73,7 +73,9 @@ def _run_extract_embeddings() -> dict:
 
 
 def _run_load_to_db() -> dict:
-    return _run_script([sys.executable, _script_path("07_load_to_db.py")])
+    """증분 EMP 임베딩 로더 (10) — 07은 일회성 카탈로그 적재용(parquet 입력 필요)이라
+    증분 EMP 트랙엔 입력 파일이 없어 실패함. stage 이름 'load_to_db'는 admin UI 호환 유지."""
+    return _run_script([sys.executable, _script_path("10_load_emp_embeddings.py")])
 
 
 async def _import_stage(
