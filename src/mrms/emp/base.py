@@ -68,9 +68,11 @@ def upsert_track_and_emp_source(
     source_name: str | None,
 ) -> dict:
     """
-    1. ISRC로 기존 Track 찾기 → 있으면 재사용, 없으면 신규.
-    2. TrackPlatform upsert.
-    3. EMPSource upsert (trigger로 Track.inEmp=TRUE).
+    1. ISRC로 기존 Track 찾기 → 있으면 재사용.
+    2. 없으면 (platform, platformTrackId) 로 기존 Track 찾기 — 같은 곡이
+       ISRC 있는 응답(playlist)과 없는 응답(mix)으로 두 번 와도 중복 생성 방지.
+    3. 둘 다 없으면 신규 Track.
+    4. TrackPlatform upsert + EMPSource upsert (trigger로 Track.inEmp=TRUE).
     Returns: {'track_id': ..., 'new': bool}.
     """
     track_id: str | None = None
@@ -79,6 +81,19 @@ def upsert_track_and_emp_source(
     if isrc:
         with conn.cursor() as cur:
             cur.execute('SELECT id FROM "Track" WHERE isrc = %s', (isrc,))
+            row = cur.fetchone()
+            if row:
+                track_id = row[0]
+
+    if track_id is None:
+        # ISRC 미스 → 플랫폼 ID가 가장 강한 identity. 기존 매핑 있으면 그 트랙 재사용
+        with conn.cursor() as cur:
+            cur.execute(
+                '''SELECT "trackId" FROM "TrackPlatform"
+                   WHERE platform = %s AND "platformTrackId" = %s
+                   LIMIT 1''',
+                (platform, platform_track_id),
+            )
             row = cur.fetchone()
             if row:
                 track_id = row[0]
@@ -102,7 +117,9 @@ def upsert_track_and_emp_source(
         conn.commit()
         is_new = True
 
-    tp_id = _id(f"tp|{platform}|{platform_track_id}")
+    # tp_id에 track_id 포함 — 같은 플랫폼 ID가 다른 내부 트랙에 매핑돼도
+    # PK 충돌 (UniqueViolation) 이 나지 않도록 (방어선; 위 lookup이 1차 방지)
+    tp_id = _id(f"tp|{platform}|{platform_track_id}|{track_id}")
     with conn.cursor() as cur:
         cur.execute(
             '''INSERT INTO "TrackPlatform"

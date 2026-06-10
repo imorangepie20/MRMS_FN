@@ -135,3 +135,50 @@ async def test_import_all_dispatches_per_track(db_conn, cleanup):
     assert summary["tracks_new"] + summary["tracks_existing"] >= 1
     assert summary["playlists_processed"] == 1
     assert summary["errors"] == []
+
+
+def test_upsert_same_platform_id_with_and_without_isrc_reuses_track(db_conn, cleanup):
+    """같은 플랫폼 트랙이 ISRC 있는 응답(playlist)과 없는 응답(mix)으로
+    두 번 와도 내부 Track은 1개 — UniqueViolation 재발 방지."""
+    import uuid
+
+    suffix = uuid.uuid4().hex[:8]
+    isrc = f"TST{suffix[:9].upper()}"
+    ptid = f"tidal_dup_{suffix}"
+
+    cleanup('DELETE FROM "EMPSource" WHERE source_id IN (%s, %s)',
+            (f"pl_dup_{suffix}", f"mix_dup_{suffix}"))
+    cleanup('DELETE FROM "TrackPlatform" WHERE "platformTrackId" = %s', (ptid,))
+    cleanup('DELETE FROM "Track" WHERE isrc IN (%s, %s)',
+            (isrc, f"emp_tidal_{ptid}"))
+
+    # 1차: playlist 경로 (ISRC 있음)
+    r1 = upsert_track_and_emp_source(
+        db_conn, isrc=isrc, title=f"Dup Song {suffix}", artist=f"Dup Artist {suffix}",
+        album_title=None, duration_ms=1000,
+        platform="tidal", platform_track_id=ptid,
+        source_type="editorial_playlist", source_id=f"pl_dup_{suffix}", source_name="PL",
+    )
+    assert r1["new"] is True
+
+    # 2차: mix 경로 (ISRC 없음 — 합성 키로 빠질 뻔한 경우)
+    r2 = upsert_track_and_emp_source(
+        db_conn, isrc=None, title=f"Dup Song {suffix}", artist=f"Dup Artist {suffix}",
+        album_title=None, duration_ms=1000,
+        platform="tidal", platform_track_id=ptid,
+        source_type="editorial_mix", source_id=f"mix_dup_{suffix}", source_name="MIX",
+    )
+    assert r2["new"] is False
+    assert r2["track_id"] == r1["track_id"]  # 같은 트랙 재사용
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'SELECT COUNT(*) FROM "TrackPlatform" WHERE "platformTrackId" = %s',
+            (ptid,),
+        )
+        assert cur.fetchone()[0] == 1  # TrackPlatform도 1개
+        cur.execute(
+            'SELECT COUNT(*) FROM "EMPSource" WHERE "trackId" = %s',
+            (r1["track_id"],),
+        )
+        assert cur.fetchone()[0] == 2  # 출처는 2개 (playlist + mix)
