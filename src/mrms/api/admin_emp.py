@@ -17,6 +17,7 @@ from mrms.db.emp import (
     list_recent_runs,
 )
 from mrms.db.settings import list_settings, set_setting
+from mrms.emp.apple import SOURCES_SETTING_KEY as APPLE_SOURCES_SETTING_KEY
 from mrms.emp.flo import SOURCES_SETTING_KEY as FLO_SOURCES_SETTING_KEY
 from mrms.emp.spotify import SOURCES_SETTING_KEY as SPOTIFY_SOURCES_SETTING_KEY
 from mrms.emp.tidal import SOURCES_SETTING_KEY, TOKEN_SETTING_KEY
@@ -102,6 +103,7 @@ ALLOWED_SETTING_KEYS = [
     SPOTIFY_SOURCES_SETTING_KEY,
     FLO_SOURCES_SETTING_KEY,
     VIBE_SOURCES_SETTING_KEY,
+    APPLE_SOURCES_SETTING_KEY,
 ]
 
 # Keys whose value should be masked in GET response (tokens etc.)

@@ -46,6 +46,14 @@ async def test_run_pipeline_records_run(db_conn, cleanup):
             "errors": [],
         }
 
+    async def fake_import_apple(conn):
+        return {
+            "tracks_new": 6,
+            "tracks_existing": 1,
+            "playlists_processed": 2,
+            "errors": [],
+        }
+
     ok_stage = {
         "status": "success",
         "duration_ms": 100,
@@ -59,6 +67,7 @@ async def test_run_pipeline_records_run(db_conn, cleanup):
          patch("mrms.emp.runner._run_importer_flo", new=fake_import_flo), \
          patch("mrms.emp.runner._run_importer_melon", new=fake_import_melon), \
          patch("mrms.emp.runner._run_importer_vibe", new=fake_import_vibe), \
+         patch("mrms.emp.runner._run_importer_apple", new=fake_import_apple), \
          patch("mrms.emp.runner._run_audio_download", return_value=ok_stage), \
          patch("mrms.emp.runner._run_extract_embeddings", return_value=ok_stage), \
          patch("mrms.emp.runner._run_load_to_db", return_value=ok_stage):
@@ -79,6 +88,7 @@ async def test_run_pipeline_records_run(db_conn, cleanup):
     assert "import_flo" in stage_names
     assert "import_melon" in stage_names
     assert "import_vibe" in stage_names
+    assert "import_apple" in stage_names
     assert "download_audio" in stage_names
     assert "extract_embeddings" in stage_names
     assert "load_to_db" in stage_names
@@ -103,6 +113,9 @@ async def test_run_pipeline_partial_on_failure(db_conn, cleanup):
     async def fake_import_vibe(conn):
         return {"tracks_new": 8, "tracks_existing": 2, "playlists_processed": 4, "errors": []}
 
+    async def fake_import_apple(conn):
+        return {"tracks_new": 6, "tracks_existing": 1, "playlists_processed": 2, "errors": []}
+
     ok_stage = {"status": "success", "duration_ms": 100, "stdout": "", "stderr": "", "error": None}
     fail_stage = {"status": "failed", "duration_ms": 50, "stdout": "", "stderr": "boom", "error": "exit 1"}
 
@@ -111,6 +124,7 @@ async def test_run_pipeline_partial_on_failure(db_conn, cleanup):
          patch("mrms.emp.runner._run_importer_flo", new=fake_import_flo), \
          patch("mrms.emp.runner._run_importer_melon", new=fake_import_melon), \
          patch("mrms.emp.runner._run_importer_vibe", new=fake_import_vibe), \
+         patch("mrms.emp.runner._run_importer_apple", new=fake_import_apple), \
          patch("mrms.emp.runner._run_audio_download", return_value=fail_stage), \
          patch("mrms.emp.runner._run_extract_embeddings", return_value=ok_stage), \
          patch("mrms.emp.runner._run_load_to_db", return_value=ok_stage):
