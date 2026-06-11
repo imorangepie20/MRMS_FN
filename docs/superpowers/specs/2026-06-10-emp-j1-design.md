@@ -574,3 +574,23 @@ Frontend — "Tidal is Good" 페이지 (섹션 슬라이더):
 - **Disk usage** — m4a 파일 누적. 별도 cleanup follow-up
 - **Editorial playlist 중복** — 같은 트랙 여러 playlist에 등장 → ISRC dedup으로 Track 행은 1개, EMPSource 행만 여러 개
 - **EMP 풀 너무 작을 때** — fallback 없으니 추천 0건 가능. J1 deploy 직후엔 수동 trigger로 초기 풀 채우기
+
+## 16. As-built 추가 — 운영 안정화 (2026-06-11)
+
+prod 첫 가동 과정에서 드러난 문제들과 해결 (5/5 stage success 달성):
+
+| 문제 | 해결 |
+|---|---|
+| run 좀비화 (finish 못 하고 죽으면 영원히 'running') | crash-safe finish (BaseException → failed 마감) + 시작 시 잔존 'running' 전부 좀비로 간주·정리 (systemd oneshot이 단일 인스턴스 보장) |
+| SQL 에러 후 같은 connection 재사용 → InFailedSqlTransaction 연쇄실패 | safe_rollback을 모든 SQL-catch 사이트에 적용 — 트랙 단위 실패가 run을 죽이지 않음 |
+| systemd EnvironmentFile이 ${VAR} 참조를 확장 안 함 | config.py Settings에 재귀 expandvars validator |
+| 같은 곡이 ISRC 있는 응답(playlist)과 없는 응답(mix)으로 이중 유입 → 중복 트랙 + TrackPlatform PK 충돌 | ISRC 미스 시 (platform, platformTrackId) lookup-first |
+| 07_load_to_db는 일회성 카탈로그 적재용 (parquet 입력 필요) | 증분 로더 신설: scripts/10_load_emp_embeddings.py + src/mrms/emp/embedding_loader.py — 05_inference와 동일 projection (실측 cosine 1.0) 으로 TrackEmbedding upsert |
+| Mac 전용 device(mps) 하드코딩 | encoder resolve_device fallback (mps→cuda→cpu) + 03의 cache 호출을 실제 device 기준으로 |
+
+운영 메모:
+- 서버 요구사항: /opt/mrms/.env.production의 PROJECT_ROOT=/opt/mrms,
+  /opt/mrms/{data,logs,checkpoints,.cache} mrms 소유,
+  checkpoints/heads_v1.0/best.ckpt 필수 (없으면 load 단계가 명확히 실패)
+- extract는 CPU ~35분/500곡 — NVIDIA 드라이버 + ENCODER_DEVICE=cuda 시 수 분
+- Spotify importer는 현재 +0 (Spotify가 editorial playlist API를 신규 앱에 차단) — 후속 과제
