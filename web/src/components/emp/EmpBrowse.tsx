@@ -6,7 +6,15 @@ import { fetchEmpSections } from "@/lib/api/emp";
 import type { EmpSection, EmpSectionItem } from "@/lib/types";
 
 import { SectionRow } from "./SectionRow";
+import { TrackSectionRow } from "./TrackSectionRow";
 import { ItemTracksModal } from "./ItemTracksModal";
+
+
+/** 섹션이 트랙 모음(chart)이면 트랙을 직접 펼친다 — 컨테이너 카드가 아니라.
+ *  현재는 단일 'chart' 아이템 섹션(Melon/Apple)이 해당. */
+function isTrackSection(sec: EmpSection): boolean {
+  return sec.items.length > 0 && sec.items.every((it) => it.item_type === "chart");
+}
 
 
 const PLATFORM_ORDER = ["tidal", "spotify", "flo", "melon", "vibe", "apple"];
@@ -152,14 +160,18 @@ export function EmpBrowse() {
           </div>
 
           <div className="space-y-7">
-            {group.sections.map((sec, i) => (
-              <SectionRow
-                key={sec.id}
-                section={sec}
-                index={i}
-                onItemClick={(it) => setOpenItem(it)}
-              />
-            ))}
+            {group.sections.map((sec, i) =>
+              isTrackSection(sec) ? (
+                <TrackSectionRow key={sec.id} section={sec} index={i} />
+              ) : (
+                <SectionRow
+                  key={sec.id}
+                  section={sec}
+                  index={i}
+                  onItemClick={(it) => setOpenItem(it)}
+                />
+              ),
+            )}
           </div>
         </div>
       ))}
