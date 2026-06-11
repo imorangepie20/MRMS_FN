@@ -11,7 +11,10 @@ type SpotifyPlayer = {
   seek: (positionMs: number) => Promise<void>;
   setVolume: (v: number) => Promise<void>;
   addListener: (event: string, cb: (state: unknown) => void) => boolean;
+  getCurrentState: () => Promise<unknown>;
 };
+
+type SpotifyState = { paused: boolean; position: number; duration: number };
 
 let player: SpotifyPlayer | null = null;
 let deviceId: string | null = null;
@@ -28,6 +31,54 @@ let active = true;
 let prevPaused = true;
 let prevPositionMs = 0;
 let endedFired = false;
+
+// SDK는 player_state_changed를 드물게만 발화 — 1초 폴링으로 보완.
+// (자연 종료 감지의 prevPositionMs를 신선하게 유지 + 진행바 갱신)
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+
+function processState(s: SpotifyState): void {
+  // 자연 종료: 재생 중 → paused && position 0 전환 + 직전 위치가 끝 근처
+  // (95% 또는 끝에서 2.5초 이내 — 짧은 트랙 대비)
+  const nearEnd =
+    s.duration > 0 &&
+    (prevPositionMs >= s.duration * 0.95 ||
+      prevPositionMs >= s.duration - 2_500);
+  const naturallyEnded = !prevPaused && s.paused && s.position === 0 && nearEnd;
+
+  if (!s.paused) endedFired = false; // 재생 (재)시작 → 가드 리셋
+  prevPaused = s.paused;
+  prevPositionMs = s.position;
+
+  if (!active) return;
+
+  usePlayerStore.setState({
+    isPlaying: !s.paused,
+    position: s.duration > 0 ? s.position / s.duration : 0,
+    durationSec: s.duration / 1000,
+  });
+
+  if (naturallyEnded && !endedFired) {
+    endedFired = true; // 한 트랙당 1회만 발화
+    onTrackEnd?.();
+  }
+}
+
+
+function startPolling(): void {
+  if (pollTimer) return;
+  pollTimer = setInterval(() => {
+    if (!player || !active) return;
+    player
+      .getCurrentState()
+      .then((st) => {
+        if (st) processState(st as SpotifyState);
+      })
+      .catch(() => {
+        // SDK 일시 오류 — 다음 tick에 재시도
+      });
+  }, 1_000);
+}
 
 
 export function setOnTrackEnd(cb: (() => void) | null): void {
@@ -131,32 +182,7 @@ export async function initSpotifySdk(): Promise<void> {
   });
   player.addListener("player_state_changed", (state: unknown) => {
     if (!state) return;
-    const s = state as { paused: boolean; position: number; duration: number };
-
-    // 자연 종료 감지 (Web Playback SDK 표준 heuristic):
-    // 재생 중 → paused && position 0 전환 + 직전 position이 duration의 95% 이상
-    const naturallyEnded =
-      !prevPaused &&
-      s.paused &&
-      s.position === 0 &&
-      s.duration > 0 &&
-      prevPositionMs >= s.duration * 0.95;
-    if (!s.paused) endedFired = false; // 재생 (재)시작 → 가드 리셋
-    prevPaused = s.paused;
-    prevPositionMs = s.position;
-
-    if (!active) return;
-
-    usePlayerStore.setState({
-      isPlaying: !s.paused,
-      position: s.duration > 0 ? s.position / s.duration : 0,
-      durationSec: s.duration / 1000,
-    });
-
-    if (naturallyEnded && !endedFired) {
-      endedFired = true; // 한 트랙당 1회만 발화
-      onTrackEnd?.();
-    }
+    processState(state as SpotifyState);
   });
   player.addListener("initialization_error", (state: unknown) => {
     const s = state as { message: string };
@@ -181,6 +207,8 @@ export async function initSpotifySdk(): Promise<void> {
     player = null; // 다음 시도에서 재초기화 가능하도록
     throw new Error("Spotify 플레이어 연결 실패 — Spotify 계정 연동을 확인하세요");
   }
+
+  startPolling();
 }
 
 
