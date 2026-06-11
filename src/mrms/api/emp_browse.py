@@ -47,7 +47,8 @@ def get_item_tracks(
                       t."albumId", alb.title AS album_title,
                       t."durationMs",
                       tp_tidal."platformTrackId" AS tidal_id,
-                      tp_spotify."platformTrackId" AS spotify_id
+                      tp_spotify."platformTrackId" AS spotify_id,
+                      es.cover_url AS album_cover
                FROM "EMPSource" es
                JOIN "Track" t ON t.id = es."trackId"
                JOIN "Artist" ar ON ar.id = t."artistId"
@@ -71,9 +72,9 @@ def get_item_tracks(
             "artist": r[2],
             "album_id": r[3],
             "album_title": r[4],
-            # TODO: Album에 coverUrl 컬럼 없음 — db/artwork.get_cached 연결 전까지
-            # placeholder (프론트 계약 유지용으로 필드 자체는 유지)
-            "album_cover": None,
+            # EMPSource.cover_url — 트랙 단위 커버 (chart/모달 노출용).
+            # 플랫폼이 트랙 커버를 안 주면 None (spotify embed 등).
+            "album_cover": r[8],
             "duration_ms": r[5],
             "tidal_track_id": r[6],
             "spotify_track_id": r[7],

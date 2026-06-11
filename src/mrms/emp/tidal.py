@@ -369,12 +369,14 @@ class TidalEMPImporter(EMPImporter):
         artists = tr.get("artists") or []
         artist_name = artists[0].get("name") if artists else "Unknown"
         album = tr.get("album") or {}
+        cover_url = _extract_cover(album) if isinstance(album, dict) else None
         return {
             "platform_track_id": str(tid),
             "title": title,
             "isrc": isrc,
             "artist": artist_name,
             "album_title": album.get("title"),
+            "cover_url": cover_url,
             "duration_ms": int(duration_sec) * 1000 if duration_sec else None,
         }
 
@@ -477,6 +479,7 @@ class TidalEMPImporter(EMPImporter):
                             source_type=source_type,
                             source_id=f"{kind}:{ident}",
                             source_name=name,
+                            cover_url=t.get("cover_url"),
                         )
                         if r["new"]:
                             tracks_new += 1

@@ -18,17 +18,21 @@ def upsert_emp_source(
     source_type: str,
     source_id: str,
     source_name: str | None,
+    cover_url: str | None = None,
 ) -> str:
     """EMPSource INSERT (UNIQUE 충돌 시 skip). row_id 반환.
-    trigger가 Track.inEmp = TRUE 자동 설정."""
+    trigger가 Track.inEmp = TRUE 자동 설정.
+
+    cover_url: 트랙 단위 앨범 커버 (chart/모달 노출용). ON CONFLICT DO NOTHING이라
+    이미 있는 row의 cover는 갱신하지 않는다 (첫 적재 시 채워짐)."""
     row_id = _id(f"emp|{track_id}|{platform}|{source_id}")
     with conn.cursor() as cur:
         cur.execute(
             '''INSERT INTO "EMPSource"
-                 (id, "trackId", platform, source_type, source_id, source_name)
-               VALUES (%s, %s, %s, %s, %s, %s)
+                 (id, "trackId", platform, source_type, source_id, source_name, cover_url)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)
                ON CONFLICT ("trackId", platform, source_id) DO NOTHING''',
-            (row_id, track_id, platform, source_type, source_id, source_name),
+            (row_id, track_id, platform, source_type, source_id, source_name, cover_url),
         )
     conn.commit()
     return row_id

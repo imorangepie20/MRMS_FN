@@ -158,6 +158,8 @@ def test_normalize_track_artist_list_join():
     assert t["artist"] == "데이브레이크, 원슈타인"
     assert t["album_title"] == "앨범A"
     assert t["duration_ms"] == (4 * 60 + 5) * 1000
+    # album.img.urlFormat → '{size}'→500 치환된 트랙 커버
+    assert t["cover_url"] == "https://cdn.music-flo.com/cover/500.jpg"
 
 
 def test_normalize_track_falls_back_to_representation_artist():

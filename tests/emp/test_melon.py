@@ -189,6 +189,17 @@ async def test_import_all_saves_section_and_tracks(db_conn, cleanup):
         )
         assert cur.fetchone()[0] == 2
 
+        # 트랙별 cover_url이 EMPSource에 채워짐 (Melon은 트랙마다 커버 제공)
+        cur.execute(
+            'SELECT cover_url FROM "EMPSource" '
+            "WHERE platform = %s AND source_id = %s "
+            'ORDER BY "importedAt"',
+            ("melon", SOURCE_ID),
+        )
+        covers = [r[0] for r in cur.fetchall()]
+        assert all(c is not None for c in covers)
+        assert "https://cdn.melon/1.jpg" in covers
+
         # platform_track_id = Melon songId 매핑 확인
         cur.execute(
             'SELECT COUNT(*) FROM "TrackPlatform" '

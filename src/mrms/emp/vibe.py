@@ -448,6 +448,7 @@ class VibeEMPImporter(EMPImporter):
                             source_type=source_type,
                             source_id=f"{item_type}:{item_id}",
                             source_name=name,
+                            cover_url=t.get("cover_url"),
                         )
                         if r["new"]:
                             tracks_new += 1

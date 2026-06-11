@@ -211,6 +211,7 @@ class MelonEMPImporter(EMPImporter):
                     source_type=SOURCE_TYPE,
                     source_id=SOURCE_ID,
                     source_name=SOURCE_NAME,
+                    cover_url=t.get("cover_url"),
                 )
                 if r["new"]:
                     tracks_new += 1

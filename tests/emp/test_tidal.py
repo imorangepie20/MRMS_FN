@@ -134,6 +134,41 @@ def test_classify_album_wrapper():
     assert r == ("album", "500612897", "Some Album", "https://x/al.jpg")
 
 
+def test_normalize_track_extracts_album_cover():
+    """트랙 album.cover(UUID) → CDN URL이 트랙 cover_url로 추출됨."""
+    tr = {
+        "id": 12345,
+        "title": "A Track",
+        "isrc": "USABC1234567",
+        "duration": 200,
+        "artists": [{"name": "AR"}],
+        "album": {
+            "title": "An Album",
+            "cover": "b48a8d6f-1234-5678-abcd-ef0123456789",
+        },
+    }
+    t = TidalEMPImporter._normalize_track(tr)
+    assert t["album_title"] == "An Album"
+    assert t["cover_url"] == (
+        "https://resources.tidal.com/images/"
+        "b48a8d6f/1234/5678/abcd/ef0123456789/320x320.jpg"
+    )
+
+
+def test_normalize_track_cover_none_when_no_album_image():
+    """album에 cover 필드가 없으면 cover_url None (하위호환)."""
+    tr = {
+        "id": 999,
+        "title": "B Track",
+        "isrc": "USXYZ7654321",
+        "duration": 100,
+        "artists": [{"name": "BR"}],
+        "album": {"title": "Bare Album"},
+    }
+    t = TidalEMPImporter._normalize_track(tr)
+    assert t["cover_url"] is None
+
+
 def test_classify_flat_playlist_still_works():
     """Backwards-compat — flat shape with uuid + title."""
     r = _classify_item({"uuid": "31885f0b-96dc-41e1-8e1b-f83372043208", "title": "X"})

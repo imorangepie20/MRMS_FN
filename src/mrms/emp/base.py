@@ -66,6 +66,7 @@ def upsert_track_and_emp_source(
     source_type: str,
     source_id: str,
     source_name: str | None,
+    cover_url: str | None = None,
 ) -> dict:
     """
     1. ISRC로 기존 Track 찾기 → 있으면 재사용.
@@ -137,6 +138,7 @@ def upsert_track_and_emp_source(
         source_type=source_type,
         source_id=source_id,
         source_name=source_name,
+        cover_url=cover_url,
     )
 
     return {"track_id": track_id, "new": is_new}

@@ -116,7 +116,12 @@ def _normalize_track(tr) -> dict | None:
         artist = (rep.get("name") if isinstance(rep, dict) else None) or "Unknown"
 
     album = tr.get("album") or {}
-    album_title = album.get("title") if isinstance(album, dict) else None
+    if isinstance(album, dict):
+        album_title = album.get("title")
+        cover_url = _format_cover(album.get("img"))
+    else:
+        album_title = None
+        cover_url = None
 
     return {
         "platform_track_id": str(tid),
@@ -124,6 +129,7 @@ def _normalize_track(tr) -> dict | None:
         "isrc": None,
         "artist": artist,
         "album_title": album_title,
+        "cover_url": cover_url,
         "duration_ms": _parse_play_time(tr.get("playTime")),
     }
 
@@ -378,6 +384,7 @@ class FloEMPImporter(EMPImporter):
                             source_type="flo_curation",
                             source_id=f"{item_type}:{item_id}",
                             source_name=name,
+                            cover_url=t.get("cover_url"),
                         )
                         if r["new"]:
                             tracks_new += 1

@@ -73,8 +73,12 @@ def test_item_tracks_include_liked_pct(db_conn, login, cleanup):
 
     item_id = "uuid_likedpct_xx"
     source_id = f"playlist:{item_id}"
+    cover = "https://cdn.example/lp_cover.jpg"
     cleanup('DELETE FROM "EMPSource" WHERE source_id = %s', (source_id,))
-    upsert_emp_source(db_conn, track_id, "tidal", "playlist", source_id, "LikedPct")
+    upsert_emp_source(
+        db_conn, track_id, "tidal", "playlist", source_id, "LikedPct",
+        cover_url=cover,
+    )
 
     client.cookies.set("mrms_session", session_id)
     try:
@@ -82,6 +86,8 @@ def test_item_tracks_include_liked_pct(db_conn, login, cleanup):
         assert r.status_code == 200, r.text
         tracks = r.json()["tracks"]
         assert tracks, "EMPSource로 넣은 트랙이 응답에 없음"
+        # EMPSource.cover_url이 album_cover로 노출됨
+        assert tracks[0]["album_cover"] == cover
         for t in tracks:
             assert isinstance(t["liked"], bool)
             assert isinstance(t["pct"], bool)

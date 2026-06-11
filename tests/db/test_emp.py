@@ -44,6 +44,67 @@ def test_upsert_emp_source_sets_track_in_emp(db_conn: psycopg.Connection, cleanu
         assert cur.fetchone()[0] is True
 
 
+def test_upsert_emp_source_stores_cover_url(db_conn: psycopg.Connection, cleanup):
+    """cover_url 파라미터가 EMPSource.cover_url 컬럼에 저장된다."""
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT id FROM "Track" LIMIT 1')
+        row = cur.fetchone()
+    if not row:
+        pytest.skip("Track 데이터 부족")
+    track_id = row[0]
+
+    source_id = f"pl_cover_{uuid.uuid4().hex[:8]}"
+    cleanup(
+        'DELETE FROM "EMPSource" WHERE "trackId" = %s AND source_id = %s',
+        (track_id, source_id),
+    )
+
+    cover = "https://cdn.example/cover_xyz.jpg"
+    upsert_emp_source(
+        db_conn,
+        track_id=track_id,
+        platform="melon",
+        source_type="chart",
+        source_id=source_id,
+        source_name="Hot",
+        cover_url=cover,
+    )
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'SELECT cover_url FROM "EMPSource" '
+            'WHERE "trackId" = %s AND platform = %s AND source_id = %s',
+            (track_id, "melon", source_id),
+        )
+        assert cur.fetchone()[0] == cover
+
+
+def test_upsert_emp_source_cover_defaults_none(db_conn: psycopg.Connection, cleanup):
+    """cover_url 생략(하위호환) → NULL 저장."""
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT id FROM "Track" LIMIT 1')
+        row = cur.fetchone()
+    if not row:
+        pytest.skip("Track 데이터 부족")
+    track_id = row[0]
+
+    source_id = f"pl_nocover_{uuid.uuid4().hex[:8]}"
+    cleanup(
+        'DELETE FROM "EMPSource" WHERE "trackId" = %s AND source_id = %s',
+        (track_id, source_id),
+    )
+
+    upsert_emp_source(db_conn, track_id, "spotify", "editorial_embed", source_id, "Top")
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'SELECT cover_url FROM "EMPSource" '
+            'WHERE "trackId" = %s AND platform = %s AND source_id = %s',
+            (track_id, "spotify", source_id),
+        )
+        assert cur.fetchone()[0] is None
+
+
 def test_upsert_emp_source_dedup(db_conn: psycopg.Connection, cleanup):
     """동일 (trackId, platform, source_id) 두 번 호출 — 두 번째는 idempotent."""
     with db_conn.cursor() as cur:

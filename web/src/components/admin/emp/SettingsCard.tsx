@@ -294,8 +294,8 @@ export function SettingsCard({
         <textarea
           value={appleSourcesInput}
           onChange={(e) => setAppleSourcesInput(e.target.value)}
-          placeholder={`songs/kr\nsongs/us\nsongs/jp`}
-          rows={4}
+          placeholder={`songs/kr\nalbums/us\nplaylists/us\nalbum/<id>`}
+          rows={5}
           className="w-full border border-(--mrms-rule) bg-(--mrms-paper) px-2 py-1 font-mono text-[11px] text-(--mrms-ink) resize-y"
         />
         <div className="flex gap-2 mt-2">
@@ -333,8 +333,11 @@ export function SettingsCard({
           <code>station/&lt;no&gt;</code> / <code>playlist/&lt;plId&gt;</code> = 직접. 비우면 default (stations + theme).
         </span>
         <span className="mt-1 block">
-          Apple sources: <code>songs/&lt;region&gt;</code> = 지역별 인기곡 Top 50 (예:{" "}
-          <code>songs/kr</code>, <code>songs/us</code>). 비우면 default (kr + us).
+          Apple sources: <code>songs/&lt;region&gt;</code> = 지역 인기곡 Top 50 (RSS),{" "}
+          <code>albums/&lt;region&gt;</code> / <code>playlists/&lt;region&gt;</code> = 지역 인기
+          앨범/플리 Top 50 (각 페이지 스크래핑),{" "}
+          <code>album/&lt;id&gt;</code> / <code>playlist/&lt;id&gt;</code> = 직접 추가.
+          비우면 default (songs/kr + songs/us). album/playlist는 요청 많아 옵트인.
         </span>
         <span className="mt-1 block">
           Melon Hot 100 자동 — 소스 고정이라 설정 불필요.
