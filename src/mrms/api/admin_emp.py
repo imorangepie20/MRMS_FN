@@ -9,7 +9,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from mrms.api.deps import db_conn, get_current_user_id
-from mrms.db.emp import get_emp_stats, list_recent_runs
+from mrms.db.emp import (
+    count_runs,
+    delete_run,
+    delete_runs_older_than,
+    get_emp_stats,
+    list_recent_runs,
+)
 from mrms.db.settings import list_settings, set_setting
 from mrms.emp.flo import SOURCES_SETTING_KEY as FLO_SOURCES_SETTING_KEY
 from mrms.emp.spotify import SOURCES_SETTING_KEY as SPOTIFY_SOURCES_SETTING_KEY
@@ -44,12 +50,49 @@ def admin_stats(
 
 @router.get("/runs")
 def admin_runs(
-    limit: int = 50,
+    limit: int = 20,
+    offset: int = 0,
     user_id: str = Depends(get_current_user_id),
     conn: psycopg.Connection = Depends(db_conn),
 ):
     _require_admin(conn, user_id)
-    return {"runs": list_recent_runs(conn, limit=limit)}
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+    return {
+        "runs": list_recent_runs(conn, limit=limit, offset=offset),
+        "total": count_runs(conn),
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@router.delete("/runs/{run_id}")
+def admin_delete_run(
+    run_id: str,
+    user_id: str = Depends(get_current_user_id),
+    conn: psycopg.Connection = Depends(db_conn),
+):
+    _require_admin(conn, user_id)
+    if not delete_run(conn, run_id):
+        raise HTTPException(404, "run not found or still running")
+    return {"deleted": run_id}
+
+
+class PruneBody(BaseModel):
+    keep: int = 50
+
+
+@router.post("/runs/prune")
+def admin_prune_runs(
+    body: PruneBody,
+    user_id: str = Depends(get_current_user_id),
+    conn: psycopg.Connection = Depends(db_conn),
+):
+    """최근 keep개를 제외한 run 일괄 삭제 (진행 중 제외)."""
+    _require_admin(conn, user_id)
+    keep = max(1, body.keep)
+    deleted = delete_runs_older_than(conn, keep=keep)
+    return {"deleted": deleted, "kept": keep}
 
 
 # Whitelisted keys — never let arbitrary keys be set via admin

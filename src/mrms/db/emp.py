@@ -151,16 +151,16 @@ def has_active_run(
 
 
 def list_recent_runs(
-    conn: psycopg.Connection, limit: int = 50
+    conn: psycopg.Connection, limit: int = 50, offset: int = 0
 ) -> list[dict]:
-    """최근 IngestionRun 목록."""
+    """최근 IngestionRun 목록 (페이징)."""
     with conn.cursor() as cur:
         cur.execute(
             '''SELECT id, "startedAt", "finishedAt", status, platform, stages, "triggeredBy"
                FROM "IngestionRun"
                ORDER BY "startedAt" DESC
-               LIMIT %s''',
-            (limit,),
+               LIMIT %s OFFSET %s''',
+            (limit, offset),
         )
         rows = cur.fetchall()
     return [
@@ -175,3 +175,42 @@ def list_recent_runs(
         }
         for r in rows
     ]
+
+
+def count_runs(conn: psycopg.Connection) -> int:
+    """전체 IngestionRun 수 (페이징 total용)."""
+    with conn.cursor() as cur:
+        cur.execute('SELECT COUNT(*) FROM "IngestionRun"')
+        return cur.fetchone()[0]
+
+
+def delete_run(conn: psycopg.Connection, run_id: str) -> bool:
+    """단건 run 삭제. 진행 중('running')이면 삭제 거부 (False).
+    삭제 성공 시 True."""
+    with conn.cursor() as cur:
+        cur.execute(
+            '''DELETE FROM "IngestionRun"
+               WHERE id = %s AND status <> 'running' ''',
+            (run_id,),
+        )
+        deleted = cur.rowcount > 0
+    conn.commit()
+    return deleted
+
+
+def delete_runs_older_than(conn: psycopg.Connection, keep: int) -> int:
+    """최근 keep개를 제외한 나머지 run 삭제 (진행 중 제외). 삭제된 수 반환."""
+    with conn.cursor() as cur:
+        cur.execute(
+            '''DELETE FROM "IngestionRun"
+               WHERE status <> 'running'
+                 AND id NOT IN (
+                   SELECT id FROM "IngestionRun"
+                   ORDER BY "startedAt" DESC
+                   LIMIT %s
+                 )''',
+            (keep,),
+        )
+        deleted = cur.rowcount
+    conn.commit()
+    return deleted
