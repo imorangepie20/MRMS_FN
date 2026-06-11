@@ -14,6 +14,7 @@ from mrms.db.settings import list_settings, set_setting
 from mrms.emp.flo import SOURCES_SETTING_KEY as FLO_SOURCES_SETTING_KEY
 from mrms.emp.spotify import SOURCES_SETTING_KEY as SPOTIFY_SOURCES_SETTING_KEY
 from mrms.emp.tidal import SOURCES_SETTING_KEY, TOKEN_SETTING_KEY
+from mrms.emp.vibe import SOURCES_SETTING_KEY as VIBE_SOURCES_SETTING_KEY
 
 router = APIRouter(prefix="/api/admin/emp", tags=["admin_emp"])
 
@@ -57,6 +58,7 @@ ALLOWED_SETTING_KEYS = [
     SOURCES_SETTING_KEY,
     SPOTIFY_SOURCES_SETTING_KEY,
     FLO_SOURCES_SETTING_KEY,
+    VIBE_SOURCES_SETTING_KEY,
 ]
 
 # Keys whose value should be masked in GET response (tokens etc.)

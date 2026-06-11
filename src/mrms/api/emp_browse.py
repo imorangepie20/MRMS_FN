@@ -24,8 +24,8 @@ def get_sections(
 
 
 # tidal: playlist/album/mix · spotify embed: playlist/album/artist
-# flo: playlist/channel · melon: chart
-VALID_ITEM_TYPES = {"playlist", "album", "mix", "artist", "channel", "chart"}
+# flo: playlist/channel · melon: chart · vibe: station/playlist
+VALID_ITEM_TYPES = {"playlist", "album", "mix", "artist", "channel", "chart", "station"}
 
 
 @router.get("/items/{item_type}/{item_id}/tracks")

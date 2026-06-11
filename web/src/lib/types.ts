@@ -175,7 +175,8 @@ export type EmpItemType =
   | "mix"
   | "artist"
   | "channel"
-  | "chart";
+  | "chart"
+  | "station";
 
 export interface EmpSectionItem {
   id: string;

@@ -41,6 +41,11 @@ async def _run_importer_melon(conn) -> dict:
     return await importer.import_all(conn)
 
 
+async def _run_importer_vibe(conn) -> dict:
+    importer = make_importer("vibe", conn)
+    return await importer.import_all(conn)
+
+
 def _run_script(args: list[str]) -> dict:
     """subprocess로 외부 스크립트 실행 + 종료 코드 + 시간 기록."""
     t0 = time.monotonic()
@@ -134,6 +139,7 @@ async def run_pipeline(
             ("spotify", "import_spotify", _run_importer_spotify),
             ("flo", "import_flo", _run_importer_flo),
             ("melon", "import_melon", _run_importer_melon),
+            ("vibe", "import_vibe", _run_importer_vibe),
         ):
             if platform in ("all", plat):
                 if not await _import_stage(conn, run_id, stage_name, importer_fn):
