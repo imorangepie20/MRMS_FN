@@ -2,8 +2,9 @@ import type { EmpSection, EmpItemTrack } from "@/lib/types";
 
 import { apiFetch } from "./http";
 
-export async function fetchEmpSections(platform = "tidal"): Promise<EmpSection[]> {
-  const r = await apiFetch(`/api/emp/sections?platform=${platform}`, {}, "sections");
+export async function fetchEmpSections(platform?: string): Promise<EmpSection[]> {
+  const qs = platform ? `?platform=${encodeURIComponent(platform)}` : "";
+  const r = await apiFetch(`/api/emp/sections${qs}`, {}, "sections");
   return (await r.json()).sections as EmpSection[];
 }
 

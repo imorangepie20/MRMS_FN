@@ -9,6 +9,13 @@ import { SectionRow } from "./SectionRow";
 import { ItemTracksModal } from "./ItemTracksModal";
 
 
+const PLATFORM_ORDER = ["tidal", "spotify"];
+const PLATFORM_DIVIDER: Record<string, string> = {
+  tidal: "Tidal is Good",
+  spotify: "Spotify is Good",
+};
+
+
 function StatCell({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="bg-(--mrms-bg) px-3 py-2.5">
@@ -52,6 +59,17 @@ export function EmpBrowse() {
     return { total: items.length, byType, lastSynced };
   }, [sections]);
 
+  const platformGroups = useMemo(() => {
+    const known = PLATFORM_ORDER.filter((p) => sections.some((s) => s.platform === p));
+    const extra = [...new Set(sections.map((s) => s.platform))].filter(
+      (p) => !PLATFORM_ORDER.includes(p),
+    );
+    return [...known, ...extra].map((platform) => ({
+      platform,
+      sections: sections.filter((s) => s.platform === platform),
+    }));
+  }, [sections]);
+
   const today = new Date();
   const dateStr = today.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
   const syncedLabel = stats.lastSynced
@@ -91,15 +109,6 @@ export function EmpBrowse() {
         </div>
       </div>
 
-      {/* === EDITORIAL DIVIDER === */}
-      <div className="flex items-center gap-4 mb-6">
-        <span className="flex-1 border-t border-(--mrms-rule)" />
-        <p className="font-display italic text-[22px] md:text-[30px] text-(--mrms-ink) leading-tight shrink-0">
-          Tidal is Good
-        </p>
-        <span className="flex-1 border-t border-(--mrms-rule)" />
-      </div>
-
       {error && (
         <div className="mb-4 p-3 border border-(--mrms-rust) text-(--mrms-rust) font-mono text-[11px]">
           {error}
@@ -118,15 +127,28 @@ export function EmpBrowse() {
         </div>
       )}
 
-      <div className="space-y-5">
-        {sections.map((sec) => (
-          <SectionRow
-            key={sec.id}
-            section={sec}
-            onItemClick={(it) => setOpenItem(it)}
-          />
-        ))}
-      </div>
+      {platformGroups.map((group) => (
+        <div key={group.platform} className="mb-10">
+          {/* === EDITORIAL DIVIDER === */}
+          <div className="flex items-center gap-4 mb-6">
+            <span className="flex-1 border-t border-(--mrms-rule)" />
+            <p className="font-display italic text-[22px] md:text-[30px] text-(--mrms-ink) leading-tight shrink-0">
+              {PLATFORM_DIVIDER[group.platform] ?? `${group.platform} is Good`}
+            </p>
+            <span className="flex-1 border-t border-(--mrms-rule)" />
+          </div>
+
+          <div className="space-y-5">
+            {group.sections.map((sec) => (
+              <SectionRow
+                key={sec.id}
+                section={sec}
+                onItemClick={(it) => setOpenItem(it)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
 
       {openItem && (
         <ItemTracksModal item={openItem} onClose={() => setOpenItem(null)} />

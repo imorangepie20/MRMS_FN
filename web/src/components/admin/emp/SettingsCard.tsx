@@ -15,17 +15,25 @@ export function SettingsCard({
 }) {
   const [tokenInput, setTokenInput] = useState("");
   const [sourcesInput, setSourcesInput] = useState("");
+  const [spotifySourcesInput, setSpotifySourcesInput] = useState("");
   const [saving, setSaving] = useState(false);
 
   const tokenSetting: EmpSettingValue | undefined = settings?.["tidal_x_token"];
   const sourcesSetting: EmpSettingValue | undefined = settings?.["tidal_emp_sources"];
+  const spotifySourcesSetting: EmpSettingValue | undefined = settings?.["spotify_emp_sources"];
 
-  // Initialise sources textarea from server value whenever settings load/refresh
+  // Initialise sources textareas from server value whenever settings load/refresh
   useEffect(() => {
     if (sourcesSetting && "value" in sourcesSetting) {
       setSourcesInput(sourcesSetting.value ?? "");
     }
   }, [sourcesSetting]);
+
+  useEffect(() => {
+    if (spotifySourcesSetting && "value" in spotifySourcesSetting) {
+      setSpotifySourcesInput(spotifySourcesSetting.value ?? "");
+    }
+  }, [spotifySourcesSetting]);
 
   const saveToken = async () => {
     if (!tokenInput.trim()) {
@@ -62,6 +70,19 @@ export function SettingsCard({
     setSaving(true);
     try {
       await saveEmpSetting("tidal_emp_sources", sourcesInput.trim() || null);
+      await onSaved();
+      alert("저장됨");
+    } catch (e) {
+      alert(`저장 실패: ${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveSpotifySources = async () => {
+    setSaving(true);
+    try {
+      await saveEmpSetting("spotify_emp_sources", spotifySourcesInput.trim() || null);
       await onSaved();
       alert("저장됨");
     } catch (e) {
@@ -133,6 +154,29 @@ export function SettingsCard({
         </div>
       </div>
 
+      {/* Spotify sources row */}
+      <div className="py-2 border-b border-(--mrms-rule)">
+        <div className="font-mono text-[11px] text-(--mrms-ink-mute) tracking-editorial uppercase mb-2">
+          spotify_emp_sources
+        </div>
+        <textarea
+          value={spotifySourcesInput}
+          onChange={(e) => setSpotifySourcesInput(e.target.value)}
+          placeholder={`search-tracks/year:2026 genre:k-pop\nplaylist/<id>`}
+          rows={8}
+          className="w-full border border-(--mrms-rule) bg-(--mrms-paper) px-2 py-1 font-mono text-[11px] text-(--mrms-ink) resize-y"
+        />
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={saveSpotifySources}
+            disabled={saving}
+            className="bg-(--mrms-ink) text-(--mrms-paper) border-0 px-3 py-1 font-mono text-[10px] tracking-editorial uppercase cursor-pointer disabled:opacity-50"
+          >
+            Save sources
+          </button>
+        </div>
+      </div>
+
       <p className="mt-2 font-mono text-[10px] text-(--mrms-ink-mute)">
         Tidal web client의 X-Tidal-Token. 값이 있으면 importer가 editorial playlists 받아옴.
         <br />
@@ -140,6 +184,11 @@ export function SettingsCard({
           Sources: 한 줄에 하나씩.{" "}
           <code>pages/&lt;slug&gt;</code> = 해당 페이지에서 playlist discover.{" "}
           <code>playlist/&lt;uuid&gt;</code> = 직접 추가. 비우면 default (explore + 17개 장르).
+        </span>
+        <span className="mt-1 block">
+          Spotify sources: <code>search-tracks/&lt;query&gt;</code> = 트랙 검색 (예:{" "}
+          <code>search-tracks/year:2026 genre:k-pop</code>),{" "}
+          <code>playlist/&lt;id&gt;</code> = playlist 직접 추가 (OAuth 필요).
         </span>
       </p>
     </section>
