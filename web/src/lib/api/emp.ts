@@ -1,4 +1,4 @@
-import type { EmpSection, EmpItemTrack } from "@/lib/types";
+import type { EmpSection, EmpItemTrack, EmpItemType } from "@/lib/types";
 
 import { apiFetch } from "./http";
 
@@ -9,7 +9,7 @@ export async function fetchEmpSections(platform?: string): Promise<EmpSection[]>
 }
 
 export async function fetchEmpItemTracks(
-  itemType: "playlist" | "album" | "mix",
+  itemType: EmpItemType,
   itemId: string,
   limit = 100,
 ): Promise<EmpItemTrack[]> {

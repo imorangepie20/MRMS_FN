@@ -47,6 +47,20 @@ def test_item_tracks_invalid_type(login):
         client.cookies.clear()
 
 
+@pytest.mark.parametrize("item_type", ["playlist", "album", "mix", "artist", "channel", "chart"])
+def test_item_tracks_accepts_all_emp_item_types(login, item_type):
+    """tidal(mix)/spotify(artist)/flo(channel)/melon(chart) item_type 전부 모달 조회 가능 —
+    400으로 거부되면 안 됨 (빈 결과는 200)."""
+    _, session_id = login()
+    client.cookies.set("mrms_session", session_id)
+    try:
+        r = client.get(f"/api/emp/items/{item_type}/nonexistent_id/tracks")
+        assert r.status_code == 200, r.text
+        assert r.json()["tracks"] == []
+    finally:
+        client.cookies.clear()
+
+
 def test_item_tracks_include_liked_pct(db_conn, login, cleanup):
     """tracks 응답의 각 트랙에 사용자별 liked/pct boolean 필드 존재."""
     _, session_id = login()  # per-test 고유 email → UserTrack 잔여물 없음

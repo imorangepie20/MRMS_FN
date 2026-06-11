@@ -1,29 +1,30 @@
-"""Spotify editorial 트랙 임포터 — Search API 기반 섹션 구성.
+"""Spotify editorial 트랙 임포터 — open.spotify.com/embed 공개 위젯 스크래핑.
 
-Spotify가 신규 앱에 큐레이션 endpoint를 차단 (2026-06 실측):
-- /browse/featured-playlists, /browse/new-releases → 403
-- Spotify 자사 playlist (37i9dQZ...) 직접 fetch → 404
-- 유저 공개 playlist /tracks (client_credentials) → 403
-- /v1/search?type=track 은 정상 동작 (isrc / album / cover 포함) ← 유일한 통로
+기존 /v1/search 방식(신규 앱 차단·brittle)을 폐기하고 토큰이 전혀 없는
+embed 위젯 HTML 스크래핑으로 전환 (2026-06 실측 검증).
+
+엔드포인트:
+    GET https://open.spotify.com/embed/{kind}/{id}   (kind ∈ playlist|album|artist)
+응답 HTML의 <script id="__NEXT_DATA__">{json}</script> 안에서:
+    props.pageProps.state.data.entity
+      ├ name           — 컨테이너 제목
+      └ trackList[]
+           ├ uri       — "spotify:track:{id}"  → spotify_track_id
+           ├ title     — 곡명
+           ├ subtitle  — 아티스트 (", " 구분, 정규화 필요)
+           └ duration  — ms (정수)
 
 소스 형식 (Setting 'spotify_emp_sources', 한 줄에 하나, # 주석):
-- search-tracks/<query>  — /v1/search?type=track (client_credentials), 최대 100곡.
-                           query에 year:/genre: 필드 필터 사용 가능
-- playlist/<id>          — ADMIN_EMAIL 사용자의 OAuth 토큰으로 /playlists/{id}/tracks.
-                           토큰 없거나 403이면 해당 소스만 에러 기록 후 skip
+    playlist/{id} | album/{id} | artist/{id}
 
-섹션 저장: search-tracks 소스 1개 = EMPSection 1개 (platform='spotify').
-아이템은 검색 결과 트랙들의 앨범 (dedup, 첫 등장 순) — 트랙 EMPSource의
-source_id를 'album:{spotify_album_id}'로 저장해 emp_browse 모달이 앨범 카드
-클릭 시 해당 앨범 트랙들을 보여줄 수 있게 한다.
+ISRC 없음 (spotify track id만). upsert_track_and_emp_source의 platform-ID
+lookup-first 경로로 dedup. 차트 playlist ID는 고정이라(내용만 주간 갱신)
+컨테이너 ID만 알면 토큰 없이 트랙을 가져온다.
 """
 from __future__ import annotations
 
-import base64
-import os
+import json
 import re
-import time
-from datetime import datetime, timezone
 
 import httpx
 import psycopg
@@ -37,214 +38,122 @@ from mrms.emp.base import (
     upsert_track_and_emp_source,
 )
 
-SPOTIFY_API_BASE = "https://api.spotify.com/v1"
-SPOTIFY_OAUTH = "https://accounts.spotify.com/api/token"
-
+EMBED_BASE = "https://open.spotify.com/embed"
 SOURCES_SETTING_KEY = "spotify_emp_sources"
-SEARCH_MARKET = "US"
-# 신규 앱 client_credentials는 search limit > 10이 400 'Invalid limit' (2026-06 실측).
-# offset 페이지네이션은 정상 동작 — 10개씩 끊어서 가져온다.
-SEARCH_PAGE_LIMIT = 10
-SEARCH_MAX_TRACKS = 100  # 쿼리당 최대 (10 x 10 페이지)
+VALID_KINDS = ("playlist", "album", "artist")
 
-# 기본 search-tracks 장르 (Setting 비었을 때) — 신선도 + 장르 다양성.
-# 'k-pop'/'hip-hop'은 이 앱 티어 genre: 필터에서 항상 0건 (2026-06 실측) —
-# 기본값에서 제외. 필요 시 admin Setting에서 동작하는 쿼리로 추가.
-DEFAULT_GENRES = [
-    "pop",
-    "rock",
-    "jazz",
-    "r&b",
-    "electronic",
-    "indie",
-    "classical",
+USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+)
+
+# 기본 소스 (Setting 비었을 때) — 문서의 검증된 차트 playlist ID (2026-06-11 실측).
+DEFAULT_SOURCES = [
+    "playlist/37i9dQZEVXbMDoHDwVN2tF",  # Top 50 - Global
+    "playlist/37i9dQZEVXbLRQDuF5jeBp",  # Top 50 - USA
+    "playlist/37i9dQZEVXbNxXF4SkHj9F",  # Top 50 - South Korea
+    "playlist/37i9dQZEVXbNG2KDcFcKOF",  # Top Songs - Global
+    "playlist/37i9dQZF1DXcBWIGoYBM5M",  # Today's Top Hits
+    "playlist/37i9dQZF1DX0XUsuxWHRQd",  # RapCaviar
 ]
 
-
-def default_sources(year: int | None = None) -> list[str]:
-    """기본 소스 목록 — 올해(year) 발매곡 위주로 신선도 유지."""
-    y = year or datetime.now(timezone.utc).year
-    return [f"search-tracks/year:{y}"] + [
-        f"search-tracks/year:{y} genre:{g}" for g in DEFAULT_GENRES
-    ]
+# <script id="__NEXT_DATA__" type="application/json">{...}</script>
+_NEXT_DATA_RE = re.compile(
+    r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.DOTALL
+)
 
 
-def _pretty_genre(genre: str) -> str:
-    """'k-pop' → 'K-Pop', 'r&b' → 'R&B', 'hip-hop' → 'Hip-Hop'."""
-    def cap(seg: str) -> str:
-        return seg[:1].upper() + seg[1:]
+def parse_next_data(html: str) -> dict | None:
+    """HTML에서 __NEXT_DATA__ JSON을 파싱해 entity dict를 반환. 실패 시 None.
 
-    out = genre
-    for sep in ("-", "&", " "):
-        out = sep.join(cap(p) for p in out.split(sep))
-    return out
-
-
-def display_title_for_query(query: str) -> str:
-    """검색 쿼리 → 사람이 읽을 섹션 제목.
-
-    'year:2026 genre:k-pop' → '2026 · K-Pop', 'year:2026' → '2026 · Hot New'."""
-    year = None
-    genre = None
-    free: list[str] = []
-    for tok in query.split():
-        low = tok.lower()
-        if low.startswith("year:"):
-            year = tok[len("year:"):]
-        elif low.startswith("genre:"):
-            genre = tok[len("genre:"):]
-        else:
-            free.append(tok)
-    parts: list[str] = []
-    if year:
-        parts.append(year)
-    if genre:
-        parts.append(_pretty_genre(genre))
-    if free:
-        parts.append(" ".join(free).title())
-    if year and len(parts) == 1:
-        parts.append("Hot New")  # year-only 쿼리
-    return " · ".join(parts) if parts else query
-
-
-def section_key_for_query(query: str) -> str:
-    """쿼리 → 안정적인 sectionKey slug.
-
-    'year:2026 genre:k-pop' → 'search-year-2026-genre-k-pop'."""
-    slug = re.sub(r"[^a-z0-9]+", "-", query.lower()).strip("-")
-    return f"search-{slug}" if slug else "search"
-
-
-def _pick_album_cover(images: list) -> str | None:
-    """Spotify album.images: [{url, height, width}] (보통 큰 것부터 640/300/64).
-
-    중간 크기(~300px) 우선 — 카드용으로 충분, 트래픽 절약."""
-    if not isinstance(images, list):
+    entity = props.pageProps.state.data.entity ({ name, trackList[] })."""
+    m = _NEXT_DATA_RE.search(html or "")
+    if not m:
         return None
-    best_url: str | None = None
-    best_dist: int | None = None
-    for img in images:
-        if not isinstance(img, dict):
-            continue
-        url = img.get("url")
-        if not isinstance(url, str) or not url.startswith("http"):
-            continue
-        try:
-            h = int(img.get("height") or 0)
-        except (TypeError, ValueError):
-            h = 0
-        dist = abs(h - 300)
-        if best_dist is None or dist < best_dist:
-            best_url, best_dist = url, dist
-    return best_url
-
-
-def _normalize_track(tr) -> dict | None:
-    """Spotify track object → 내부 dict. id/name 없으면 None."""
-    if not isinstance(tr, dict):
+    try:
+        data = json.loads(m.group(1))
+    except (ValueError, TypeError):
         return None
-    tid = tr.get("id")
-    title = tr.get("name")
+    entity = (
+        ((data.get("props") or {}).get("pageProps") or {})
+        .get("state", {})
+        .get("data", {})
+        .get("entity")
+    )
+    return entity if isinstance(entity, dict) else None
+
+
+def normalize_artist(subtitle: str | None) -> str:
+    """embed track의 subtitle('Artist A, Artist B') → 첫 아티스트.
+
+    내부 모델은 artistId가 단일이라 첫 번째 아티스트를 대표로 쓴다 (tidal과 동일).
+    빈 값/None이면 'Unknown'."""
+    if not subtitle or not isinstance(subtitle, str):
+        return "Unknown"
+    first = subtitle.split(",")[0].strip()
+    return first or "Unknown"
+
+
+def _track_id_from_uri(uri) -> str | None:
+    """'spotify:track:{id}' → id. 형식이 아니면 None."""
+    if not isinstance(uri, str):
+        return None
+    parts = uri.split(":")
+    if len(parts) == 3 and parts[0] == "spotify" and parts[1] == "track" and parts[2]:
+        return parts[2]
+    return None
+
+
+def _normalize_track(node) -> dict | None:
+    """embed trackList[] 항목 → 내부 dict. uri/title 없으면 None."""
+    if not isinstance(node, dict):
+        return None
+    tid = _track_id_from_uri(node.get("uri"))
+    title = node.get("title")
     if not tid or not title:
         return None
-    artists = tr.get("artists") or []
-    artist = artists[0].get("name") if artists else "Unknown"
-    album = tr.get("album") or {}
+    duration = node.get("duration")
     return {
         "platform_track_id": tid,
         "title": title,
-        "isrc": (tr.get("external_ids") or {}).get("isrc"),
-        "artist": artist,
-        "album_title": album.get("name"),
-        "duration_ms": tr.get("duration_ms"),
-        "album_id": album.get("id"),
-        "album_cover": _pick_album_cover(album.get("images") or []),
+        "artist": normalize_artist(node.get("subtitle")),
+        "duration_ms": int(duration) if isinstance(duration, (int, float)) else None,
     }
 
 
-def _group_albums(tracks: list[dict]) -> list[tuple[str, str | None, str | None]]:
-    """첫 등장 순으로 앨범 dedup. [(album_id, album_title, cover_url), ...]."""
-    out: list[tuple[str, str | None, str | None]] = []
-    seen: set[str] = set()
-    for t in tracks:
-        aid = t.get("album_id")
-        if aid and aid not in seen:
-            seen.add(aid)
-            out.append((aid, t.get("album_title"), t.get("album_cover")))
-    return out
+def _entity_cover(entity: dict) -> str | None:
+    """컨테이너 커버 — entity의 image 필드에서 추출. 없으면 None.
+
+    embed trackList[]는 uri/title/subtitle/duration만 있어 트랙 앨범 커버가 없다 —
+    컨테이너 커버가 entity에 없으면 None (cover_url 없이 저장)."""
+    images = entity.get("coverArt") or entity.get("visualIdentity") or {}
+    if isinstance(images, dict):
+        sources = images.get("sources") or images.get("image")
+        if isinstance(sources, list):
+            for src in sources:
+                if isinstance(src, dict):
+                    url = src.get("url")
+                    if isinstance(url, str) and url.startswith("http"):
+                        return url
+    # entity 직속 URL 필드
+    for k in ("imageUrl", "image"):
+        v = entity.get(k)
+        if isinstance(v, str) and v.startswith("http"):
+            return v
+    return None
 
 
 class SpotifyEMPImporter(EMPImporter):
-    """Search API 기반 importer — 소스 목록은 Setting에서 로딩."""
+    """open.spotify.com/embed 스크래핑 importer — 토큰 없음."""
 
     platform = "spotify"
 
-    def __init__(self, client_id: str, client_secret: str):
-        self.client_id = client_id
-        self.client_secret = client_secret
-        # client_credentials 토큰 캐시 — 쿼리마다 재발급하지 않음
-        self._access_token: str | None = None
-        self._token_expires_at: float = 0.0
-        # ADMIN_EMAIL 사용자 OAuth 토큰 (playlist 소스용) — run당 1회만 시도
-        self._user_token: str | None = None
-        self._user_token_error: str = "not attempted"
-        self._user_token_checked = False
-
-    async def _get_access_token(self) -> str:
-        """client_credentials 토큰. 만료 전이면 캐시 재사용 (기본 1시간 유효)."""
-        if self._access_token and time.monotonic() < self._token_expires_at:
-            return self._access_token
-        basic = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
-        async with httpx.AsyncClient(timeout=10.0) as http:
-            r = await http.post(
-                SPOTIFY_OAUTH,
-                data={"grant_type": "client_credentials"},
-                headers={
-                    "Authorization": f"Basic {basic}",
-                    "Content-Type": "application/x-www-form-urlencoded",
-                },
-            )
-            r.raise_for_status()
-            payload = r.json()
-        self._access_token = payload["access_token"]
-        # 60초 마진 두고 만료 처리
-        self._token_expires_at = time.monotonic() + int(payload.get("expires_in", 3600)) - 60
-        return self._access_token
-
-    async def _get_admin_user_token(self, conn: psycopg.Connection) -> str | None:
-        """playlist 소스용 — ADMIN_EMAIL 사용자의 Spotify OAuth access_token.
-
-        client_credentials로는 playlist /tracks가 403이라 사용자 토큰이 필요.
-        실패 사유는 _user_token_error에 남기고 None 반환 (호출부에서 소스별 skip)."""
-        if self._user_token_checked:
-            return self._user_token
-        self._user_token_checked = True
-        admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-        if not admin_email:
-            self._user_token_error = "ADMIN_EMAIL not set"
-            return None
-        with conn.cursor() as cur:
-            cur.execute('SELECT id FROM "User" WHERE LOWER(email) = %s', (admin_email,))
-            row = cur.fetchone()
-        if not row:
-            self._user_token_error = f"admin user not found: {admin_email}"
-            return None
-        try:
-            # lazy import — FastAPI 의존을 EMP 파이프라인 기본 경로에서 격리
-            from mrms.api.auth_spotify import get_token
-
-            payload = await get_token(user_id=row[0], conn=conn)
-        except Exception as e:
-            safe_rollback(conn)
-            self._user_token_error = fmt_exc(e, 120)
-            return None
-        self._user_token = payload.get("access_token")
-        if not self._user_token:
-            self._user_token_error = "empty access_token"
-        return self._user_token
+    def __init__(self):
+        # 토큰/시크릿 불필요 — embed는 공개 위젯.
+        pass
 
     def _load_sources(self, conn: psycopg.Connection) -> list[tuple[str, str]]:
-        """[(kind, ident), ...]. kind ∈ {search-tracks, playlist}."""
+        """[(kind, id), ...]. kind ∈ {playlist, album, artist}. 비었으면 DEFAULT_SOURCES."""
         raw = get_setting(conn, SOURCES_SETTING_KEY) or ""
         sources: list[tuple[str, str]] = []
         for line in raw.splitlines():
@@ -255,160 +164,43 @@ class SpotifyEMPImporter(EMPImporter):
                 continue
             kind, _, ident = line.partition("/")
             kind = kind.strip().lower()
-            ident = ident.strip()
-            if kind in ("search-tracks", "playlist") and ident:
+            # admin이 'playlist/{id}  # Top 50' 처럼 인라인 주석을 넣을 수 있다
+            ident = ident.split("#", 1)[0].strip()
+            if kind in VALID_KINDS and ident:
                 sources.append((kind, ident))
         if not sources:
-            for s in default_sources():
+            for s in DEFAULT_SOURCES:
                 kind, _, ident = s.partition("/")
+                ident = ident.split("#", 1)[0].strip()
                 sources.append((kind, ident))
         return sources
 
-    # ----- HTTP fetch helpers -----
-
-    async def _search_tracks(self, http: httpx.AsyncClient, query: str) -> list[dict]:
-        """/v1/search?type=track 페이지네이션 — 최대 SEARCH_MAX_TRACKS곡."""
-        token = await self._get_access_token()
-        out: list[dict] = []
-        seen: set[str] = set()
-        offset = 0
-        while offset < SEARCH_MAX_TRACKS:
-            r = await http.get(
-                f"{SPOTIFY_API_BASE}/search",
-                params={
-                    "q": query,
-                    "type": "track",
-                    "limit": SEARCH_PAGE_LIMIT,
-                    "offset": offset,
-                    "market": SEARCH_MARKET,
-                },
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            if r.status_code != 200:
-                if not out:
-                    raise RuntimeError(f"search HTTP {r.status_code}")
-                break  # 일부 페이지만 실패 — 수집분으로 진행
-            items = ((r.json().get("tracks") or {}).get("items")) or []
-            if not items:
-                break
-            for tr in items:
-                t = _normalize_track(tr)
-                # source_id가 album 기반이라 album_id 없는 트랙은 제외 (드묾)
-                if t and t["album_id"] and t["platform_track_id"] not in seen:
-                    seen.add(t["platform_track_id"])
-                    out.append(t)
-            offset += len(items)
-            if len(items) < SEARCH_PAGE_LIMIT:
-                break
-        return out
-
-    async def _fetch_playlist_tracks(
-        self, http: httpx.AsyncClient, playlist_id: str, token: str
-    ) -> list[dict]:
-        """/v1/playlists/{id}/tracks 페이지네이션. 첫 페이지부터 비정상이면 raise."""
-        result: list[dict] = []
-        url = (
-            f"{SPOTIFY_API_BASE}/playlists/{playlist_id}/tracks"
-            "?limit=100&fields=items(track(id,name,duration_ms,external_ids,"
-            "artists(name),album(id,name,images))),next"
-        )
-        while url:
-            r = await http.get(url, headers={"Authorization": f"Bearer {token}"})
-            if r.status_code != 200:
-                if not result:
-                    raise RuntimeError(f"playlist tracks HTTP {r.status_code}")
-                break
-            data = r.json()
-            for it in data.get("items", []):
-                t = _normalize_track(it.get("track") or {})
-                if t:
-                    result.append(t)
-            url = data.get("next")
-        return result
-
-    # ----- DB save helpers -----
-
-    def _save_search_section(
-        self,
-        conn: psycopg.Connection,
-        query: str,
-        display_order: int,
-        tracks: list[dict],
-        errors: list[str],
-    ) -> None:
-        """search 결과 앨범들을 EMPSection/EMPSectionItem으로 저장 (/emp 카드용)."""
-        albums = _group_albums(tracks)
+    async def _fetch_embed(
+        self, http: httpx.AsyncClient, kind: str, ident: str
+    ) -> dict | None:
+        """embed 위젯 HTML을 가져와 entity dict 반환. 실패 시 None."""
         try:
-            section_id = upsert_section(
-                conn=conn,
-                platform=self.platform,
-                section_key=section_key_for_query(query),
-                display_title=display_title_for_query(query),
-                display_order=display_order,
+            r = await http.get(
+                f"{EMBED_BASE}/{kind}/{ident}",
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Referer": "https://open.spotify.com/",
+                    "Accept": "text/html,application/xhtml+xml",
+                },
             )
-            seen: set[tuple[str, str]] = set()
-            for item_idx, (album_id, title, cover) in enumerate(albums):
-                upsert_section_item(
-                    conn=conn,
-                    section_id=section_id,
-                    item_type="album",
-                    item_id=album_id,
-                    title=title,
-                    cover_url=cover,
-                    display_order=item_idx,
-                )
-                seen.add(("album", album_id))
-            prune_stale_items(conn, section_id, seen)
-        except Exception as e:
-            safe_rollback(conn)  # 깨진 트랜잭션 복구 — 후속 쿼리 연쇄실패 방지
-            errors.append(f"section save {query}: {fmt_exc(e, 120)}")
-
-    def _upsert_tracks(
-        self,
-        conn: psycopg.Connection,
-        tracks: list[dict],
-        source_type: str,
-        source_for,
-        label: str,
-        errors: list[str],
-    ) -> tuple[int, int]:
-        """트랙들 upsert. source_for(track) → (source_id, source_name).
-        Returns (new, existing)."""
-        n_new = 0
-        n_existing = 0
-        for t in tracks:
-            source_id, source_name = source_for(t)
-            try:
-                r = upsert_track_and_emp_source(
-                    conn,
-                    isrc=t.get("isrc"),
-                    title=t["title"],
-                    artist=t["artist"],
-                    album_title=t.get("album_title"),
-                    duration_ms=t.get("duration_ms"),
-                    platform=self.platform,
-                    platform_track_id=t["platform_track_id"],
-                    source_type=source_type,
-                    source_id=source_id,
-                    source_name=source_name,
-                )
-                if r["new"]:
-                    n_new += 1
-                else:
-                    n_existing += 1
-            except Exception as e:
-                safe_rollback(conn)
-                errors.append(
-                    f"upsert {label}/{t.get('platform_track_id')}: {fmt_exc(e, 120)}"
-                )
-        return n_new, n_existing
-
-    # ----- EMPImporter entrypoint -----
+            if r.status_code != 200:
+                return None
+            return parse_next_data(r.text)
+        except Exception:
+            return None
 
     async def import_all(self, conn: psycopg.Connection) -> dict:
         """모든 source 적재.
 
-        주의: 반환 dict의 'playlists_processed'는 처리 성공한 소스 수
+        각 소스 = 하나의 섹션(EMPSection) + 그 컨테이너 자체가 하나의 아이템.
+        trackList → 트랙 upsert (source_type='editorial_embed', source_id='{kind}:{id}').
+
+        반환 dict의 'playlists_processed'는 처리 성공한 소스 수
         (키 이름은 base 인터페이스 호환용)."""
         sources = self._load_sources(conn)
         tracks_new = 0
@@ -418,50 +210,66 @@ class SpotifyEMPImporter(EMPImporter):
 
         async with httpx.AsyncClient(timeout=15.0) as http:
             for src_idx, (kind, ident) in enumerate(sources):
-                if kind == "search-tracks":
-                    try:
-                        tracks = await self._search_tracks(http, ident)
-                    except Exception as e:
-                        errors.append(f"search-tracks/{ident}: {fmt_exc(e, 120)}")
-                        continue
-                    if not tracks:
-                        # 결과 0이면 빈 섹션을 만들지 않고 기록만 — 일부 genre:
-                        # 필터(k-pop, hip-hop)는 이 앱 티어에서 0건 (2026-06 실측)
-                        errors.append(f"search-tracks/{ident}: 0 tracks")
-                        continue
-                    self._save_search_section(conn, ident, src_idx, tracks, errors)
-                    n_new, n_existing = self._upsert_tracks(
-                        conn,
-                        tracks,
-                        source_type="editorial_search",
-                        # emp_browse 모달 정합 — 앨범 카드 클릭 시 album:{id}로 조회
-                        source_for=lambda t: (f"album:{t['album_id']}", t.get("album_title")),
-                        label=f"search-tracks/{ident}",
-                        errors=errors,
-                    )
-                elif kind == "playlist":
-                    token = await self._get_admin_user_token(conn)
-                    if not token:
-                        errors.append(f"playlist/{ident}: skip — {self._user_token_error}")
-                        continue
-                    try:
-                        tracks = await self._fetch_playlist_tracks(http, ident, token)
-                    except Exception as e:
-                        errors.append(f"playlist/{ident}: {fmt_exc(e, 120)}")
-                        continue
-                    n_new, n_existing = self._upsert_tracks(
-                        conn,
-                        tracks,
-                        source_type="editorial_playlist",
-                        source_for=lambda t, _id=ident: (f"playlist:{_id}", _id),
-                        label=f"playlist/{ident}",
-                        errors=errors,
-                    )
-                else:  # pragma: no cover — _load_sources가 이미 필터링
+                entity = await self._fetch_embed(http, kind, ident)
+                if entity is None:
+                    errors.append(f"{kind}/{ident}: fetch/parse failed")
                     continue
 
-                tracks_new += n_new
-                tracks_existing += n_existing
+                name = entity.get("name") or entity.get("title") or ident
+                raw_tracks = entity.get("trackList") or []
+                tracks = [t for t in (_normalize_track(n) for n in raw_tracks) if t]
+
+                # 섹션 + 아이템 저장 — 이 소스 자체가 하나의 컨테이너 아이템.
+                try:
+                    section_id = upsert_section(
+                        conn=conn,
+                        platform=self.platform,
+                        section_key=f"{kind}:{ident}",
+                        display_title=name,
+                        display_order=src_idx,
+                    )
+                    cover = _entity_cover(entity)
+                    upsert_section_item(
+                        conn=conn,
+                        section_id=section_id,
+                        item_type=kind,
+                        item_id=ident,
+                        title=name,
+                        cover_url=cover,
+                        display_order=0,
+                    )
+                    prune_stale_items(conn, section_id, {(kind, ident)})
+                except Exception as e:
+                    safe_rollback(conn)  # 깨진 트랜잭션 복구 — 후속 쿼리 연쇄실패 방지
+                    errors.append(f"section save {kind}/{ident}: {fmt_exc(e, 120)}")
+
+                # 트랙 upsert.
+                for t in tracks:
+                    try:
+                        r = upsert_track_and_emp_source(
+                            conn,
+                            isrc=None,
+                            title=t["title"],
+                            artist=t["artist"],
+                            album_title=None,
+                            duration_ms=t.get("duration_ms"),
+                            platform=self.platform,
+                            platform_track_id=t["platform_track_id"],
+                            source_type="editorial_embed",
+                            source_id=f"{kind}:{ident}",
+                            source_name=name,
+                        )
+                        if r["new"]:
+                            tracks_new += 1
+                        else:
+                            tracks_existing += 1
+                    except Exception as e:
+                        safe_rollback(conn)
+                        errors.append(
+                            f"upsert {kind}/{ident}/{t.get('platform_track_id')}: "
+                            f"{fmt_exc(e, 120)}"
+                        )
+
                 sources_processed += 1
 
         return {

@@ -9,10 +9,12 @@ import { SectionRow } from "./SectionRow";
 import { ItemTracksModal } from "./ItemTracksModal";
 
 
-const PLATFORM_ORDER = ["tidal", "spotify"];
+const PLATFORM_ORDER = ["tidal", "spotify", "flo", "melon"];
 const PLATFORM_DIVIDER: Record<string, string> = {
   tidal: "Tidal is Good",
   spotify: "Spotify is Good",
+  flo: "FLO is Good",
+  melon: "Melon is Good",
 };
 
 

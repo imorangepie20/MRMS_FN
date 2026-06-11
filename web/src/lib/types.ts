@@ -169,9 +169,17 @@ export interface EmpSettings {
   settings: Record<string, EmpSettingValue>;
 }
 
+export type EmpItemType =
+  | "playlist"
+  | "album"
+  | "mix"
+  | "artist"
+  | "channel"
+  | "chart";
+
 export interface EmpSectionItem {
   id: string;
-  item_type: "playlist" | "album" | "mix";
+  item_type: EmpItemType;
   item_id: string;
   title: string | null;
   cover_url: string | null;

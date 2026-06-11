@@ -16,11 +16,13 @@ export function SettingsCard({
   const [tokenInput, setTokenInput] = useState("");
   const [sourcesInput, setSourcesInput] = useState("");
   const [spotifySourcesInput, setSpotifySourcesInput] = useState("");
+  const [floSourcesInput, setFloSourcesInput] = useState("");
   const [saving, setSaving] = useState(false);
 
   const tokenSetting: EmpSettingValue | undefined = settings?.["tidal_x_token"];
   const sourcesSetting: EmpSettingValue | undefined = settings?.["tidal_emp_sources"];
   const spotifySourcesSetting: EmpSettingValue | undefined = settings?.["spotify_emp_sources"];
+  const floSourcesSetting: EmpSettingValue | undefined = settings?.["flo_emp_sources"];
 
   // Initialise sources textareas from server value whenever settings load/refresh
   useEffect(() => {
@@ -34,6 +36,12 @@ export function SettingsCard({
       setSpotifySourcesInput(spotifySourcesSetting.value ?? "");
     }
   }, [spotifySourcesSetting]);
+
+  useEffect(() => {
+    if (floSourcesSetting && "value" in floSourcesSetting) {
+      setFloSourcesInput(floSourcesSetting.value ?? "");
+    }
+  }, [floSourcesSetting]);
 
   const saveToken = async () => {
     if (!tokenInput.trim()) {
@@ -83,6 +91,19 @@ export function SettingsCard({
     setSaving(true);
     try {
       await saveEmpSetting("spotify_emp_sources", spotifySourcesInput.trim() || null);
+      await onSaved();
+      alert("저장됨");
+    } catch (e) {
+      alert(`저장 실패: ${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveFloSources = async () => {
+    setSaving(true);
+    try {
+      await saveEmpSetting("flo_emp_sources", floSourcesInput.trim() || null);
       await onSaved();
       alert("저장됨");
     } catch (e) {
@@ -177,6 +198,29 @@ export function SettingsCard({
         </div>
       </div>
 
+      {/* FLO sources row */}
+      <div className="py-2 border-b border-(--mrms-rule)">
+        <div className="font-mono text-[11px] text-(--mrms-ink-mute) tracking-editorial uppercase mb-2">
+          flo_emp_sources
+        </div>
+        <textarea
+          value={floSourcesInput}
+          onChange={(e) => setFloSourcesInput(e.target.value)}
+          placeholder={`special\nplaylist/<id>\nchannel/<id>`}
+          rows={8}
+          className="w-full border border-(--mrms-rule) bg-(--mrms-paper) px-2 py-1 font-mono text-[11px] text-(--mrms-ink) resize-y"
+        />
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={saveFloSources}
+            disabled={saving}
+            className="bg-(--mrms-ink) text-(--mrms-paper) border-0 px-3 py-1 font-mono text-[10px] tracking-editorial uppercase cursor-pointer disabled:opacity-50"
+          >
+            Save sources
+          </button>
+        </div>
+      </div>
+
       <p className="mt-2 font-mono text-[10px] text-(--mrms-ink-mute)">
         Tidal web client의 X-Tidal-Token. 값이 있으면 importer가 editorial playlists 받아옴.
         <br />
@@ -189,6 +233,14 @@ export function SettingsCard({
           Spotify sources: <code>search-tracks/&lt;query&gt;</code> = 트랙 검색 (예:{" "}
           <code>search-tracks/year:2026 genre:k-pop</code>),{" "}
           <code>playlist/&lt;id&gt;</code> = playlist 직접 추가 (OAuth 필요).
+        </span>
+        <span className="mt-1 block">
+          FLO sources: <code>special</code> = 큐레이션 섹션 자동 발견,{" "}
+          <code>playlist/&lt;id&gt;</code> / <code>channel/&lt;id&gt;</code> = 직접 추가.
+          비우면 default (special 자동).
+        </span>
+        <span className="mt-1 block">
+          Melon Hot 100 자동 — 소스 고정이라 설정 불필요.
         </span>
       </p>
     </section>

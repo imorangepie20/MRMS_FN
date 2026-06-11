@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.db.emp import get_emp_stats, list_recent_runs
 from mrms.db.settings import list_settings, set_setting
+from mrms.emp.flo import SOURCES_SETTING_KEY as FLO_SOURCES_SETTING_KEY
 from mrms.emp.spotify import SOURCES_SETTING_KEY as SPOTIFY_SOURCES_SETTING_KEY
 from mrms.emp.tidal import SOURCES_SETTING_KEY, TOKEN_SETTING_KEY
 
@@ -51,7 +52,12 @@ def admin_runs(
 
 
 # Whitelisted keys — never let arbitrary keys be set via admin
-ALLOWED_SETTING_KEYS = [TOKEN_SETTING_KEY, SOURCES_SETTING_KEY, SPOTIFY_SOURCES_SETTING_KEY]
+ALLOWED_SETTING_KEYS = [
+    TOKEN_SETTING_KEY,
+    SOURCES_SETTING_KEY,
+    SPOTIFY_SOURCES_SETTING_KEY,
+    FLO_SOURCES_SETTING_KEY,
+]
 
 # Keys whose value should be masked in GET response (tokens etc.)
 MASKED_KEYS: set[str] = {TOKEN_SETTING_KEY}

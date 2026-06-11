@@ -1,26 +1,29 @@
 """EMP (External Music Pool) importers."""
 from __future__ import annotations
 
-import os
-
 import psycopg
 
 from mrms.emp.base import EMPImporter
 
 
 def make_importer(platform: str, conn: psycopg.Connection) -> EMPImporter:
-    """platform별 importer 생성. platform ∈ {'tidal', 'spotify'}.
+    """platform별 importer 생성. platform ∈ {'tidal', 'spotify', 'flo', 'melon'}.
 
     - tidal: token을 Setting에서 자동 로딩 (conn 필요)
-    - spotify: SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET env 사용
+    - spotify: open.spotify.com/embed 공개 위젯 스크래핑 — 토큰/인증 불필요
+    - flo: 토큰 불필요 (공개 API)
+    - melon: 토큰 불필요 (차트 페이지 HTML 스크래핑)
     """
     if platform == "tidal":
         from mrms.emp.tidal import TidalEMPImporter
         return TidalEMPImporter(conn=conn)
     if platform == "spotify":
         from mrms.emp.spotify import SpotifyEMPImporter
-        return SpotifyEMPImporter(
-            client_id=os.environ["SPOTIFY_CLIENT_ID"],
-            client_secret=os.environ["SPOTIFY_CLIENT_SECRET"],
-        )
+        return SpotifyEMPImporter()
+    if platform == "flo":
+        from mrms.emp.flo import FloEMPImporter
+        return FloEMPImporter()
+    if platform == "melon":
+        from mrms.emp.melon import MelonEMPImporter
+        return MelonEMPImporter()
     raise ValueError(f"unknown platform: {platform}")
