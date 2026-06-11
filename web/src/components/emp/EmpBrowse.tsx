@@ -67,10 +67,11 @@ export function EmpBrowse() {
     const extra = [...new Set(sections.map((s) => s.platform))].filter(
       (p) => !PLATFORM_ORDER.includes(p),
     );
-    return [...known, ...extra].map((platform) => ({
-      platform,
-      sections: sections.filter((s) => s.platform === platform),
-    }));
+    return [...known, ...extra].map((platform) => {
+      const groupSections = sections.filter((s) => s.platform === platform);
+      const itemCount = groupSections.reduce((n, s) => n + s.items.length, 0);
+      return { platform, sections: groupSections, itemCount };
+    });
   }, [sections]);
 
   const today = new Date();
@@ -131,21 +132,30 @@ export function EmpBrowse() {
       )}
 
       {platformGroups.map((group) => (
-        <div key={group.platform} className="mb-10">
+        <div key={group.platform} className="mb-12">
           {/* === EDITORIAL DIVIDER === */}
           <div className="flex items-center gap-4 mb-6">
-            <span className="flex-1 border-t border-(--mrms-rule)" />
-            <p className="font-display italic text-[22px] md:text-[30px] text-(--mrms-ink) leading-tight shrink-0">
-              {PLATFORM_DIVIDER[group.platform] ?? `${group.platform} is Good`}
-            </p>
-            <span className="flex-1 border-t border-(--mrms-rule)" />
+            <span className="h-px flex-1 bg-(--mrms-rule)" />
+            <div className="flex items-baseline gap-2.5 shrink-0">
+              <span className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) tabular-nums">
+                {group.platform}
+              </span>
+              <p className="font-display italic text-[22px] md:text-[30px] text-(--mrms-ink) leading-tight">
+                {PLATFORM_DIVIDER[group.platform] ?? `${group.platform} is Good`}
+              </p>
+              <span className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) tabular-nums">
+                {group.sections.length}·{group.itemCount}
+              </span>
+            </div>
+            <span className="h-px flex-1 bg-(--mrms-rule)" />
           </div>
 
-          <div className="space-y-5">
-            {group.sections.map((sec) => (
+          <div className="space-y-7">
+            {group.sections.map((sec, i) => (
               <SectionRow
                 key={sec.id}
                 section={sec}
+                index={i}
                 onItemClick={(it) => setOpenItem(it)}
               />
             ))}

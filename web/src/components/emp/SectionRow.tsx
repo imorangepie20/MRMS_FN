@@ -10,9 +10,11 @@ import { EmpItemCard } from "./EmpItemCard";
 
 export function SectionRow({
   section,
+  index,
   onItemClick,
 }: {
   section: EmpSection;
+  index?: number;
   onItemClick: (it: EmpSectionItem) => void;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -79,12 +81,17 @@ export function SectionRow({
   return (
     <section>
       <div className="flex items-baseline justify-between mb-3 pb-2 border-b border-(--mrms-ink)">
-        <div className="flex items-baseline gap-3 min-w-0">
+        <div className="flex items-baseline gap-2.5 min-w-0">
+          {index !== undefined && (
+            <span className="font-mono text-[11px] text-(--mrms-rust) tabular-nums shrink-0">
+              {String(index + 1).padStart(2, "0")}
+            </span>
+          )}
           <h2 className="font-display font-bold text-[20px] text-(--mrms-ink) truncate">
             {section.display_title ?? section.section_key}
           </h2>
-          <span className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute)">
-            {section.items.length} items
+          <span className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) shrink-0">
+            {section.items.length}
           </span>
         </div>
 
