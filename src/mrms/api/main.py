@@ -13,6 +13,7 @@ from mrms.api.artwork import router as artwork_router
 from mrms.api.auth_session import router as auth_session_router
 from mrms.api.auth_spotify import router as auth_spotify_router
 from mrms.api.auth_tidal import playback_router as tidal_playback_router, router as tidal_router
+from mrms.api.auth_youtube import router as auth_youtube_router
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.api.onboarding_api import router as onboarding_router
 from mrms.api.playback_resolve import router as playback_resolve_router
@@ -44,6 +45,7 @@ app.include_router(tidal_playback_router)
 app.include_router(playback_resolve_router)
 app.include_router(auth_session_router)
 app.include_router(auth_spotify_router)
+app.include_router(auth_youtube_router)
 app.include_router(onboarding_router)
 app.include_router(user_tracks_router)
 app.include_router(playlists_router)
