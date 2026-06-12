@@ -147,6 +147,26 @@
 .tracking-editorial { letter-spacing: 0.08em; }
 .tracking-editorial-wide { letter-spacing: 0.14em; }
 
+/* === EMP 다크 이머시브 스코프 === */
+/* 컴포넌트가 전부 --mrms-* 변수를 쓰므로, 이 스코프에서 변수만 다크로
+   오버라이드하면 페이지 전체가 다크로 뒤집힌다. 커버가 어두운 배경에서 팡 튄다. */
+.emp-dark {
+  --mrms-bg: #141009;        /* deep warm charcoal */
+  --mrms-paper: #1e1810;     /* card */
+  --mrms-ink: #f2ebdd;       /* warm cream text */
+  --mrms-ink-soft: #b6ab95;  /* secondary */
+  --mrms-ink-mute: #7e7361;  /* meta */
+  --mrms-rule: #352d20;      /* hairline */
+  --mrms-rust: #e85d24;      /* brighter accent — 다크에서 발광 */
+  color: var(--mrms-ink);
+}
+.emp-glow {
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+.emp-glow:hover {
+  box-shadow: 0 10px 34px -8px color-mix(in srgb, var(--mrms-rust) 55%, transparent);
+}
+
 /* === Now-playing equalizer (큐의 현재 재생 트랙 표시) === */
 @keyframes mrms-eq {
   0%, 100% { transform: scaleY(0.3); }

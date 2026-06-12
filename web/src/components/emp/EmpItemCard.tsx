@@ -64,7 +64,7 @@ export function EmpItemCard({
       {/* === COVER === */}
       <div
         style={coverStyle}
-        className={`relative overflow-hidden bg-(--mrms-rule) ${coverClassName}`}
+        className={`emp-glow relative overflow-hidden bg-(--mrms-rule) ${coverClassName}`}
       >
         {item.cover_url ? (
           <img

@@ -91,7 +91,7 @@ export function EmpBrowse() {
     : "—";
 
   return (
-    <div className="px-5 pt-6 pb-48 md:px-10 md:pt-10">
+    <div className="emp-dark bg-(--mrms-bg) min-h-screen -mt-px px-5 pt-6 pb-48 md:px-10 md:pt-10">
       {/* === DATELINE === */}
       <div className="flex justify-between items-baseline border-b border-(--mrms-rule) pb-2 mb-6 font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) gap-3">
         <span className="truncate">{dateStr} · External Music Pool</span>
