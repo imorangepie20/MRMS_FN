@@ -145,7 +145,7 @@ export function EmpBrowse() {
         <div key={group.platform} className="mb-12">
           {/* === BOLD PLATFORM DIVIDER — 플랫폼명 초대형 슬래브 === */}
           <div className="mb-6 flex items-end justify-between gap-4 border-b-2 border-(--mrms-ink) pb-1">
-            <h2 className="font-display font-bold uppercase text-(--mrms-ink) leading-[0.82] tracking-[-0.04em] text-[40px] md:text-[68px]">
+            <h2 className="font-display font-bold uppercase text-(--mrms-ink) leading-[0.85] tracking-[-0.04em] text-[30px] md:text-[52px]">
               {group.platform}
             </h2>
             <div className="text-right shrink-0 pb-1.5">
