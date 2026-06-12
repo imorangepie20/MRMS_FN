@@ -448,6 +448,15 @@ git commit -m "docs(phase2): YouTube 미스곡 임베딩 운영 절차"
 
 ---
 
+## 운영 노트 (2026-06-13 로컬 e2e 검증에서 발견 — Task 5 prod 실행 시 주의)
+
+로컬에서 미스곡 3개로 13→03→10 전체 체인을 돌려 `TrackEmbedding(256d, our-v1.0)` 적재까지 확인. 발견한 gotcha:
+
+1. **DATABASE_URL export** — scripts/13·10은 `os.environ["DATABASE_URL"]`을 읽지만 `load_dotenv`를 안 한다. systemd(EnvironmentFile) 밖에서 수동 실행 시 `export DATABASE_URL=...` 필요.
+2. **03의 decode 캐시 우회** — 03은 `--cache-dir`(기본 `data/audio_decoded`)에 npy가 있으면 그것만 처리하고 신규 m4a를 무시한다. YouTube 신규 m4a를 임베딩하려면 `--audio-dir`에 그 m4a들을 두고 `--cache-dir`를 빈 경로로 지정(`--cache-dir /tmp/empty`)해 강제 디코딩하거나, `scripts/03a_predecode.py`로 먼저 캐시에 넣는다.
+3. **10의 limit** — `fetch_pending`은 npy 없는 inEmp EMP 트랙까지 포함해 수만 건을 반환한다. YouTube 미스(소수)가 묻히므로 `--limit`를 충분히 크게(또는 0=전체) 줘야 한다. npy 없는 건 자동 skip이라 부담 적음.
+4. **candidate_keys 확인** — youtube 미스곡 key는 `youtube_{videoId}`(13이 저장한 파일명·03 출력과 일치). resolve_npy가 `yt_`(합성) → `youtube_` → `db_` 순으로 탐색하므로 정상 매칭됨.
+
 ## 스코프 밖 (YAGNI)
 - 동기/실시간 임베딩, 풀트랙 멀티청크(카탈로그 30초와 불일치), Tidal 프리뷰 fallback, 사용자별 우선순위 큐, 임베딩 후 오디오 자동 삭제(스토리지 이슈 생기면 추가).
 
