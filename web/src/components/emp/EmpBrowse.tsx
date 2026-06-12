@@ -7,6 +7,7 @@ import type { EmpSection, EmpSectionItem } from "@/lib/types";
 
 import { SectionRow } from "./SectionRow";
 import { TrackSectionRow } from "./TrackSectionRow";
+import { TrackListSection } from "./TrackListSection";
 import { ItemTracksModal } from "./ItemTracksModal";
 
 
@@ -14,6 +15,16 @@ import { ItemTracksModal } from "./ItemTracksModal";
  *  현재는 단일 'chart' 아이템 섹션(Melon/Apple)이 해당. */
 function isTrackSection(sec: EmpSection): boolean {
   return sec.items.length > 0 && sec.items.every((it) => it.item_type === "chart");
+}
+
+
+/** 스포티파이 Top 50 시리즈 — 단일 플레이리스트를 세로 트랙 나열형으로. */
+function isTop50Section(sec: EmpSection): boolean {
+  return (
+    sec.platform === "spotify" &&
+    sec.items.length > 0 &&
+    /top\s*50/i.test(sec.display_title ?? "")
+  );
 }
 
 
@@ -160,7 +171,9 @@ export function EmpBrowse() {
 
           <div className="space-y-7">
             {group.sections.map((sec, i) =>
-              isTrackSection(sec) ? (
+              isTop50Section(sec) ? (
+                <TrackListSection key={sec.id} section={sec} index={i} />
+              ) : isTrackSection(sec) ? (
                 <TrackSectionRow key={sec.id} section={sec} index={i} />
               ) : (
                 <SectionRow
