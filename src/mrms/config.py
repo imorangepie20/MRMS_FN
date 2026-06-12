@@ -101,6 +101,10 @@ class Settings(BaseSettings):
     download_preview_seconds: int = 30
     download_format: str = "m4a"
 
+    # YouTube 풀트랙에서 훅 근처 30초를 뽑기 위한 오프셋 비율 (앞=인트로 회피).
+    # 카탈로그 임베딩이 플랫폼 프리뷰(훅)에서 나왔으므로 분포를 맞춘다.
+    youtube_clip_offset_ratio: float = 0.30
+
 
 # Singleton
 settings = Settings()

@@ -39,6 +39,7 @@ class PendingTrack:
     isrc: str | None
     tidal_id: str | None
     spotify_id: str | None
+    youtube_id: str | None = None
 
 
 def candidate_keys(track: PendingTrack) -> list[str]:
@@ -56,6 +57,10 @@ def candidate_keys(track: PendingTrack) -> list[str]:
         keys.append(f"tidal_{track.tidal_id}")
     if track.spotify_id:
         keys.append(f"spotify_{track.spotify_id}")
+    # YouTube 미스곡: 13_embed_youtube_misses.py가 youtube_{videoId}.m4a로 저장 →
+    # 03이 youtube_{videoId}.npy 생성. ISRC/tidal/spotify가 없는 미스곡은 이 키로만 매칭.
+    if track.youtube_id:
+        keys.append(f"youtube_{track.youtube_id}")
     keys.append(f"db_{track.track_id}")
     return keys
 
@@ -70,17 +75,41 @@ def resolve_npy(embed_dir: Path, track: PendingTrack) -> Path | None:
 
 
 def fetch_pending(conn: psycopg.Connection, limit: int = 0) -> list[PendingTrack]:
-    """EMP 풀 중 현재 modelVersion 임베딩이 없는 트랙 (02 --emp-only와 동일 쿼리 조건)."""
+    """현재 modelVersion 임베딩이 없는, 임베딩 대상 트랙.
+
+    두 모집단을 합집합으로 조회한다 (둘 다 03이 npy를 만들었을 수 있는 트랙):
+      1) EMP 풀: t."inEmp" = TRUE (EMPSource 트리거가 세팅 — 02 --emp-only와 동일).
+      2) 유저 라이브러리 YouTube 미스곡: 실 videoId(합성 'yt_…' 제외) + UserTrack 보유.
+         이 트랙들은 upsert_youtube_track 경로로 들어와 EMPSource가 없어 inEmp=FALSE다
+         (13_embed_youtube_misses.py가 다운로드하는 바로 그 모집단). inEmp 게이트만
+         걸면 이 미스곡이 영영 TrackEmbedding에 적재되지 않으므로 명시적으로 포함한다.
+    """
     sql = """
         SELECT t.id, t.isrc,
                tp_tidal."platformTrackId"   AS tidal_id,
-               tp_spotify."platformTrackId" AS spotify_id
+               tp_spotify."platformTrackId" AS spotify_id,
+               tp_youtube."platformTrackId" AS youtube_id
         FROM "Track" t
         LEFT JOIN "TrackPlatform" tp_tidal
           ON tp_tidal."trackId" = t.id AND tp_tidal.platform = 'tidal'
         LEFT JOIN "TrackPlatform" tp_spotify
           ON tp_spotify."trackId" = t.id AND tp_spotify.platform = 'spotify'
-        WHERE t."inEmp" = TRUE
+        LEFT JOIN "TrackPlatform" tp_youtube
+          ON tp_youtube."trackId" = t.id AND tp_youtube.platform = 'youtube'
+          -- 합성 ID('yt_…')는 실제 videoId가 아니라 다운로드 불가 → key 후보에서 제외.
+          -- '_'는 LIKE 와일드카드라 escape, '%%'는 psycopg 파라미터 escape.
+          AND tp_youtube."platformTrackId" NOT LIKE 'yt\\_%%' ESCAPE '\\'
+        WHERE (
+            t."inEmp" = TRUE
+            OR (
+              -- 유저 라이브러리 YouTube 미스곡: 실 videoId(join에서 합성 제외됨) + UserTrack.
+              -- 13_embed_youtube_misses.py MISS_SQL과 동일한 모집단.
+              tp_youtube."platformTrackId" IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM "UserTrack" ut WHERE ut."trackId" = t.id
+              )
+            )
+          )
           AND NOT EXISTS (
             SELECT 1 FROM "TrackEmbedding" te
             WHERE te."trackId" = t.id AND te."modelVersion" = %s
