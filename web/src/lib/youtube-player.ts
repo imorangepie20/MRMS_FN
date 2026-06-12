@@ -175,6 +175,20 @@ export async function initYoutubeSdk(): Promise<void> {
         events: {
           onReady: () => {
             clearTimeout(timer);
+            // 숨겨진 플레이어 iframe이 포커스를 가져가면 다음 페이지 클릭이
+            // "포커스 되찾기"에 한 번 먹혀 첫 클릭이 씹힌다 — 비포커스 처리.
+            try {
+              const f = (
+                player as { getIframe?: () => HTMLIFrameElement } | null
+              )?.getIframe?.();
+              if (f) {
+                f.tabIndex = -1;
+                f.setAttribute("aria-hidden", "true");
+                f.blur();
+              }
+            } catch {
+              /* getIframe 미지원 시 무시 */
+            }
             resolve();
           },
           onStateChange: (e: { data: number }) => handleStateChange(e.data),
