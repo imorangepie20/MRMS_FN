@@ -304,6 +304,93 @@ async def test_import_all_creates_tracks_and_is_idempotent(db_conn):
 
 
 @pytest.mark.asyncio
+async def test_import_all_include_liked_false_skips_liked(db_conn, monkeypatch):
+    """include_liked=False면 fetch_liked 미호출 + liked 미적재 (플레이리스트만).
+
+    선택적 import flow 계약: {playlist_ids:[...], include_liked:False}.
+    fetch_liked가 호출되면 안 되고, liked source의 UserTrack도 없어야 한다.
+    """
+    from mrms.db.ids import stable_id as _id
+    from mrms.db.user_track import get_or_create_user
+    from mrms.sync import youtube_importer as yt_mod
+
+    user_id = get_or_create_user(db_conn, email="yt_no_liked@example.com")
+    vid_pl = "yt_no_liked_PL"
+
+    http = AsyncMock()
+    # 호출 순서(include_liked=False): fetch_my_playlists → fetch_playlist_tracks
+    # (fetch_liked는 호출되지 않으므로 side_effect에 liked 응답 없음)
+    http.get = AsyncMock(side_effect=[
+        _resp({
+            "items": [
+                {
+                    "id": "PL_ONLY",
+                    "snippet": {"title": "Only PL", "thumbnails": {}},
+                    "contentDetails": {"itemCount": 1},
+                }
+            ],
+        }),
+        _resp({
+            "items": [
+                {
+                    "snippet": {
+                        "title": "PL Artist - PL Song",
+                        "videoOwnerChannelTitle": "PL Artist",
+                        "resourceId": {"videoId": vid_pl},
+                        "thumbnails": {"high": {"url": "plc"}},
+                    },
+                    "contentDetails": {},
+                }
+            ],
+        }),
+    ])
+
+    # fetch_liked가 호출되면 즉시 실패시켜 미호출을 강제 검증.
+    liked_calls = {"n": 0}
+    orig_fetch_liked = yt_mod.YouTubeImporter.fetch_liked
+
+    async def _spy_liked(self):  # pragma: no cover - 호출되면 안 됨
+        liked_calls["n"] += 1
+        return await orig_fetch_liked(self)
+
+    monkeypatch.setattr(yt_mod.YouTubeImporter, "fetch_liked", _spy_liked)
+
+    try:
+        stats = await import_all(
+            db_conn, http, user_id, "ACCESS_TEST",
+            playlist_ids=["PL_ONLY"], include_liked=False,
+        )
+        assert liked_calls["n"] == 0, "include_liked=False인데 fetch_liked가 호출됨"
+        # 플레이리스트 트랙 1개만 적재
+        assert stats.tracks_fetched == 1
+        assert stats.tracks_imported == 1
+        assert stats.playlists_fetched == 1
+
+        # liked source UserTrack이 없어야 함
+        with db_conn.cursor() as cur:
+            cur.execute(
+                'SELECT COUNT(*) FROM "UserTrack" WHERE "userId" = %s AND source = %s',
+                (user_id, "liked"),
+            )
+            assert cur.fetchone()[0] == 0
+            # 플레이리스트 트랙은 적재됨
+            cur.execute(
+                'SELECT COUNT(*) FROM "UserTrack" WHERE "userId" = %s AND source LIKE %s',
+                (user_id, "playlist:%"),
+            )
+            assert cur.fetchone()[0] == 1
+    finally:
+        track_id_pl = _id(f"track|yt_{vid_pl}")
+        with db_conn.cursor() as cur:
+            cur.execute('DELETE FROM "UserTrack" WHERE "userId" = %s', (user_id,))
+            cur.execute('DELETE FROM "TrackPlatform" WHERE "trackId" = %s', (track_id_pl,))
+            cur.execute('DELETE FROM "Track" WHERE id = %s', (track_id_pl,))
+            cur.execute('DELETE FROM "Artist" WHERE id = %s', (_id("artist|pl artist"),))
+            cur.execute('DELETE FROM "User" WHERE id = %s', (user_id,))
+        db_conn.commit()
+
+
+@pytest.mark.asyncio
 async def test_import_all_playlist_failure_no_stats_db_divergence(db_conn, monkeypatch):
     """플레이리스트 배치 도중 예외가 나면 그 배치의 catalog Track·UserTrack·stats가
     모두 깨끗이 롤백된다 — 보고 수치와 실제 적재 상태가 어긋나지 않음 (blocker #1).

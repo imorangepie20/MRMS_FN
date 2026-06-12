@@ -170,6 +170,181 @@ def test_token_returns_access_token_with_valid_session(db_conn):
     db_conn.commit()
 
 
+def test_playlists_returns_list_with_valid_token(db_conn):
+    """GET /playlists → 토큰 mock으로 {id,name,count,thumbnail} 목록 + total."""
+    import uuid as _u
+
+    from mrms.db.user_track import get_or_create_user, upsert_oauth
+
+    user_id = get_or_create_user(db_conn, "yt_pls@example.com")
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    upsert_oauth(
+        db_conn, user_id=user_id, platform="youtube",
+        access_token="VALID_PLS_AT", refresh_token="VALID_PLS_RT",
+        expires_at=expires, scopes=["https://www.googleapis.com/auth/youtube.readonly"],
+    )
+    session_id = _u.uuid4().hex
+    session_expires = datetime.now(timezone.utc) + timedelta(days=30)
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
+            (session_id, user_id, session_expires),
+        )
+    db_conn.commit()
+
+    # youtube/v3/playlists?mine=true 응답 (단일 페이지)
+    pls_resp = MagicMock()
+    pls_resp.status_code = 200
+    pls_resp.raise_for_status = MagicMock(return_value=None)
+    pls_resp.json = MagicMock(return_value={
+        "items": [
+            {
+                "id": "PL_AAA",
+                "snippet": {
+                    "title": "Road Trip",
+                    "thumbnails": {"high": {"url": "high_cover"}},
+                },
+                "contentDetails": {"itemCount": 12},
+            },
+            {
+                "id": "PL_BBB",
+                "snippet": {
+                    "title": "Chill",
+                    "thumbnails": {"medium": {"url": "med_cover"}},
+                },
+                "contentDetails": {"itemCount": 5},
+            },
+        ],
+    })
+    fake_client = MagicMock()
+    fake_client.__aenter__ = AsyncMock(return_value=fake_client)
+    fake_client.__aexit__ = AsyncMock(return_value=None)
+    fake_client.get = AsyncMock(return_value=pls_resp)
+
+    client.cookies.set("mrms_session", session_id)
+    with patch("httpx.AsyncClient", return_value=fake_client):
+        r = client.get("/api/auth/youtube/playlists")
+    client.cookies.clear()
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 2
+    pls = body["playlists"]
+    assert pls[0] == {
+        "id": "PL_AAA",
+        "name": "Road Trip",
+        "count": 12,
+        "thumbnail": "high_cover",
+    }
+    # high 없으면 medium 폴백
+    assert pls[1]["thumbnail"] == "med_cover"
+    assert pls[1]["count"] == 5
+
+    with db_conn.cursor() as cur:
+        cur.execute('DELETE FROM "AuthSession" WHERE id = %s', (session_id,))
+        cur.execute('DELETE FROM "UserOAuth" WHERE "userId" = %s', (user_id,))
+        cur.execute('DELETE FROM "User" WHERE id = %s', (user_id,))
+    db_conn.commit()
+
+
+def test_playlists_not_connected_returns_error(db_conn):
+    """미연동(youtube UserOAuth 없음) → _get_access_token이 404로 거부.
+
+    유효 세션(get_current_user_id 통과) + youtube UserOAuth 없음이므로 미인증
+    401이 아니라 미연동 404('YouTube OAuth not configured')가 결정론적으로 난다.
+    spotify/tidal _get_access_token과 동일 컨벤션. 프론트는 401·404 둘 다 '먼저
+    연결' 안내로 처리한다. (이전엔 `in (401, 404)`로 둘 다 허용해 계약 불일치를
+    가렸음 — 실제 not-connected 상태코드를 단언하도록 조임.)
+    """
+    import uuid as _u
+
+    from mrms.db.user_track import get_or_create_user
+
+    # youtube 토큰 없는 사용자 + 유효 세션
+    user_id = get_or_create_user(db_conn, "yt_noconn@example.com")
+    session_id = _u.uuid4().hex
+    session_expires = datetime.now(timezone.utc) + timedelta(days=30)
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
+            (session_id, user_id, session_expires),
+        )
+    db_conn.commit()
+
+    client.cookies.set("mrms_session", session_id)
+    r = client.get("/api/auth/youtube/playlists")
+    client.cookies.clear()
+    # 유효 세션 + youtube UserOAuth 없음 → 미연동 404 ('YouTube OAuth not configured').
+    assert r.status_code == 404
+    assert "not configured" in r.json()["detail"]
+
+    with db_conn.cursor() as cur:
+        cur.execute('DELETE FROM "AuthSession" WHERE id = %s', (session_id,))
+        cur.execute('DELETE FROM "User" WHERE id = %s', (user_id,))
+    db_conn.commit()
+
+
+def test_import_passes_include_liked_to_import_all(db_conn):
+    """POST /import body의 include_liked가 import_all에 전달되는지 검증.
+
+    body {include_liked:False} → import_all(..., include_liked=False) 호출.
+    기본(미지정)이면 import_all(..., include_liked=True)로 전체+좋아요.
+    """
+    import uuid as _u
+
+    from mrms.db.user_track import get_or_create_user, upsert_oauth
+    from mrms.sync.youtube_importer import ImportStats
+
+    user_id = get_or_create_user(db_conn, "yt_imp_arg@example.com")
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    upsert_oauth(
+        db_conn, user_id=user_id, platform="youtube",
+        access_token="IMP_AT", refresh_token="IMP_RT",
+        expires_at=expires, scopes=["https://www.googleapis.com/auth/youtube.readonly"],
+    )
+    session_id = _u.uuid4().hex
+    session_expires = datetime.now(timezone.utc) + timedelta(days=30)
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
+            (session_id, user_id, session_expires),
+        )
+    db_conn.commit()
+
+    captured = {}
+
+    async def _fake_import_all(conn, http, uid, token, *, playlist_ids=None, include_liked=True):
+        captured["playlist_ids"] = playlist_ids
+        captured["include_liked"] = include_liked
+        return ImportStats()
+
+    client.cookies.set("mrms_session", session_id)
+    try:
+        # 1) include_liked=False + playlist_ids 지정 (선택적 flow)
+        with patch("mrms.api.auth_youtube.import_all", _fake_import_all):
+            r = client.post(
+                "/api/auth/youtube/import",
+                json={"playlist_ids": ["PL_X"], "include_liked": False},
+            )
+        assert r.status_code == 200
+        assert captured["include_liked"] is False
+        assert captured["playlist_ids"] == ["PL_X"]
+
+        # 2) 미지정 → 기본 True (기존 동작 회귀 금지)
+        captured.clear()
+        with patch("mrms.api.auth_youtube.import_all", _fake_import_all):
+            r = client.post("/api/auth/youtube/import", json={})
+        assert r.status_code == 200
+        assert captured["include_liked"] is True
+        assert captured["playlist_ids"] is None
+    finally:
+        client.cookies.clear()
+        with db_conn.cursor() as cur:
+            cur.execute('DELETE FROM "AuthSession" WHERE id = %s', (session_id,))
+            cur.execute('DELETE FROM "UserOAuth" WHERE "userId" = %s', (user_id,))
+            cur.execute('DELETE FROM "User" WHERE id = %s', (user_id,))
+        db_conn.commit()
+
+
 def test_token_auto_refreshes_when_expired(db_conn):
     """만료 임박 시 refresh → 새 access_token으로 upsert + 반환."""
     import uuid as _u

@@ -265,14 +265,17 @@ async def import_all(
     user_id: str,
     access_token: str,
     playlist_ids: list[str] | None = None,
+    include_liked: bool = True,
 ) -> ImportStats:
-    """전체 import — 좋아요 + (선택) 플레이리스트 → DB 적재.
+    """전체 import — (선택) 좋아요 + (선택) 플레이리스트 → DB 적재.
 
     각 트랙: videoId로 TrackPlatform(youtube) 조회 → 없으면 catalog Track 생성
     → 그 trackId로 upsert_user_track. liked는 is_core=True/source='liked',
     playlist는 is_core=False/source='playlist:<name>'.
 
     playlist_ids 지정 시 그 플레이리스트만, 없으면 내 전체 플레이리스트.
+    include_liked=False면 좋아요(liked) 배치를 통째로 스킵 (fetch_liked·적재
+    모두 생략) — 선택적 import flow용. 기본 True로 기존 동작(전체 + 좋아요) 유지.
     """
     from mrms.db.user_track import upsert_user_track
 
@@ -326,16 +329,17 @@ async def import_all(
         stats.tracks_existing += batch.existing
         upserted_tracks.update(batch.new_track_ids)
 
-    # 좋아요 트랙 (실패해도 진행분 보존)
-    liked_batch = _Batch()
-    try:
-        liked = await importer.fetch_liked()
-        for t in liked:
-            _ingest(t, liked_batch, is_core=True, source="liked")
-        conn.commit()
-        _commit_batch(liked_batch)
-    except Exception:
-        safe_rollback(conn)  # 배치 델타는 반영 전 — DB와 stats 모두 깨끗이 복구
+    # 좋아요 트랙 (실패해도 진행분 보존) — include_liked=False면 통째로 스킵.
+    if include_liked:
+        liked_batch = _Batch()
+        try:
+            liked = await importer.fetch_liked()
+            for t in liked:
+                _ingest(t, liked_batch, is_core=True, source="liked")
+            conn.commit()
+            _commit_batch(liked_batch)
+        except Exception:
+            safe_rollback(conn)  # 배치 델타는 반영 전 — DB와 stats 모두 깨끗이 복구
 
     # 플레이리스트
     playlists = await importer.fetch_my_playlists()

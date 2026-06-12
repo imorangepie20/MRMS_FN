@@ -21,7 +21,7 @@ from fastapi.responses import RedirectResponse
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.auth.youtube import YouTubeOAuthClient, YouTubeOAuthError, gen_pkce
 from mrms.db.user_track import get_oauth, get_or_create_user, upsert_oauth
-from mrms.sync.youtube_importer import import_all
+from mrms.sync.youtube_importer import YouTubeImporter, import_all
 
 router = APIRouter(prefix="/api/auth/youtube", tags=["auth"])
 
@@ -269,6 +269,43 @@ async def get_token(
     }
 
 
+@router.get("/playlists")
+async def list_playlists(
+    user_id: str = Depends(get_current_user_id),
+    conn: psycopg.Connection = Depends(db_conn),
+) -> dict:
+    """인증된 사용자의 YouTube 플레이리스트 목록.
+
+    youtube/v3/playlists?mine=true 전수(페이지네이션) → {id, name, count,
+    thumbnail}. 선택적 import flow가 사용자에게 어떤 플레이리스트를 가져올지
+    고르게 하기 위한 목록 조회. 미연동(토큰 없음)이면 _get_access_token이 404
+    ('YouTube OAuth not configured', spotify/tidal과 동일 컨벤션). 프론트는
+    401(미인증)·404(미연동) 둘 다 '먼저 YouTube 연결' 안내로 처리한다.
+
+    매핑은 레퍼런스(youtubeMusic.js GET /playlists) 기준:
+    name=snippet.title, count=contentDetails.itemCount,
+    thumbnail=snippet.thumbnails.high|medium.url.
+    """
+    access_token = await _get_access_token(conn, user_id)
+
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        importer = YouTubeImporter(http, access_token)
+        raw = await importer.fetch_my_playlists()
+
+    # fetch_my_playlists는 {id, name, cover_url, item_count}를 주므로
+    # 공유 계약 형태 {id, name, count, thumbnail}로 매핑.
+    playlists = [
+        {
+            "id": p.get("id"),
+            "name": p.get("name"),
+            "count": p.get("item_count", 0),
+            "thumbnail": p.get("cover_url"),
+        }
+        for p in raw
+    ]
+    return {"playlists": playlists, "total": len(playlists)}
+
+
 @router.post("/import")
 async def import_library(
     user_id: str = Depends(get_current_user_id),
@@ -277,14 +314,18 @@ async def import_library(
 ) -> dict:
     """인증된 사용자의 YouTube 라이브러리(좋아요 + 플레이리스트)를 import.
 
-    body {playlist_ids?: [...]} — 지정 시 그 플레이리스트만, 없으면 전체.
+    body {playlist_ids?: [...], include_liked?: bool} — playlist_ids 지정 시
+    그 플레이리스트만, 없으면 전체. include_liked 기본 True(기존 호환);
+    False면 좋아요 배치를 스킵 (선택적 import flow).
     """
     access_token = await _get_access_token(conn, user_id)
     playlist_ids = body.get("playlist_ids") if body else None
+    include_liked = body.get("include_liked", True) if body else True
 
     async with httpx.AsyncClient(timeout=30.0) as http:
         stats = await import_all(
-            conn, http, user_id, access_token, playlist_ids=playlist_ids
+            conn, http, user_id, access_token,
+            playlist_ids=playlist_ids, include_liked=include_liked,
         )
 
     return {
