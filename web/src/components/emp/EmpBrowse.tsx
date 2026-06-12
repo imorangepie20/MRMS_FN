@@ -17,7 +17,7 @@ function isTrackSection(sec: EmpSection): boolean {
 }
 
 
-const PLATFORM_ORDER = ["tidal", "spotify", "flo", "melon", "vibe", "apple"];
+const PLATFORM_ORDER = ["tidal", "spotify", "flo", "melon", "vibe", "apple", "youtube"];
 const PLATFORM_DIVIDER: Record<string, string> = {
   tidal: "Tidal is Good",
   spotify: "Spotify is Coming",
@@ -25,6 +25,7 @@ const PLATFORM_DIVIDER: Record<string, string> = {
   melon: "Melon is Sweet",
   vibe: "VIBE is Gentle",
   apple: "Apple is Smart",
+  youtube: "YouTube is Somewhere",
 };
 
 

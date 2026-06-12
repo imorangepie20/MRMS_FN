@@ -37,6 +37,7 @@ dependencies = [
     "tenacity>=8.2",
     "tidalapi>=0.7",
     "beautifulsoup4>=4.12",
+    "ytmusicapi>=1.12",
 
     # Utilities
     "python-dotenv>=1.0",

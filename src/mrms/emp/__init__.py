@@ -7,7 +7,7 @@ from mrms.emp.base import EMPImporter
 
 
 def make_importer(platform: str, conn: psycopg.Connection) -> EMPImporter:
-    """platform별 importer 생성. platform ∈ {tidal, spotify, flo, melon, vibe, apple}.
+    """platform별 importer 생성. platform ∈ {tidal, spotify, flo, melon, vibe, apple, youtube}.
 
     - tidal: token을 Setting에서 자동 로딩 (conn 필요)
     - spotify: open.spotify.com/embed 공개 위젯 스크래핑 — 토큰/인증 불필요
@@ -15,6 +15,7 @@ def make_importer(platform: str, conn: psycopg.Connection) -> EMPImporter:
     - melon: 토큰 불필요 (차트 페이지 HTML 스크래핑)
     - vibe: 토큰 불필요 (apis.naver.com/vibeWeb 공개 JSON)
     - apple: 토큰 불필요 (rss.marketingtools.apple.com 공개 RSS)
+    - youtube: 토큰 불필요 (ytmusicapi 공개 차트 플레이리스트)
     """
     if platform == "tidal":
         from mrms.emp.tidal import TidalEMPImporter
@@ -34,4 +35,7 @@ def make_importer(platform: str, conn: psycopg.Connection) -> EMPImporter:
     if platform == "apple":
         from mrms.emp.apple import AppleEMPImporter
         return AppleEMPImporter()
+    if platform == "youtube":
+        from mrms.emp.youtube import YoutubeEMPImporter
+        return YoutubeEMPImporter()
     raise ValueError(f"unknown platform: {platform}")

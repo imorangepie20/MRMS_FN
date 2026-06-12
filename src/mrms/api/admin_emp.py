@@ -22,6 +22,7 @@ from mrms.emp.flo import SOURCES_SETTING_KEY as FLO_SOURCES_SETTING_KEY
 from mrms.emp.spotify import SOURCES_SETTING_KEY as SPOTIFY_SOURCES_SETTING_KEY
 from mrms.emp.tidal import SOURCES_SETTING_KEY, TOKEN_SETTING_KEY
 from mrms.emp.vibe import SOURCES_SETTING_KEY as VIBE_SOURCES_SETTING_KEY
+from mrms.emp.youtube import SOURCES_SETTING_KEY as YOUTUBE_SOURCES_SETTING_KEY
 
 router = APIRouter(prefix="/api/admin/emp", tags=["admin_emp"])
 
@@ -104,6 +105,7 @@ ALLOWED_SETTING_KEYS = [
     FLO_SOURCES_SETTING_KEY,
     VIBE_SOURCES_SETTING_KEY,
     APPLE_SOURCES_SETTING_KEY,
+    YOUTUBE_SOURCES_SETTING_KEY,
 ]
 
 # Keys whose value should be masked in GET response (tokens etc.)

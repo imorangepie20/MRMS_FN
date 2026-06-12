@@ -19,6 +19,7 @@ export function SettingsCard({
   const [floSourcesInput, setFloSourcesInput] = useState("");
   const [vibeSourcesInput, setVibeSourcesInput] = useState("");
   const [appleSourcesInput, setAppleSourcesInput] = useState("");
+  const [youtubeSourcesInput, setYoutubeSourcesInput] = useState("");
   const [saving, setSaving] = useState(false);
 
   const tokenSetting: EmpSettingValue | undefined = settings?.["tidal_x_token"];
@@ -27,6 +28,7 @@ export function SettingsCard({
   const floSourcesSetting: EmpSettingValue | undefined = settings?.["flo_emp_sources"];
   const vibeSourcesSetting: EmpSettingValue | undefined = settings?.["vibe_emp_sources"];
   const appleSourcesSetting: EmpSettingValue | undefined = settings?.["apple_emp_sources"];
+  const youtubeSourcesSetting: EmpSettingValue | undefined = settings?.["youtube_emp_sources"];
 
   // Initialise sources textareas from server value whenever settings load/refresh
   useEffect(() => {
@@ -58,6 +60,12 @@ export function SettingsCard({
       setAppleSourcesInput(appleSourcesSetting.value ?? "");
     }
   }, [appleSourcesSetting]);
+
+  useEffect(() => {
+    if (youtubeSourcesSetting && "value" in youtubeSourcesSetting) {
+      setYoutubeSourcesInput(youtubeSourcesSetting.value ?? "");
+    }
+  }, [youtubeSourcesSetting]);
 
   const saveToken = async () => {
     if (!tokenInput.trim()) {
@@ -146,6 +154,19 @@ export function SettingsCard({
     setSaving(true);
     try {
       await saveEmpSetting("apple_emp_sources", appleSourcesInput.trim() || null);
+      await onSaved();
+      alert("저장됨");
+    } catch (e) {
+      alert(`저장 실패: ${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveYoutubeSources = async () => {
+    setSaving(true);
+    try {
+      await saveEmpSetting("youtube_emp_sources", youtubeSourcesInput.trim() || null);
       await onSaved();
       alert("저장됨");
     } catch (e) {
@@ -309,6 +330,29 @@ export function SettingsCard({
         </div>
       </div>
 
+      {/* YouTube sources row */}
+      <div className="py-2 border-b border-(--mrms-rule)">
+        <div className="font-mono text-[11px] text-(--mrms-ink-mute) tracking-editorial uppercase mb-2">
+          youtube_emp_sources
+        </div>
+        <textarea
+          value={youtubeSourcesInput}
+          onChange={(e) => setYoutubeSourcesInput(e.target.value)}
+          placeholder={`playlist/PL4fGSI1pDJn6puJdseH2Rt9sMvt9E2M4i`}
+          rows={4}
+          className="w-full border border-(--mrms-rule) bg-(--mrms-paper) px-2 py-1 font-mono text-[11px] text-(--mrms-ink) resize-y"
+        />
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={saveYoutubeSources}
+            disabled={saving}
+            className="bg-(--mrms-ink) text-(--mrms-paper) border-0 px-3 py-1 font-mono text-[10px] tracking-editorial uppercase cursor-pointer disabled:opacity-50"
+          >
+            Save sources
+          </button>
+        </div>
+      </div>
+
       <p className="mt-2 font-mono text-[10px] text-(--mrms-ink-mute)">
         Tidal web client의 X-Tidal-Token. 값이 있으면 importer가 editorial playlists 받아옴.
         <br />
@@ -341,6 +385,10 @@ export function SettingsCard({
         </span>
         <span className="mt-1 block">
           Melon Hot 100 자동 — 소스 고정이라 설정 불필요.
+        </span>
+        <span className="mt-1 block">
+          YouTube sources: <code>playlist/&lt;id&gt;</code> = 공식 차트 플리 (예 Top 100 Songs).
+          비우면 default (Global + South Korea Top 100).
         </span>
       </p>
     </section>
