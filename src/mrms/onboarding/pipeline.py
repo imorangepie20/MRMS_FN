@@ -90,6 +90,27 @@ def _fetch_user_track_matrix(
     return track_ids, X
 
 
+def count_embedding_user_tracks(
+    conn: psycopg.Connection,
+    user_id: str,
+) -> int:
+    """임베딩 보유 UserTrack 수 — step 2 게이트(_fetch_user_track_matrix)와 동일 조건.
+
+    precheck와 게이트가 같은 집합을 보도록 단일 출처로 둔다 (CATALOG_MODEL_VERSION
+    임베딩에 JOIN된 UserTrack만). 미스(임베딩 없는 videoId Track)로만 채워진
+    YouTube 사용자는 0이 나와 precheck가 "run"이 아니라 "import"로 보내야 한다.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            '''SELECT COUNT(*)
+               FROM "UserTrack" ut
+               JOIN "TrackEmbedding" e ON e."trackId" = ut."trackId"
+               WHERE ut."userId" = %s AND e."modelVersion" = %s''',
+            (user_id, CATALOG_MODEL_VERSION),
+        )
+        return int(cur.fetchone()[0])
+
+
 async def run_onboarding(
     user_id: str,
     status: OnboardingStatus,
@@ -104,17 +125,22 @@ async def run_onboarding(
         oauth_tidal = get_oauth(conn, user_id, "tidal")
         oauth_spotify = get_oauth(conn, user_id, "spotify")
 
+        register_vector(conn)
         if oauth_spotify and not oauth_tidal:
             await _run_spotify_collection(user_id, status, conn, oauth_spotify)
         elif oauth_tidal:
             await _run_tidal_collection(user_id, status, conn, oauth_tidal)
         else:
-            status.fail("Tidal 또는 Spotify 연결이 필요합니다")
-            return
+            # Tidal/Spotify 둘 다 없음 — YouTube import 등으로 이미 임베딩 보유
+            # UserTrack이 적재됐는지 확인. 있으면 수집을 스킵하고 step 2로 진행
+            # (import가 매칭한 임베딩 트랙으로 클러스터/MRT가 동작). 없으면 실패.
+            existing_ids, _existing_X = _fetch_user_track_matrix(conn, user_id)
+            if not existing_ids:
+                status.fail("음악 플랫폼 연결 또는 플레이리스트 import가 필요합니다")
+                return
 
         # 2. UserTrack 임베딩 + cluster + MRT (platform 무관)
         status.set("computing_embedding", 50, "음악 취향 분석 중...")
-        register_vector(conn)
         track_ids, X = _fetch_user_track_matrix(conn, user_id)
         if len(track_ids) < k:
             status.fail(f"트랙 임베딩이 부족합니다 ({len(track_ids)}곡 < K={k})")

@@ -6,9 +6,51 @@ import pytest
 from mrms.sync.youtube_importer import (
     ImportStats,
     YouTubeImporter,
+    _normalize,
     import_all,
+    match_in_catalog,
     parse_track_metadata,
 )
+
+
+# ─── 텍스트 매칭 정규화/매칭 (DB 불필요) ──────────────────────────────
+
+
+def test_normalize_lowercases_and_strips_parens():
+    """lowercase + 괄호/대괄호 내용 제거 + 비영숫자 → 공백 정리."""
+    assert _normalize("Daft Punk (feat. X) [Remastered]") == "daft punk"
+    assert _normalize("  Hello,   World!  ") == "hello world"
+
+
+def test_normalize_keeps_hangul():
+    """한글 보존, 구분자(' - ' 등)는 공백."""
+    assert _normalize("아이유 - 좋은 날") == "아이유 좋은 날"
+
+
+def test_normalize_none_and_empty():
+    assert _normalize(None) == ""
+    assert _normalize("") == ""
+    assert _normalize("()") == ""  # 괄호만 → 빈 문자열
+
+
+def test_match_requires_both_artist_and_title():
+    """title·artist 둘 다 정규화 일치만 매칭 — 한쪽만 일치는 거부(거짓매칭 방지)."""
+    catalog = {"daft punk|get lucky": "TRK_REAL"}
+    # 둘 다 일치(정규화 후) → trackId
+    assert match_in_catalog(catalog, "Daft Punk", "Get Lucky (feat. Pharrell)") == "TRK_REAL"
+    # title만 일치, artist 다름 → None
+    assert match_in_catalog(catalog, "Wrong Artist", "Get Lucky") is None
+    # artist만 일치, title 다름 → None
+    assert match_in_catalog(catalog, "Daft Punk", "Around the World") is None
+    # 둘 다 미스 → None
+    assert match_in_catalog(catalog, "Nobody", "Nothing") is None
+
+
+def test_match_rejects_empty_normalized_side():
+    """정규화 결과가 한쪽이라도 비면 매칭 거부."""
+    catalog = {"a|b": "T1"}
+    assert match_in_catalog(catalog, "", "b") is None
+    assert match_in_catalog(catalog, "a", "()") is None  # 괄호만 → 빈 title
 
 
 def _resp(body: dict, status: int = 200):
@@ -519,6 +561,167 @@ async def test_import_all_playlist_failure_no_stats_db_divergence(db_conn, monke
                     _id("artist|ghost one"),
                     _id("artist|ghost two"),
                 ),
+            )
+            cur.execute('DELETE FROM "User" WHERE id = %s', (user_id,))
+        db_conn.commit()
+
+
+@pytest.mark.asyncio
+async def test_import_all_matches_embedding_catalog_then_attaches_youtube(db_conn):
+    """매칭곡 → 기존 임베딩 trackId에 UserTrack + youtube TrackPlatform 추가
+    (새 Track 미생성). 미스곡 → 새 videoId Track. stats.tracks_matched 검증.
+
+    seed: 임베딩 보유 catalog 트랙 1개(artist='Match Artist', title='Match Song')를
+    CATALOG_MODEL_VERSION으로 만든다. YouTube liked가 'Match Artist - Match Song
+    (Live)'로 들어오면 정규화 매칭되어 그 임베딩 trackId에 붙어야 한다.
+    플레이리스트의 'No Match Artist - No Match Song'은 카탈로그에 없어 새 Track.
+    """
+    from mrms.db.ids import stable_id as _id
+    from mrms.db.user_track import get_or_create_user
+    from mrms.sync.youtube_importer import CATALOG_MODEL_VERSION
+
+    user_id = get_or_create_user(db_conn, email="yt_match@example.com")
+
+    # ── seed: 임베딩 보유 catalog 트랙 ───────────────────────────────
+    cat_artist_id = _id("artist|match artist seed")
+    cat_track_id = _id("track|yt_match_seed_isrc")
+    cat_isrc = "YT_MATCH_SEED_ISRC"
+    emb = "[" + ",".join(["0.01"] * 256) + "]"
+    with db_conn.cursor() as cur:
+        cur.execute(
+            '''INSERT INTO "Artist" (id, name, "nameNormalized")
+               VALUES (%s, %s, %s) ON CONFLICT (id) DO NOTHING''',
+            (cat_artist_id, "Match Artist", "match artist"),
+        )
+        cur.execute(
+            '''INSERT INTO "Track"
+                 (id, isrc, title, "titleNormalized", "durationMs", "artistId")
+               VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING''',
+            (cat_track_id, cat_isrc, "Match Song", "match song", 1000, cat_artist_id),
+        )
+        cur.execute(
+            '''INSERT INTO "TrackEmbedding"
+                 (id, "trackId", "modelVersion", embedding, pooling, "audioSource")
+               VALUES (%s, %s, %s, %s::vector, 'mean', 'mp3_30s')
+               ON CONFLICT ("trackId", "modelVersion") DO NOTHING''',
+            (_id(f"emb|{cat_track_id}"), cat_track_id, CATALOG_MODEL_VERSION, emb),
+        )
+    db_conn.commit()
+
+    vid_match = "yt_match_VID"
+    vid_miss = "yt_miss_VID"
+    miss_track_id = _id(f"track|yt_{vid_miss}")
+
+    http = AsyncMock()
+    # liked → 매칭곡, my playlists → 1개, playlist tracks → 미스곡
+    http.get = AsyncMock(side_effect=[
+        _resp({
+            "items": [
+                {
+                    "id": vid_match,
+                    "snippet": {
+                        # 괄호/대소문자 차이가 있어도 정규화 후 'match artist|match song'
+                        "title": "MATCH ARTIST - Match Song (Live)",
+                        "videoOwnerChannelTitle": "Match Artist",
+                        "thumbnails": {"high": {"url": "match_cover"}},
+                    },
+                    "contentDetails": {},
+                }
+            ],
+        }),
+        _resp({
+            "items": [
+                {"id": "PL_M", "snippet": {"title": "My PL", "thumbnails": {}},
+                 "contentDetails": {"itemCount": 1}},
+            ],
+        }),
+        _resp({
+            "items": [
+                {
+                    "snippet": {
+                        "title": "No Match Artist - No Match Song",
+                        "videoOwnerChannelTitle": "No Match Artist",
+                        "resourceId": {"videoId": vid_miss},
+                        "thumbnails": {"high": {"url": "miss_cover"}},
+                    },
+                    "contentDetails": {},
+                }
+            ],
+        }),
+    ])
+
+    try:
+        stats = await import_all(db_conn, http, user_id, "ACCESS_TEST")
+
+        # stats: 매칭 1, 미스(신규 Track) 1
+        assert stats.tracks_matched == 1
+        assert stats.tracks_created == 1
+        assert stats.tracks_imported == 2
+
+        # 매칭곡: 새 Track이 생기지 않았어야 함 — videoId 기반 합성 trackId 부재
+        synthetic_match_id = _id(f"track|yt_{vid_match}")
+        with db_conn.cursor() as cur:
+            cur.execute('SELECT 1 FROM "Track" WHERE id = %s', (synthetic_match_id,))
+            assert cur.fetchone() is None, "매칭곡이 새 Track을 생성함"
+
+            # UserTrack이 임베딩 catalog trackId에 연결됐는지
+            cur.execute(
+                '''SELECT "isCore", source, platform FROM "UserTrack"
+                   WHERE "userId" = %s AND "trackId" = %s''',
+                (user_id, cat_track_id),
+            )
+            row = cur.fetchone()
+        assert row is not None, "매칭곡 UserTrack이 임베딩 trackId에 연결 안 됨"
+        assert row[0] is True  # liked → is_core
+        assert row[1] == "liked"
+        assert row[2] == "youtube"
+
+        # 임베딩 trackId에 youtube TrackPlatform(videoId) 매핑이 추가됐는지
+        with db_conn.cursor() as cur:
+            cur.execute(
+                '''SELECT "platformTrackId" FROM "TrackPlatform"
+                   WHERE "trackId" = %s AND platform = 'youtube' ''',
+                (cat_track_id,),
+            )
+            tp = cur.fetchone()
+        assert tp is not None and tp[0] == vid_match
+
+        # 매칭으로 임베딩 보유 UserTrack이 잡히는지 (onboarding step2 게이트와 동일 조건)
+        with db_conn.cursor() as cur:
+            cur.execute(
+                '''SELECT COUNT(*) FROM "UserTrack" ut
+                   JOIN "TrackEmbedding" e ON e."trackId" = ut."trackId"
+                   WHERE ut."userId" = %s AND e."modelVersion" = %s''',
+                (user_id, CATALOG_MODEL_VERSION),
+            )
+            assert cur.fetchone()[0] == 1
+
+        # 미스곡: 새 videoId Track 생성 + youtube TrackPlatform
+        with db_conn.cursor() as cur:
+            cur.execute('SELECT 1 FROM "Track" WHERE id = %s', (miss_track_id,))
+            assert cur.fetchone() is not None, "미스곡이 새 Track을 만들지 않음"
+            cur.execute(
+                '''SELECT 1 FROM "TrackPlatform"
+                   WHERE platform = 'youtube' AND "platformTrackId" = %s''',
+                (vid_miss,),
+            )
+            assert cur.fetchone() is not None
+    finally:
+        with db_conn.cursor() as cur:
+            cur.execute('DELETE FROM "UserTrack" WHERE "userId" = %s', (user_id,))
+            # 매칭 트랙에 붙은 youtube TP + 미스 트랙 자식들 정리
+            cur.execute(
+                'DELETE FROM "TrackPlatform" WHERE "trackId" = ANY(%s)',
+                ([cat_track_id, miss_track_id],),
+            )
+            cur.execute('DELETE FROM "TrackEmbedding" WHERE "trackId" = %s', (cat_track_id,))
+            cur.execute(
+                'DELETE FROM "Track" WHERE id = ANY(%s)',
+                ([cat_track_id, miss_track_id],),
+            )
+            cur.execute(
+                'DELETE FROM "Artist" WHERE id IN (%s, %s)',
+                (cat_artist_id, _id("artist|no match artist")),
             )
             cur.execute('DELETE FROM "User" WHERE id = %s', (user_id,))
         db_conn.commit()

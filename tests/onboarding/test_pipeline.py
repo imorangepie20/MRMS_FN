@@ -137,3 +137,97 @@ async def test_pipeline_dispatches_to_spotify_when_only_spotify_oauth(db_conn):
             (user_id, "spotify"),
         )
         assert cur.fetchone()[0] >= 10
+
+
+@pytest.mark.asyncio
+async def test_pipeline_youtube_user_with_embedding_tracks_skips_collection(db_conn):
+    """Tidal/Spotify 둘 다 없고 youtube만 연결 + 임베딩 보유 UserTrack 존재 →
+    수집 스킵하고 step 2(클러스터/MRT) 진입해 done.
+
+    youtube import가 이미 임베딩 trackId에 UserTrack을 연결한 상태를 모사:
+    실제 임베딩 보유 catalog 트랙으로 UserTrack을 직접 적재한다 (fetch mock 불필요 —
+    else 분기는 외부 호출을 안 한다).
+    """
+    from mrms.db.user_track import (
+        get_or_create_user,
+        upsert_oauth,
+        upsert_user_track,
+    )
+    from mrms.onboarding.pipeline import CATALOG_MODEL_VERSION
+
+    user_id = get_or_create_user(db_conn, "yt_gate_ok@example.com")
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    # youtube oauth만 (tidal/spotify 없음)
+    upsert_oauth(
+        db_conn, user_id=user_id, platform="youtube",
+        access_token="fake_yt_token", refresh_token="fake_refresh",
+        expires_at=expires, scopes=["youtube.readonly"],
+    )
+
+    # 임베딩 보유 catalog 트랙 sample (K=3 클러스터링에 충분히)
+    with db_conn.cursor() as cur:
+        cur.execute(
+            '''SELECT "trackId" FROM "TrackEmbedding"
+               WHERE "modelVersion" = %s LIMIT 15''',
+            (CATALOG_MODEL_VERSION,),
+        )
+        emb_track_ids = [r[0] for r in cur.fetchall()]
+    if len(emb_track_ids) < 3:
+        pytest.skip("임베딩 보유 catalog 트랙 부족")
+
+    for tid in emb_track_ids:
+        upsert_user_track(
+            db_conn, user_id=user_id, track_id=tid,
+            is_core=False, source="playlist:yt", platform="youtube",
+        )
+    db_conn.commit()
+
+    status = OnboardingStatus()
+    try:
+        # 외부 fetch가 호출되면 안 됨 — 호출 시 폭발하도록 패치
+        with patch(
+            "mrms.onboarding.pipeline.fetch_tidal_favorite_tracks",
+            new=AsyncMock(side_effect=AssertionError("youtube 게이트인데 tidal fetch 호출")),
+        ), patch(
+            "mrms.onboarding.pipeline.fetch_spotify_favorite_tracks",
+            new=AsyncMock(side_effect=AssertionError("youtube 게이트인데 spotify fetch 호출")),
+        ):
+            await run_onboarding(user_id=user_id, status=status, conn=db_conn)
+
+        assert status.step == "done", f"step={status.step} error={status.error}"
+        with db_conn.cursor() as cur:
+            cur.execute(
+                'SELECT COUNT(*) FROM "PlaylistHistory" WHERE "userId" = %s',
+                (user_id,),
+            )
+            assert cur.fetchone()[0] >= 1
+    finally:
+        with db_conn.cursor() as cur:
+            cur.execute('DELETE FROM "PlaylistHistory" WHERE "userId" = %s', (user_id,))
+            cur.execute('DELETE FROM "UserPersona" WHERE "userId" = %s', (user_id,))
+            cur.execute('DELETE FROM "UserEmbedding" WHERE "userId" = %s', (user_id,))
+            cur.execute('DELETE FROM "UserTrack" WHERE "userId" = %s', (user_id,))
+            cur.execute('DELETE FROM "UserOAuth" WHERE "userId" = %s', (user_id,))
+            cur.execute('DELETE FROM "AuthSession" WHERE "userId" = %s', (user_id,))
+            cur.execute('DELETE FROM "User" WHERE id = %s', (user_id,))
+        db_conn.commit()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_no_oauth_no_tracks_fails_with_import_message(db_conn):
+    """Tidal/Spotify/데이터 아무것도 없으면 'import 필요' 메시지로 fail."""
+    from mrms.db.user_track import get_or_create_user
+
+    user_id = get_or_create_user(db_conn, "yt_gate_empty@example.com")
+    db_conn.commit()
+
+    status = OnboardingStatus()
+    try:
+        await run_onboarding(user_id=user_id, status=status, conn=db_conn)
+        assert status.step == "error"
+        assert "import" in (status.error or "")
+        assert "플레이리스트" in (status.error or "")
+    finally:
+        with db_conn.cursor() as cur:
+            cur.execute('DELETE FROM "User" WHERE id = %s', (user_id,))
+        db_conn.commit()

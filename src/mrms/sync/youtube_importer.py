@@ -11,16 +11,95 @@ TrackPlatform."previewUrl"에 트랙 커버로 저장한다.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import httpx
 
+from mrms.config import EMBEDDING_MODEL_VERSION
 from mrms.db.ids import stable_id as _id
 from mrms.emp.base import _get_or_create_artist, safe_rollback
+
+# pipeline.CATALOG_MODEL_VERSION과 동일 단일 출처 (config). pipeline에서 import하면
+# onboarding→sync 순환 위험이 있어 config에서 직접 유도한다.
+CATALOG_MODEL_VERSION = EMBEDDING_MODEL_VERSION
 
 YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
 MAX_PAGES = 1000  # 무한 페이지네이션 방지 (보통 사용자는 트랙 1만개 이내)
 MAX_RESULTS = 50  # API 페이지당 상한
+
+# 정규화: 괄호/대괄호 내용 제거 → 영숫자(한글 포함) 외 문자를 공백으로.
+_PAREN_RE = re.compile(r"[\(（][^\)）]*[\)）]|[\[\［][^\]］]*[\]］]")
+# 영숫자 + 한글(가-힣, 자모 ㄱ-ㅎ ㅏ-ㅣ) 외 전부 공백. \w는 _를 포함하므로 명시.
+_NON_KEEP_RE = re.compile(r"[^0-9a-z가-힣ㄱ-ㆎ]+")
+
+
+def _normalize(s: str | None) -> str:
+    """텍스트 매칭용 정규화 (공유 계약).
+
+    lowercase → 괄호/대괄호 내용 제거 (...)/[...] → 영숫자+한글 외 문자를
+    공백으로 → 공백 정리(단일 스페이스, strip).
+
+    거짓 매칭이 취향 프로필을 오염시키므로 정밀도 최우선 — 이 정규화 키가
+    title·artist 양쪽에서 정확히 일치할 때만 매칭으로 인정한다.
+    """
+    if not s:
+        return ""
+    s = s.lower()
+    s = _PAREN_RE.sub(" ", s)
+    s = _NON_KEEP_RE.sub(" ", s)
+    return " ".join(s.split())
+
+
+def _catalog_key(artist: str | None, title: str | None) -> str:
+    """정규화 매칭 키 — f'{norm(artist)}|{norm(title)}'."""
+    return f"{_normalize(artist)}|{_normalize(title)}"
+
+
+def load_embedding_catalog(conn) -> dict[str, str]:
+    """임베딩 보유 카탈로그 → {정규화키: trackId} dict (import당 1회 로드).
+
+    CATALOG_MODEL_VERSION 임베딩이 있는 트랙만 대상 (onboarding step 2가
+    이 집합으로 클러스터/MRT를 돌리므로). 같은 키가 여러 trackId에 걸리면
+    첫 값을 유지한다 (결정론성 — DB 정렬 순서 의존 줄이려 trackId ASC).
+
+    171k 행 in-memory 허용 (계약). 키가 비어있는(artist·title 둘 다 빈)
+    경우는 거짓 매칭 위험이 크므로 제외한다.
+    """
+    catalog: dict[str, str] = {}
+    with conn.cursor() as cur:
+        cur.execute(
+            '''SELECT a.name, t.title, e."trackId"
+               FROM "TrackEmbedding" e
+               JOIN "Track" t ON t.id = e."trackId"
+               JOIN "Artist" a ON a.id = t."artistId"
+               WHERE e."modelVersion" = %s
+               ORDER BY e."trackId"''',
+            (CATALOG_MODEL_VERSION,),
+        )
+        for artist_name, title, track_id in cur:
+            na = _normalize(artist_name)
+            nt = _normalize(title)
+            if not na or not nt:
+                continue  # 한쪽이라도 비면 키가 모호 — 거짓 매칭 방지
+            key = f"{na}|{nt}"
+            if key not in catalog:  # 첫 값 유지
+                catalog[key] = track_id
+    return catalog
+
+
+def match_in_catalog(
+    catalog: dict[str, str], artist: str | None, title: str | None
+) -> str | None:
+    """정규화 키 정확 일치만 매칭 (title·artist 둘 다). 미스/모호 → None.
+
+    한쪽이라도 정규화 결과가 비면 매칭 거부 (거짓 매칭 방지).
+    """
+    na = _normalize(artist)
+    nt = _normalize(title)
+    if not na or not nt:
+        return None
+    return catalog.get(f"{na}|{nt}")
 
 
 @dataclass
@@ -30,12 +109,14 @@ class ImportStats:
     tracks_imported: int = 0
     tracks_created: int = 0
     tracks_existing: int = 0
+    tracks_matched: int = 0  # 임베딩 보유 카탈로그에 텍스트 매칭된 트랙
 
     def summary_lines(self) -> list[str]:
         return [
             f"플레이리스트 {self.playlists_fetched}개 → 트랙 fetch {self.tracks_fetched}개",
             f"UserTrack 적재: {self.tracks_imported} "
-            f"(catalog 신규 {self.tracks_created}, 기존 재사용 {self.tracks_existing})",
+            f"(임베딩 매칭 {self.tracks_matched}, catalog 신규 {self.tracks_created}, "
+            f"기존 재사용 {self.tracks_existing})",
         ]
 
 
@@ -140,6 +221,33 @@ def upsert_youtube_track(
         )
 
     return {"track_id": track_id, "new": is_new}
+
+
+def attach_youtube_platform(
+    conn,
+    track_id: str,
+    video_id: str,
+    cover_url: str | None = None,
+) -> None:
+    """이미 매칭된 임베딩 catalog 트랙에 youtube TrackPlatform(videoId)을 매핑.
+
+    catalog 트랙은 보통 tidal/spotify 매핑만 있어 YouTube 재생이 불가하므로,
+    텍스트 매칭이 성사되면 그 트랙에 youtube(videoId) 경로를 추가해 앱에서
+    재생 가능하게 한다. 새 Track은 만들지 않는다.
+
+    이미 youtube 매핑이 있으면(같은 트랙에 다른 videoId가 먼저 붙은 경우 등)
+    덮어쓰지 않고 첫 매핑을 유지한다 (DO NOTHING). 커밋하지 않는다 — 호출자가
+    배치 트랜잭션으로 관리.
+    """
+    tp_id = _id(f"tp|youtube|{video_id}|{track_id}")
+    with conn.cursor() as cur:
+        cur.execute(
+            '''INSERT INTO "TrackPlatform"
+                 (id, "trackId", platform, "platformTrackId", "previewUrl")
+               VALUES (%s, %s, 'youtube', %s, %s)
+               ON CONFLICT ("trackId", platform) DO NOTHING''',
+            (tp_id, track_id, video_id, cover_url),
+        )
 
 
 class YouTubeImporter:
@@ -269,9 +377,13 @@ async def import_all(
 ) -> ImportStats:
     """전체 import — (선택) 좋아요 + (선택) 플레이리스트 → DB 적재.
 
-    각 트랙: videoId로 TrackPlatform(youtube) 조회 → 없으면 catalog Track 생성
-    → 그 trackId로 upsert_user_track. liked는 is_core=True/source='liked',
-    playlist는 is_core=False/source='playlist:<name>'.
+    각 트랙: 먼저 임베딩 보유 카탈로그에 (artist, title) 텍스트 매칭 시도.
+    - 매칭됨: 그 임베딩 trackId에 UserTrack 연결 + youtube TrackPlatform(videoId)
+      매핑 추가(없으면). 새 Track 생성 안 함. → onboarding step 2(클러스터/MRT)가
+      이 임베딩 트랙으로 동작. (정밀도 최우선 — title·artist 둘 다 정규화 일치만.)
+    - 미스: 기존 동작 — videoId로 새 catalog Track + TrackPlatform 생성 후 그
+      trackId로 upsert_user_track.
+    liked는 is_core=True/source='liked', playlist는 is_core=False/source='playlist:<name>'.
 
     playlist_ids 지정 시 그 플레이리스트만, 없으면 내 전체 플레이리스트.
     include_liked=False면 좋아요(liked) 배치를 통째로 스킵 (fetch_liked·적재
@@ -282,6 +394,9 @@ async def import_all(
     importer = YouTubeImporter(http, access_token)
     stats = ImportStats()
     upserted_tracks: set[str] = set()
+
+    # 임베딩 보유 카탈로그를 1회 로드 → O(1) 정규화 키 매칭. 171k 행 in-memory.
+    catalog = load_embedding_catalog(conn)
 
     # 한 배치(좋아요 / 한 플레이리스트)에서 누적된 stat 델타와 신규 set 추가분을
     # 담아두고 commit 성공 시에만 stats/upserted_tracks에 반영한다. 배치 중간에
@@ -294,6 +409,7 @@ async def import_all(
             self.imported = 0
             self.created = 0
             self.existing = 0
+            self.matched = 0
             self.new_track_ids: set[str] = set()
 
     def _ingest(track: dict, batch: "_Batch", *, is_core: bool, source: str) -> None:
@@ -301,11 +417,37 @@ async def import_all(
         video_id = track.get("video_id")
         if not video_id:
             return
+        artist = track.get("artist") or "Unknown"
+        title = track.get("title") or ""
+
+        # 1) 임베딩 보유 카탈로그에 텍스트 매칭 시도 (정밀도 최우선).
+        matched_track_id = match_in_catalog(catalog, artist, title)
+        if matched_track_id is not None:
+            # 매칭됨 — 그 임베딩 트랙에 youtube(videoId) 매핑 추가(없으면) +
+            # UserTrack 연결. 새 Track 생성 안 함.
+            attach_youtube_platform(
+                conn, matched_track_id, video_id,
+                cover_url=track.get("thumbnail"),
+            )
+            upsert_user_track(
+                conn, user_id, matched_track_id,
+                is_core=is_core, source=source, platform="youtube",
+            )
+            if (
+                matched_track_id not in upserted_tracks
+                and matched_track_id not in batch.new_track_ids
+            ):
+                batch.new_track_ids.add(matched_track_id)
+                batch.imported += 1
+                batch.matched += 1
+            return
+
+        # 2) 미스 — 기존 경로: videoId로 새 catalog Track + TrackPlatform 생성.
         r = upsert_youtube_track(
             conn,
             video_id=video_id,
-            title=track.get("title") or "",
-            artist=track.get("artist") or "Unknown",
+            title=title,
+            artist=artist,
             cover_url=track.get("thumbnail"),
         )
         track_id = r["track_id"]
@@ -327,6 +469,7 @@ async def import_all(
         stats.tracks_imported += batch.imported
         stats.tracks_created += batch.created
         stats.tracks_existing += batch.existing
+        stats.tracks_matched += batch.matched
         upserted_tracks.update(batch.new_track_ids)
 
     # 좋아요 트랙 (실패해도 진행분 보존) — include_liked=False면 통째로 스킵.

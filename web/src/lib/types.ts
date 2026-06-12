@@ -127,6 +127,17 @@ export interface OnboardingStatus {
   error: string | null;
 }
 
+/** GET /api/onboarding/precheck → 진입 시 어떤 흐름을 탈지 결정.
+ *  - "ready":   이미 MRT가 있음 → /mrt로 이동.
+ *  - "run":     수집·추천 가능(Tidal·Spotify 연결 또는 UserTrack>0) → start + 폴링.
+ *  - "import":  youtube 연결됨 + UserTrack 0 → 플레이리스트 import 먼저.
+ *  - "connect": 아무것도 없음 → 음악 플랫폼 연결 안내. */
+export type OnboardingAction = "ready" | "run" | "import" | "connect";
+
+export interface OnboardingPrecheck {
+  action: OnboardingAction;
+}
+
 export interface IngestionStage {
   stage: string;
   status: string;
