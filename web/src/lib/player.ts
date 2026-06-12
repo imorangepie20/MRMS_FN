@@ -394,23 +394,90 @@ async function handleTrackError(
 }
 
 
-/** 트랙 자연 종료/에러 시 큐 진행 — 교차 플랫폼 포함. 끝이면 정지. */
-export async function advanceToNext(): Promise<void> {
+// ─── 셔플/반복 — 다음 인덱스 선택 ───────────────────────
+// 셔플은 store가 아닌 모듈 수준에서 "이번 사이클에 재생한 인덱스"를 추적해
+// 한 사이클 안에서 같은 곡이 반복되지 않게 한다 (큐 길이가 바뀌면 사이클 리셋).
+let shufflePlayed = new Set<number>();
+let shuffleQueueLen = -1;
+
+/** 셔플 사이클 초기화 — 셔플 토글/큐 교체 시 호출. */
+export function resetShuffle(): void {
+  shufflePlayed = new Set();
+  shuffleQueueLen = -1;
+}
+
+function pickShuffleNext(
+  len: number,
+  currentIdx: number,
+  repeatAll: boolean,
+): number | null {
+  if (len !== shuffleQueueLen) {
+    shuffleQueueLen = len;
+    shufflePlayed = new Set();
+  }
+  shufflePlayed.add(currentIdx);
+  const remaining: number[] = [];
+  for (let i = 0; i < len; i++) {
+    if (i !== currentIdx && !shufflePlayed.has(i)) remaining.push(i);
+  }
+  if (remaining.length === 0) {
+    if (!repeatAll) return null; // 다 돌았고 전체반복 아님 → 정지
+    // 사이클 리셋 후 현재 곡 제외 무작위
+    shufflePlayed = new Set([currentIdx]);
+    const all: number[] = [];
+    for (let i = 0; i < len; i++) if (i !== currentIdx) all.push(i);
+    if (all.length === 0) return currentIdx;
+    return all[Math.floor(Math.random() * all.length)];
+  }
+  return remaining[Math.floor(Math.random() * remaining.length)];
+}
+
+/** 다음 인덱스 — 셔플/반복 반영. auto=자연종료(한곡반복 적용), false=수동 skip. */
+function pickNextIndex(auto: boolean): number | null {
   const s = usePlayerStore.getState();
-  const nextIdx = s.currentIdx + 1;
-  if (nextIdx >= s.queue.length) {
+  const len = s.queue.length;
+  if (len === 0) return null;
+  if (auto && s.repeatMode === "one") return s.currentIdx; // 한곡반복은 자동진행만
+  const repeatAll = s.repeatMode === "all";
+  if (s.shuffleMode) return pickShuffleNext(len, s.currentIdx, repeatAll);
+  const next = s.currentIdx + 1;
+  if (next < len) return next;
+  return repeatAll ? 0 : null; // 끝: 전체반복이면 처음으로, 아니면 정지
+}
+
+async function goToIndex(idx: number): Promise<void> {
+  const s = usePlayerStore.getState();
+  const track = s.queue[idx];
+  if (!track) return;
+  usePlayerStore.setState({ currentIdx: idx, position: 0 });
+  try {
+    await loadAndPlay(track);
+  } catch (e) {
+    usePlayerStore.setState({ errorMsg: (e as Error).message, isPlaying: false });
+  }
+}
+
+/** 트랙 자연 종료/에러 시 큐 진행 — 셔플/반복 반영. 끝이면 정지. */
+export async function advanceToNext(): Promise<void> {
+  const idx = pickNextIndex(true);
+  if (idx === null) {
     usePlayerStore.setState({ isPlaying: false, position: 0 });
     return;
   }
-  usePlayerStore.setState({ currentIdx: nextIdx, position: 0 });
-  try {
-    await loadAndPlay(s.queue[nextIdx]);
-  } catch (e) {
-    usePlayerStore.setState({
-      errorMsg: (e as Error).message,
-      isPlaying: false,
-    });
-  }
+  await goToIndex(idx);
+}
+
+/** 수동 다음 곡 — 셔플/전체반복 반영 (한곡반복은 무시하고 진행). */
+export async function playNext(): Promise<void> {
+  const idx = pickNextIndex(false);
+  if (idx === null) return;
+  await goToIndex(idx);
+}
+
+/** 수동 이전 곡 — 순차(-1). 맨 앞이면 무시. */
+export async function playPrev(): Promise<void> {
+  const s = usePlayerStore.getState();
+  if (s.currentIdx > 0) await goToIndex(s.currentIdx - 1);
 }
 
 

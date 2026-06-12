@@ -19,8 +19,10 @@ import { useUser } from "@/lib/hooks/use-user";
 import {
   getPlatformForTrack,
   initPlayer,
-  loadAndPlay,
   pausePlayback,
+  playNext,
+  playPrev,
+  resetShuffle,
   resumePlayback,
   seekTo,
   setSdkVolume,
@@ -107,30 +109,14 @@ function Controls() {
     }
   };
 
-  const next = async () => {
-    const s = usePlayerStore.getState();
-    if (s.currentIdx + 1 < s.queue.length) {
-      const nextIdx = s.currentIdx + 1;
-      usePlayerStore.setState({ currentIdx: nextIdx, position: 0 });
-      await loadAndPlay(s.queue[nextIdx]).catch((e) =>
-        usePlayerStore.setState({ errorMsg: (e as Error).message })
-      );
-    }
-  };
+  // next/prev는 facade에 위임 — 셔플/반복 로직을 한 곳에서 처리
+  const next = () => void playNext();
+  const prev = () => void playPrev();
 
-  const prev = async () => {
-    const s = usePlayerStore.getState();
-    if (s.currentIdx > 0) {
-      const prevIdx = s.currentIdx - 1;
-      usePlayerStore.setState({ currentIdx: prevIdx, position: 0 });
-      await loadAndPlay(s.queue[prevIdx]).catch((e) =>
-        usePlayerStore.setState({ errorMsg: (e as Error).message })
-      );
-    }
-  };
-
-  const toggleShuffle = () =>
+  const toggleShuffle = () => {
     usePlayerStore.setState({ shuffleMode: !shuffleMode });
+    resetShuffle(); // 토글 시 셔플 사이클 초기화
+  };
 
   const cycleRepeat = () => {
     const next: "off" | "all" | "one" =
