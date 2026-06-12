@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Play } from "lucide-react";
 
 import { fetchEmpItemTracks } from "@/lib/api/emp";
 import type { EmpItemTrack, EmpSection } from "@/lib/types";
-import { PlayAllButton, formatDuration, playTracks } from "@/components/track/ModalTrackList";
+import { PlayAllButton, formatDuration, isPlayable, playTracks } from "@/components/track/ModalTrackList";
 
 
 // 커버 없는 트랙용 결정적 색조 (EmpItemCard와 동일 톤)
@@ -179,7 +179,7 @@ function TrackCard({
   coverPx: number;
   onPlay: () => void;
 }) {
-  const playable = track.tidal_track_id != null || track.spotify_track_id != null;
+  const playable = isPlayable(track);
   return (
     <button
       onClick={onPlay}

@@ -1,11 +1,17 @@
-"""YouTube Music 공식 차트 importer — ytmusicapi 공개 플레이리스트 (인증 0).
+"""YouTube Music 공식 차트 importer — ytmusicapi 공개 플레이리스트.
 
 YouTube가 만든 "Top 100 Songs {Country}" 공식 차트 플리를 ytmusicapi의
-get_playlist로 받아온다 (인증 없이 동작, 2026-06 실측).
+get_playlist로 받아온다 (인증 없이도 동작, 2026-06 실측).
+
+인증 (Setting 'youtube_auth_json' — ytmusicapi browser auth JSON):
+- 있으면 YTMusic(json.loads(raw))로 인증 인스턴스 → videoId가 100% 채워짐 (실측).
+- 없거나 파싱 실패면 무인증 폴백 — 차트 자체는 무인증도 동작 (videoId만 대부분 None).
 
 한계/특성 (실측):
-- videoId는 인증 없이의 응답에서 대부분 None → platform_track_id를 제목+아티스트로
-  합성 (일관성 유지: f"yt_{stable_id(...)[:16]}").
+- videoId가 None인 트랙은 platform_track_id를 제목+아티스트로 합성
+  (일관성 유지: f"yt_{stable_id(...)[:16]}"). 합성 ID는 재생 불가 —
+  같은 곡이 나중에 real videoId와 함께 오면 합성 매핑을 real로 승격
+  (_migrate_synthetic_mapping).
 - thumbnails는 100% 제공 → 가장 큰 width를 커버로.
 - ISRC·앨범은 없음. YouTube는 **차트 신호(곡 식별)** 용 — 재생/매칭은
   download/resolve(제목+아티스트 검색)가 담당.
@@ -23,6 +29,7 @@ EMPSection 1개(section_key='playlist:{pid}') + EMPSectionItem 1개(chart:{pid})
 from __future__ import annotations
 
 import asyncio
+import json
 
 import psycopg
 
@@ -38,6 +45,7 @@ from mrms.emp.base import (
 
 
 SOURCES_SETTING_KEY = "youtube_emp_sources"
+AUTH_SETTING_KEY = "youtube_auth_json"
 SOURCE_TYPE = "chart"
 
 # 공식 차트 플리 id (실측 — YouTube가 만든 "Top 100 Songs {Country}")
@@ -88,8 +96,9 @@ def _best_thumbnail(thumbnails) -> str | None:
 def parse_playlist(pl: dict) -> tuple[str | None, list[dict]]:
     """ytmusicapi get_playlist dict → (title, tracks[]) (순수 함수, 테스트 가능).
 
-    각 track dict: {track_id, title, artist, cover_url, duration_ms}.
+    각 track dict: {track_id, video_id, title, artist, cover_url, duration_ms}.
     - track_id = videoId가 있으면 그대로, 없으면 f"yt_{stable_id(title+'|'+artist)[:16]}" (합성).
+    - video_id = real videoId (없으면 None) — 합성 매핑 마이그레이션 판단용.
     - artist = artists[0].name (없으면 "Unknown").
     - title 또는 artist가 비면 그 트랙 skip.
     """
@@ -124,6 +133,7 @@ def parse_playlist(pl: dict) -> tuple[str | None, list[dict]]:
         tracks.append(
             {
                 "track_id": track_id,
+                "video_id": str(video_id) if video_id else None,
                 "title": t_title,
                 "artist": artist,
                 "cover_url": _best_thumbnail(tr.get("thumbnails")),
@@ -134,21 +144,77 @@ def parse_playlist(pl: dict) -> tuple[str | None, list[dict]]:
     return (title, tracks)
 
 
+def _migrate_synthetic_mapping(
+    conn: psycopg.Connection, title: str, artist: str, video_id: str
+) -> None:
+    """합성('yt_…') TrackPlatform 매핑을 real videoId로 승격.
+
+    인증 전 적재분은 videoId가 없어 합성 ID로 매핑돼 있다. 같은 title|artist가
+    real videoId와 함께 다시 오면:
+    - real 매핑이 따로 없으면 → 합성 행을 real videoId로 UPDATE
+      (id도 stable_id('tp|youtube|{videoId}')로 재계산).
+    - real 매핑이 이미 있으면 → 합성 행은 DELETE (잔여물 제거).
+      unique 제약이 ("trackId", platform)이라 한 Track엔 youtube 행이 하나뿐 —
+      real 행이 '따로' 있다는 건 다른 Track에 매핑됐다는 뜻이므로 UPDATE 불가.
+    이후 upsert_track_and_emp_source가 (platform, videoId) lookup으로 같은
+    Track을 재사용 → 중복 Track 생성 없음.
+    """
+    synthetic = f"yt_{stable_id(f'{title}|{artist}')[:16]}"
+    with conn.cursor() as cur:
+        cur.execute(
+            '''SELECT id FROM "TrackPlatform"
+               WHERE platform = %s AND "platformTrackId" = %s
+               LIMIT 1''',
+            ("youtube", synthetic),
+        )
+        synth_row = cur.fetchone()
+        if not synth_row:
+            return  # 마이그레이션 대상 없음 — 신규/기존 real 경로는 base가 처리
+
+        cur.execute(
+            '''SELECT 1 FROM "TrackPlatform"
+               WHERE platform = %s AND "platformTrackId" = %s
+               LIMIT 1''',
+            ("youtube", video_id),
+        )
+        if cur.fetchone():
+            cur.execute('DELETE FROM "TrackPlatform" WHERE id = %s', (synth_row[0],))
+        else:
+            cur.execute(
+                '''UPDATE "TrackPlatform"
+                   SET id = %s, "platformTrackId" = %s
+                   WHERE id = %s''',
+                (stable_id(f"tp|youtube|{video_id}"), video_id, synth_row[0]),
+            )
+    conn.commit()
+
+
 class YoutubeEMPImporter(EMPImporter):
-    """YouTube Music 공식 차트 importer. ytmusicapi 공개 플레이리스트 (인증 0)."""
+    """YouTube Music 공식 차트 importer. ytmusicapi 공개 플레이리스트."""
 
     platform = "youtube"
 
     def __init__(self):
         self._yt_instance = None
+        self._auth_raw: str | None = None  # Setting 'youtube_auth_json' raw
 
     def _yt(self):
         """YTMusic 인스턴스 lazy 생성 (첫 사용 시). import도 lazy —
-        ytmusicapi가 없는 환경에서 순수 함수 테스트는 영향받지 않도록."""
+        ytmusicapi가 없는 환경에서 순수 함수 테스트는 영향받지 않도록.
+
+        _auth_raw(browser auth JSON)가 있으면 인증 인스턴스 — videoId가
+        채워진다. 파싱 실패는 무인증 폴백 (차트는 무인증도 동작하므로
+        에러로 취급하지 않음)."""
         if self._yt_instance is None:
             from ytmusicapi import YTMusic
 
-            self._yt_instance = YTMusic()
+            auth = None
+            if self._auth_raw:
+                try:
+                    auth = json.loads(self._auth_raw)
+                except ValueError:
+                    auth = None  # 무인증 폴백
+            self._yt_instance = YTMusic(auth) if auth else YTMusic()
         return self._yt_instance
 
     def _load_sources(self, conn: psycopg.Connection) -> list[str]:
@@ -182,6 +248,8 @@ class YoutubeEMPImporter(EMPImporter):
         """모든 차트 플레이리스트 적재.
 
         반환 dict의 'playlists_processed'는 정상 처리된 차트 플리 수."""
+        # browser auth JSON — 있으면 인증 YTMusic (videoId 100% 실측)
+        self._auth_raw = get_setting(conn, AUTH_SETTING_KEY)
         pids = self._load_sources(conn)
 
         tracks_new = 0
@@ -234,6 +302,11 @@ class YoutubeEMPImporter(EMPImporter):
 
             for t in tracks:
                 try:
+                    if t.get("video_id"):
+                        # 인증 전 적재된 합성 매핑이 있으면 real videoId로 승격
+                        _migrate_synthetic_mapping(
+                            conn, t["title"], t["artist"], t["video_id"]
+                        )
                     r = upsert_track_and_emp_source(
                         conn,
                         isrc=None,

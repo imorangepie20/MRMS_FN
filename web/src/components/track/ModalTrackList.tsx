@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Heart, Play, Sparkles } from "lucide-react";
 
-import { loadAndPlay } from "@/lib/player";
+import { loadAndPlay, realYoutubeId } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
 import type { QueueTrack } from "@/store/player";
 
@@ -20,6 +20,7 @@ export interface ModalTrack {
   duration_ms?: number | null;
   tidal_track_id: string | null;
   spotify_track_id: string | null;
+  youtube_track_id?: string | null;
   liked?: boolean;
   pct?: boolean;
 }
@@ -34,6 +35,8 @@ function toQueueTrack(t: ModalTrack): QueueTrack {
     album_cover: t.album_cover ?? null,
     tidal_track_id: t.tidal_track_id,
     spotify_track_id: t.spotify_track_id,
+    // 'yt_' 합성 ID는 재생 불가 — 방어적으로 null 취급
+    youtube_track_id: realYoutubeId(t.youtube_track_id),
   };
 }
 
@@ -55,8 +58,13 @@ export function formatTotalDuration(tracks: ModalTrack[]): string | null {
 }
 
 
-function isPlayable(t: ModalTrack): boolean {
-  return t.tidal_track_id != null || t.spotify_track_id != null;
+export function isPlayable(t: ModalTrack): boolean {
+  return (
+    t.tidal_track_id != null ||
+    t.spotify_track_id != null ||
+    // 'yt_' 합성 ID는 IFrame에서 invalid video — 방어적으로 null 취급
+    realYoutubeId(t.youtube_track_id) != null
+  );
 }
 
 

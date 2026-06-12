@@ -2,7 +2,7 @@
 
 import { Play } from "lucide-react";
 
-import { loadAndPlay } from "@/lib/player";
+import { loadAndPlay, realYoutubeId } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
 import type { QueueTrack } from "@/store/player";
 import type { PersonaTrack, RecommendedTrack } from "@/lib/types";
@@ -25,7 +25,9 @@ export function PlayButton({ tracks, trackIdx, size = "md" }: Props) {
 
   const target = tracks[trackIdx];
   const disabled =
-    (!target?.tidal_track_id && !target?.spotify_track_id) ||
+    (!target?.tidal_track_id &&
+      !target?.spotify_track_id &&
+      !realYoutubeId(target?.youtube_track_id)) ||
     !sdkReady ||
     premium === false;
 
@@ -36,13 +38,17 @@ export function PlayButton({ tracks, trackIdx, size = "md" }: Props) {
 
   const onClick = async () => {
     if (disabled) return;
-    // Tidal 또는 Spotify 가용한 트랙만 큐로 (둘 다 null인 거 제외)
+    // Tidal/Spotify/YouTube 가용한 트랙만 큐로 (전부 null인 거 제외)
     const queueable: QueueTrack[] = tracks
-      .filter((t) => t.tidal_track_id || t.spotify_track_id)
+      .filter(
+        (t) =>
+          t.tidal_track_id || t.spotify_track_id || realYoutubeId(t.youtube_track_id),
+      )
       .map((t) => ({
         track_id: t.track_id,
         tidal_track_id: t.tidal_track_id,
         spotify_track_id: t.spotify_track_id,
+        youtube_track_id: realYoutubeId(t.youtube_track_id),
         title: t.title,
         artist: t.artist,
         album_title: "album_title" in t ? (t.album_title ?? null) : null,

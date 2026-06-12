@@ -1,6 +1,6 @@
 """재생 시점 트랙 lazy 해결 — 플랫폼 카탈로그 검색으로 platform track ID 확보.
 
-GET /api/playback/resolve/{track_id}?platform=spotify|tidal
+GET /api/playback/resolve/{track_id}?platform=spotify|tidal|youtube
 - TrackPlatform에 매핑이 이미 있으면 외부 호출 없이 바로 반환
 - 없으면 해당 플랫폼 카탈로그 검색 (ISRC 우선 → 텍스트 폴백) 후
   TrackPlatform upsert → 다음 재생부터는 직행
@@ -11,9 +11,15 @@ GET /api/playback/resolve/{track_id}?platform=spotify|tidal
   ISRC 필터는 openapi.tidal.com /v2/tracks?filter[isrc]=,
   텍스트 검색은 api.tidal.com /v1/search/tracks (playbackinfo와 같은
   Bearer 사용자 토큰 패턴 — artists가 인라인이라 매칭 검증에 적합).
+- YouTube: 유저 OAuth 불필요 — Setting 'youtube_auth_json'(ytmusicapi
+  browser auth)이 있으면 인증, 없으면 무인증 YTMusic. ISRC 미지원이라
+  텍스트+duration 매칭만. 합성('yt_…') ID는 IFrame에서 재생 불가 —
+  절대 만들지도 반환하지도 않는다.
 """
 from __future__ import annotations
 
+import asyncio
+import json
 from typing import Literal
 
 import httpx
@@ -24,6 +30,7 @@ from mrms.api.auth_spotify import get_token as _spotify_token
 from mrms.api.auth_tidal import _get_access_token as _tidal_token
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.db.ids import stable_id
+from mrms.db.settings import get_setting
 from mrms.sync.jsonapi import flatten_jsonapi
 
 
@@ -32,6 +39,8 @@ router = APIRouter(prefix="/api/playback", tags=["playback"])
 SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search"
 TIDAL_V2_TRACKS_URL = "https://openapi.tidal.com/v2/tracks"
 TIDAL_V1_SEARCH_URL = "https://api.tidal.com/v1/search/tracks"
+
+YOUTUBE_AUTH_SETTING_KEY = "youtube_auth_json"
 
 SEARCH_LIMIT = 5
 DURATION_TOLERANCE_MS = 5000
@@ -228,12 +237,72 @@ async def _resolve_tidal(
     return best["id"] if best else None
 
 
+# ───────────────────────── YouTube ─────────────────────────
+
+# YTMusic 인스턴스 캐시 — auth raw 문자열이 키 (Setting 교체 시 새 인스턴스).
+# 무인증은 "" 키. 생성 비용(헤더 셋업)만 아끼는 단순 캐시.
+_ytmusic_cache: dict[str, object] = {}
+
+
+def _get_ytmusic(auth_raw: str | None):
+    """인증/무인증 YTMusic 인스턴스. import는 lazy.
+
+    auth JSON 파싱 실패는 무인증 폴백 (검색은 무인증도 동작)."""
+    key = auth_raw or ""
+    inst = _ytmusic_cache.get(key)
+    if inst is None:
+        from ytmusicapi import YTMusic
+
+        auth = None
+        if auth_raw:
+            try:
+                auth = json.loads(auth_raw)
+            except ValueError:
+                auth = None  # 무인증 폴백
+        inst = YTMusic(auth) if auth else YTMusic()
+        _ytmusic_cache[key] = inst
+    return inst
+
+
+async def _resolve_youtube(yt, track: dict) -> str | None:
+    """ytmusicapi 텍스트 검색 (sync → to_thread). ISRC 미지원 —
+    텍스트+duration 매칭만 (_pick_match 재사용)."""
+    try:
+        results = await asyncio.to_thread(
+            yt.search,
+            f'{track["title"]} {track["artist"]}',
+            filter="songs",
+            limit=SEARCH_LIMIT,
+        )
+    except Exception as e:
+        raise HTTPException(502, f"youtube search failed: {type(e).__name__}: {str(e)[:200]}")
+
+    candidates: list[dict] = []
+    for item in results or []:
+        if not isinstance(item, dict) or not item.get("videoId"):
+            continue
+        duration_sec = item.get("duration_seconds")
+        candidates.append({
+            "id": str(item["videoId"]),
+            "title": item.get("title"),
+            "artists": [
+                a.get("name") for a in item.get("artists") or [] if isinstance(a, dict)
+            ],
+            "isrc": None,
+            "duration_ms": int(duration_sec) * 1000 if duration_sec else None,
+        })
+    best = _pick_match(
+        candidates, track["title"], track["artist"], track["duration_ms"],
+    )
+    return best["id"] if best else None
+
+
 # ───────────────────────── Endpoint ─────────────────────────
 
 @router.get("/resolve/{track_id}")
 async def resolve_track(
     track_id: str,
-    platform: Literal["spotify", "tidal"],
+    platform: Literal["spotify", "tidal", "youtube"],
     user_id: str = Depends(get_current_user_id),
     conn: psycopg.Connection = Depends(db_conn),
 ) -> dict:
@@ -256,7 +325,8 @@ async def resolve_track(
         "duration_ms": row[3] or None,  # 0 = 미상 → 가산점 비교 생략
     }
 
-    # 2. 이미 매핑 있으면 검색 생략
+    # 2. 이미 매핑 있으면 검색 생략 — 단 youtube 합성('yt_…') 매핑은
+    # IFrame에서 재생 불가하므로 없는 것으로 취급 → 재검색으로 real 확보
     with conn.cursor() as cur:
         cur.execute(
             'SELECT "platformTrackId" FROM "TrackPlatform" '
@@ -264,46 +334,64 @@ async def resolve_track(
             (track_id, platform),
         )
         row = cur.fetchone()
-    if row:
+    if row and not (platform == "youtube" and str(row[0]).startswith("yt_")):
         return {"platform_track_id": row[0]}
 
-    # 3. 플랫폼 토큰 — OAuth 미연결/refresh 실패는 미인증(401) 취급
-    # (tidal refresh 실패는 HTTPException이 아닌 예외로 올라올 수 있어 broad catch)
-    try:
-        if platform == "spotify":
-            token = (await _spotify_token(user_id=user_id, conn=conn))["access_token"]
-        else:
-            token = await _tidal_token(user_id, conn)
-    except HTTPException as e:
-        raise HTTPException(401, f"{platform} auth unavailable: {e.detail}")
-    except Exception as e:
-        raise HTTPException(401, f"{platform} auth unavailable: {type(e).__name__}")
+    if platform == "youtube":
+        # 유저 OAuth 단계 불필요 — Setting 'youtube_auth_json' 사용 (없으면 무인증).
+        # YTMusic 생성은 browser auth일 때 base_headers(cached_property) 경유로
+        # music.youtube.com에 블로킹 GET(get_visitor_id)을 날림 — 캐시 미스 시
+        # 이벤트 루프가 외부 RTT 동안 정지하므로 to_thread로 옮긴다.
+        yt = await asyncio.to_thread(
+            _get_ytmusic, get_setting(conn, YOUTUBE_AUTH_SETTING_KEY)
+        )
+        platform_track_id = await _resolve_youtube(yt, track)
+    else:
+        # 3. 플랫폼 토큰 — OAuth 미연결/refresh 실패는 미인증(401) 취급
+        # (tidal refresh 실패는 HTTPException이 아닌 예외로 올라올 수 있어 broad catch)
+        try:
+            if platform == "spotify":
+                token = (await _spotify_token(user_id=user_id, conn=conn))["access_token"]
+            else:
+                token = await _tidal_token(user_id, conn)
+        except HTTPException as e:
+            raise HTTPException(401, f"{platform} auth unavailable: {e.detail}")
+        except Exception as e:
+            raise HTTPException(401, f"{platform} auth unavailable: {type(e).__name__}")
 
-    # 4. 검색 + 매칭
-    with conn.cursor() as cur:
-        cur.execute('SELECT country FROM "User" WHERE id = %s', (user_id,))
-        u = cur.fetchone()
-    country = u[0] if u and u[0] else "US"
+        # 4. 검색 + 매칭
+        with conn.cursor() as cur:
+            cur.execute('SELECT country FROM "User" WHERE id = %s', (user_id,))
+            u = cur.fetchone()
+        country = u[0] if u and u[0] else "US"
 
-    async with httpx.AsyncClient(timeout=10.0) as http:
-        if platform == "spotify":
-            platform_track_id = await _resolve_spotify(http, token, track)
-        else:
-            platform_track_id = await _resolve_tidal(http, token, track, country)
+        async with httpx.AsyncClient(timeout=10.0) as http:
+            if platform == "spotify":
+                platform_track_id = await _resolve_spotify(http, token, track)
+            else:
+                platform_track_id = await _resolve_tidal(http, token, track, country)
 
     if not platform_track_id:
         raise HTTPException(404, "no match")
 
-    # 5. TrackPlatform upsert — 다음부터 직행
+    # 5. TrackPlatform upsert — 다음부터 직행. ("trackId", platform) unique —
+    # youtube 합성('yt_…') 매핑이 남아 있던 트랙은 real videoId로 교체된다.
     tp_id = stable_id(f"tp|{platform}|{platform_track_id}")
-    with conn.cursor() as cur:
-        cur.execute(
-            '''INSERT INTO "TrackPlatform"
-                 (id, "trackId", platform, "platformTrackId")
-               VALUES (%s, %s, %s, %s)
-               ON CONFLICT DO NOTHING''',
-            (tp_id, track_id, platform, platform_track_id),
-        )
-    conn.commit()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                '''INSERT INTO "TrackPlatform"
+                     (id, "trackId", platform, "platformTrackId")
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT ("trackId", platform)
+                   DO UPDATE SET "platformTrackId" = EXCLUDED."platformTrackId"''',
+                (tp_id, track_id, platform, platform_track_id),
+            )
+        conn.commit()
+    except psycopg.errors.UniqueViolation:
+        # 같은 platform ID가 이미 다른 내부 트랙(중복 Track)에 같은 id로 매핑된
+        # PK 충돌 — 캐싱만 실패한 것이므로 응답은 정상 반환 (기존 DO NOTHING과
+        # 동등한 관용)
+        conn.rollback()
 
     return {"platform_track_id": platform_track_id}

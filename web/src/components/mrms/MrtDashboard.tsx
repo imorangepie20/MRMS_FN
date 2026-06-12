@@ -7,7 +7,7 @@ import { AlbumDetailModal } from "@/components/album/AlbumDetailModal";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { CreatePlaylistModal } from "@/components/playlist/CreatePlaylistModal";
 import { PlaylistDetailModal } from "@/components/playlist/PlaylistDetailModal";
-import { loadAndPlay } from "@/lib/player";
+import { loadAndPlay, realYoutubeId } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
 import type { MrtLatestResponse, RecommendedTrack, UserInfo } from "@/lib/types";
 
@@ -21,6 +21,8 @@ function toQueueTrack(t: RecommendedTrack) {
     album_cover: t.album_cover ?? null,
     tidal_track_id: t.tidal_track_id,
     spotify_track_id: t.spotify_track_id,
+    // 'yt_' 합성 ID는 재생 불가 — 방어적으로 null 취급
+    youtube_track_id: realYoutubeId(t.youtube_track_id),
   };
 }
 
@@ -367,6 +369,7 @@ function TrackRow({
         album_cover: track.album_cover ?? null,
         tidal_track_id: track.tidal_track_id,
         spotify_track_id: track.spotify_track_id,
+        youtube_track_id: realYoutubeId(track.youtube_track_id),
       },
     ];
     usePlayerStore.setState({ queue, currentIdx: 0, position: 0 });

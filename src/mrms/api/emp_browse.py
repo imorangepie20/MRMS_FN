@@ -48,7 +48,8 @@ def get_item_tracks(
                       t."durationMs",
                       tp_tidal."platformTrackId" AS tidal_id,
                       tp_spotify."platformTrackId" AS spotify_id,
-                      es.cover_url AS album_cover
+                      es.cover_url AS album_cover,
+                      tp_youtube."platformTrackId" AS youtube_id
                FROM "EMPSource" es
                JOIN "Track" t ON t.id = es."trackId"
                JOIN "Artist" ar ON ar.id = t."artistId"
@@ -57,6 +58,11 @@ def get_item_tracks(
                  ON tp_tidal."trackId" = t.id AND tp_tidal.platform = 'tidal'
                LEFT JOIN "TrackPlatform" tp_spotify
                  ON tp_spotify."trackId" = t.id AND tp_spotify.platform = 'spotify'
+               LEFT JOIN "TrackPlatform" tp_youtube
+                 ON tp_youtube."trackId" = t.id AND tp_youtube.platform = 'youtube'
+                 -- 합성 ID('yt_…')는 IFrame 재생 불가 → 노출 차단.
+                 -- '_'는 LIKE 와일드카드라 escape, '%%'는 psycopg 파라미터 escape.
+                 AND tp_youtube."platformTrackId" NOT LIKE 'yt\\_%%' ESCAPE '\\'
                WHERE es.source_id = %s
                ORDER BY es."importedAt"
                LIMIT %s''',
@@ -78,6 +84,7 @@ def get_item_tracks(
             "duration_ms": r[5],
             "tidal_track_id": r[6],
             "spotify_track_id": r[7],
+            "youtube_track_id": r[9],
             "liked": states.get(r[0], (False, False))[0],
             "pct": states.get(r[0], (False, False))[1],
         }

@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from mrms.api.main import app
 from mrms.db.emp import upsert_emp_source
 from mrms.db.emp_section import upsert_section, upsert_section_item
+from mrms.db.ids import stable_id
 
 
 client = TestClient(app)
@@ -94,6 +95,68 @@ def test_item_tracks_include_liked_pct(db_conn, login, cleanup):
         # 새 사용자 — UserTrack row 없으므로 둘 다 False
         assert tracks[0]["liked"] is False
         assert tracks[0]["pct"] is False
+    finally:
+        client.cookies.clear()
+
+
+def _seed_youtube_track(db_conn, cleanup, key: str, platform_track_id: str) -> str:
+    """Artist + Track + youtube TrackPlatform 시드 — track_id 반환.
+
+    cleanup은 역순 실행 — 부모(Artist/Track) 먼저 등록 (자식 먼저 삭제)."""
+    artist = f"YTB Artist {key}"
+    artist_id = stable_id(f"artist|{artist.lower()}")
+    isrc = f"emp_ytb_{key}"
+    track_id = stable_id(f"track|{isrc}")
+    cleanup('DELETE FROM "Artist" WHERE id = %s', (artist_id,))
+    cleanup('DELETE FROM "Track" WHERE id = %s', (track_id,))
+    cleanup('DELETE FROM "TrackPlatform" WHERE "trackId" = %s', (track_id,))
+    with db_conn.cursor() as cur:
+        cur.execute(
+            '''INSERT INTO "Artist" (id, name, "nameNormalized")
+               VALUES (%s, %s, %s) ON CONFLICT (id) DO NOTHING''',
+            (artist_id, artist, artist.lower()),
+        )
+        cur.execute(
+            '''INSERT INTO "Track"
+                 (id, isrc, title, "titleNormalized", "durationMs", "artistId")
+               VALUES (%s, %s, %s, %s, 0, %s) ON CONFLICT (id) DO NOTHING''',
+            (track_id, isrc, f"YTB Song {key}", f"ytb song {key}", artist_id),
+        )
+        cur.execute(
+            '''INSERT INTO "TrackPlatform" (id, "trackId", platform, "platformTrackId")
+               VALUES (%s, %s, 'youtube', %s)''',
+            (stable_id(f"tp|youtube|{platform_track_id}|{track_id}"), track_id, platform_track_id),
+        )
+    db_conn.commit()
+    return track_id
+
+
+def test_item_tracks_youtube_track_id_filters_synthetic(db_conn, login, cleanup):
+    """youtube_track_id 노출 — real videoId('yt' prefix여도)는 그대로,
+    합성('yt_…') ID는 None (IFrame 재생 불가 — 노출 차단)."""
+    _, session_id = login()
+    item_id = "uuid_ytbrowse_xx"
+    source_id = f"chart:{item_id}"
+    cleanup('DELETE FROM "EMPSource" WHERE source_id = %s', (source_id,))
+
+    # 'yt'로 시작하지만 '_'가 없는 real videoId — escape가 틀리면('_'를
+    # 와일드카드로 두면) 이것까지 필터돼 버림
+    t_real = _seed_youtube_track(db_conn, cleanup, "real", "ytVID000001")
+    t_synth = _seed_youtube_track(db_conn, cleanup, "synth", f"yt_{'ab' * 8}")
+    upsert_emp_source(db_conn, t_real, "youtube", "chart", source_id, "YTB")
+    upsert_emp_source(db_conn, t_synth, "youtube", "chart", source_id, "YTB")
+
+    client.cookies.set("mrms_session", session_id)
+    try:
+        r = client.get(f"/api/emp/items/chart/{item_id}/tracks")
+        assert r.status_code == 200, r.text
+        by_id = {t["track_id"]: t for t in r.json()["tracks"]}
+        assert by_id[t_real]["youtube_track_id"] == "ytVID000001"
+        assert by_id[t_synth]["youtube_track_id"] is None
+        # 기존 필드 시프트 없음
+        assert by_id[t_real]["tidal_track_id"] is None
+        assert by_id[t_real]["spotify_track_id"] is None
+        assert by_id[t_real]["artist"] == "YTB Artist real"
     finally:
         client.cookies.clear()
 

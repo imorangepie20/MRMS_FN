@@ -17,6 +17,7 @@ export interface PersonaTrack {
   similarity: number;
   tidal_track_id: string | null;
   spotify_track_id: string | null;
+  youtube_track_id?: string | null;
 }
 
 export interface Persona {
@@ -35,6 +36,7 @@ export interface RecommendedTrack {
   persona_idx: number | null;
   tidal_track_id: string | null;
   spotify_track_id: string | null;
+  youtube_track_id?: string | null;
   album_title?: string | null;
   album_cover?: string | null;
   duration_ms?: number | null;
@@ -72,6 +74,7 @@ export interface TrackInfo {
   album_cover?: string | null;
   tidal_track_id: string | null;
   spotify_track_id: string | null;
+  youtube_track_id?: string | null;
   duration_ms?: number | null;
   liked?: boolean;
   pct?: boolean;
@@ -207,6 +210,7 @@ export interface EmpItemTrack {
   duration_ms: number | null;
   tidal_track_id: string | null;
   spotify_track_id: string | null;
+  youtube_track_id?: string | null;
   liked?: boolean;
   pct?: boolean;
 }
