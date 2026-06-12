@@ -18,12 +18,12 @@ function isTrackSection(sec: EmpSection): boolean {
 }
 
 
-/** 스포티파이 Top 50 시리즈 — 단일 플레이리스트를 세로 트랙 나열형으로. */
-function isTop50Section(sec: EmpSection): boolean {
+/** 스포티파이 차트 플레이리스트(Top 50 시리즈 + Top Songs) — 세로 트랙 나열형으로. */
+function isSpotifyChartList(sec: EmpSection): boolean {
   return (
     sec.platform === "spotify" &&
     sec.items.length > 0 &&
-    /top\s*50/i.test(sec.display_title ?? "")
+    /top\s*(50|songs)/i.test(sec.display_title ?? "")
   );
 }
 
@@ -171,7 +171,7 @@ export function EmpBrowse() {
 
           <div className="space-y-7">
             {group.sections.map((sec, i) =>
-              isTop50Section(sec) ? (
+              isSpotifyChartList(sec) ? (
                 <TrackListSection key={sec.id} section={sec} index={i} />
               ) : isTrackSection(sec) ? (
                 <TrackSectionRow key={sec.id} section={sec} index={i} />
