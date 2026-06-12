@@ -91,7 +91,7 @@ export function EmpBrowse() {
     : "—";
 
   return (
-    <div className="emp-dark bg-(--mrms-bg) min-h-screen -mt-px px-5 pt-6 pb-48 md:px-10 md:pt-10">
+    <div className="px-5 pt-6 pb-48 md:px-10 md:pt-10">
       {/* === DATELINE === */}
       <div className="flex justify-between items-baseline border-b border-(--mrms-rule) pb-2 mb-6 font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) gap-3">
         <span className="truncate">{dateStr} · External Music Pool</span>
@@ -104,7 +104,7 @@ export function EmpBrowse() {
           <div className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) mb-2">
             Section 02 / EMP — External Music Pool
           </div>
-          <h1 className="font-display font-bold text-[32px] md:text-[44px] leading-[1.05] tracking-[-0.015em] text-(--mrms-ink) mb-3">
+          <h1 className="font-display font-bold text-[46px] md:text-[76px] leading-[0.9] tracking-[-0.035em] text-(--mrms-ink) mb-3">
             External pool
           </h1>
           <p className="text-[14px] font-normal text-(--mrms-ink-soft) leading-relaxed max-w-[560px] border-l-2 border-(--mrms-rust) pl-3.5">
@@ -143,21 +143,19 @@ export function EmpBrowse() {
 
       {platformGroups.map((group) => (
         <div key={group.platform} className="mb-12">
-          {/* === EDITORIAL DIVIDER === */}
-          <div className="flex items-center gap-4 mb-6">
-            <span className="h-px flex-1 bg-(--mrms-rule)" />
-            <div className="flex items-baseline gap-2.5 shrink-0">
-              <span className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) tabular-nums">
-                {group.platform}
-              </span>
-              <p className="font-display italic text-[22px] md:text-[30px] text-(--mrms-ink) leading-tight">
+          {/* === BOLD PLATFORM DIVIDER — 플랫폼명 초대형 슬래브 === */}
+          <div className="mb-6 flex items-end justify-between gap-4 border-b-2 border-(--mrms-ink) pb-1">
+            <h2 className="font-display font-bold uppercase text-(--mrms-ink) leading-[0.82] tracking-[-0.04em] text-[40px] md:text-[68px]">
+              {group.platform}
+            </h2>
+            <div className="text-right shrink-0 pb-1.5">
+              <p className="font-display italic text-(--mrms-rust) leading-none text-[15px] md:text-[22px]">
                 {PLATFORM_DIVIDER[group.platform] ?? `${group.platform} is Good`}
               </p>
               <span className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) tabular-nums">
-                {group.sections.length}·{group.itemCount}
+                {group.sections.length} sec · {group.itemCount} items
               </span>
             </div>
-            <span className="h-px flex-1 bg-(--mrms-rule)" />
           </div>
 
           <div className="space-y-7">
