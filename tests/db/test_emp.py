@@ -105,6 +105,44 @@ def test_upsert_emp_source_cover_defaults_none(db_conn: psycopg.Connection, clea
         assert cur.fetchone()[0] is None
 
 
+def test_upsert_emp_source_backfills_cover(db_conn: psycopg.Connection, cleanup):
+    """기존 row가 cover None이면 재호출 시 채워지고(백필), 이미 있으면 유지."""
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT id FROM "Track" LIMIT 1')
+        row = cur.fetchone()
+    if not row:
+        pytest.skip("Track 데이터 부족")
+    track_id = row[0]
+
+    source_id = f"pl_backfill_{uuid.uuid4().hex[:8]}"
+    cleanup(
+        'DELETE FROM "EMPSource" WHERE "trackId" = %s AND source_id = %s',
+        (track_id, source_id),
+    )
+
+    def cover_of() -> str | None:
+        with db_conn.cursor() as cur:
+            cur.execute(
+                'SELECT cover_url FROM "EMPSource" '
+                'WHERE "trackId" = %s AND platform = %s AND source_id = %s',
+                (track_id, "melon", source_id),
+            )
+            return cur.fetchone()[0]
+
+    # 1) 커버 없이 적재 → None
+    upsert_emp_source(db_conn, track_id, "melon", "chart", source_id, "Hot")
+    assert cover_of() is None
+
+    # 2) 커버 있는 값으로 재적재 → 백필됨
+    new_cover = "https://cdn.example/backfilled.jpg"
+    upsert_emp_source(db_conn, track_id, "melon", "chart", source_id, "Hot", cover_url=new_cover)
+    assert cover_of() == new_cover
+
+    # 3) 또 다른 커버로 재적재 → 기존 커버 유지 (덮어쓰지 않음)
+    upsert_emp_source(db_conn, track_id, "melon", "chart", source_id, "Hot", cover_url="https://cdn.example/other.jpg")
+    assert cover_of() == new_cover
+
+
 def test_upsert_emp_source_dedup(db_conn: psycopg.Connection, cleanup):
     """동일 (trackId, platform, source_id) 두 번 호출 — 두 번째는 idempotent."""
     with db_conn.cursor() as cur:

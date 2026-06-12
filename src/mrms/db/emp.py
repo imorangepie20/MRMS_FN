@@ -20,18 +20,20 @@ def upsert_emp_source(
     source_name: str | None,
     cover_url: str | None = None,
 ) -> str:
-    """EMPSource INSERT (UNIQUE 충돌 시 skip). row_id 반환.
-    trigger가 Track.inEmp = TRUE 자동 설정.
+    """EMPSource upsert. row_id 반환. trigger가 Track.inEmp = TRUE 자동 설정.
 
-    cover_url: 트랙 단위 앨범 커버 (chart/모달 노출용). ON CONFLICT DO NOTHING이라
-    이미 있는 row의 cover는 갱신하지 않는다 (첫 적재 시 채워짐)."""
+    cover_url: 트랙 단위 앨범 커버 (chart/모달 노출용). ON CONFLICT 시 cover_url만
+    COALESCE로 갱신 — 기존 커버가 있으면 유지, None이면 새 값으로 채운다.
+    (재import 시 커버 없던 기존 row 자동 백필 + 한번 채워진 커버는 보존.
+     source_name 등 나머지 필드는 첫 적재 값 유지.)"""
     row_id = _id(f"emp|{track_id}|{platform}|{source_id}")
     with conn.cursor() as cur:
         cur.execute(
             '''INSERT INTO "EMPSource"
                  (id, "trackId", platform, source_type, source_id, source_name, cover_url)
                VALUES (%s, %s, %s, %s, %s, %s, %s)
-               ON CONFLICT ("trackId", platform, source_id) DO NOTHING''',
+               ON CONFLICT ("trackId", platform, source_id) DO UPDATE
+                 SET cover_url = COALESCE("EMPSource".cover_url, EXCLUDED.cover_url)''',
             (row_id, track_id, platform, source_type, source_id, source_name, cover_url),
         )
     conn.commit()
