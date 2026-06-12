@@ -221,22 +221,23 @@ def test_logout_deletes_session(db_conn):
 
 
 def test_me_response_includes_primary_platform(db_conn):
-    """/me 응답에 primary_platform 필드 포함."""
-    from mrms.db.user_track import get_or_create_user
+    """/me 응답의 primary_platform은 연결된 플랫폼에서 계산 (저장값 아님).
+
+    spotify+youtube 연결 → 우선순위(tidal>spotify>youtube)상 'spotify' 반환.
+    """
+    from mrms.db.user_track import get_or_create_user, upsert_oauth
     import uuid as _u
 
     user_id = get_or_create_user(db_conn, "primary_test@example.com")
-    with db_conn.cursor() as cur:
-        cur.execute(
-            'UPDATE "User" SET "primaryPlatform" = %s WHERE id = %s',
-            ("spotify", user_id),
-        )
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    upsert_oauth(db_conn, user_id, "youtube", "YT", "YR", expires, ["scope"])
+    upsert_oauth(db_conn, user_id, "spotify", "SP", "SR", expires, ["scope"])
     session_id = _u.uuid4().hex
-    expires = datetime.now(timezone.utc) + timedelta(days=30)
+    sess_expires = datetime.now(timezone.utc) + timedelta(days=30)
     with db_conn.cursor() as cur:
         cur.execute(
             'INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
-            (session_id, user_id, expires),
+            (session_id, user_id, sess_expires),
         )
     db_conn.commit()
 

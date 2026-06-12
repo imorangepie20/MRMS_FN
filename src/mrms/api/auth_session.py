@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from mrms.api.deps import db_conn, get_current_user_id
-from mrms.db.user_track import get_or_create_user, upsert_oauth
+from mrms.db.user_track import get_or_create_user, resolve_primary_platform, upsert_oauth
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -153,15 +153,19 @@ def me(
 ) -> dict:
     """현재 user 정보 반환."""
     with conn.cursor() as cur:
-        cur.execute('SELECT email, "displayName", country, "primaryPlatform" FROM "User" WHERE id = %s', (user_id,))
+        cur.execute('SELECT email, "displayName", country FROM "User" WHERE id = %s', (user_id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "User not found")
-        email, display_name, country, primary_platform = row
+        email, display_name, country = row
         cur.execute('SELECT COUNT(*) FROM "UserPersona" WHERE "userId" = %s', (user_id,))
         personas_count = cur.fetchone()[0]
         cur.execute('SELECT COUNT(*) FROM "UserTrack" WHERE "userId" = %s', (user_id,))
         tracks_count = cur.fetchone()[0]
+    # primary는 저장값(User.primaryPlatform) 대신 현재 연결된 플랫폼에서 계산 —
+    # 구독(Tidal/Spotify) 연결/해제가 자동 반영. 아무것도 연결 안 됐으면 None
+    # (프론트는 미연결이면 재생 안 함).
+    primary_platform = resolve_primary_platform(conn, user_id)
     return {
         "user_id": user_id,
         "email": email,

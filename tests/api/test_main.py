@@ -174,18 +174,42 @@ def test_mrt_latest_includes_tidal_track_id_and_filters(db_conn, set_session_coo
 
 
 def test_user_endpoint_includes_primary_platform(db_conn, set_session_cookie):
-    """/api/user 응답에 primary_platform 필드 포함."""
+    """/api/user의 primary_platform은 연결된 플랫폼에서 계산 (tidal 우선)."""
+    from datetime import datetime, timedelta, timezone
+    from mrms.db.user_track import upsert_oauth
+
     user_id = set_session_cookie("primary_main@example.com")
-    with db_conn.cursor() as cur:
-        cur.execute(
-            'UPDATE "User" SET "primaryPlatform" = %s WHERE id = %s',
-            ("tidal", user_id),
-        )
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    upsert_oauth(db_conn, user_id, "tidal", "T", "R", expires, ["scope"])
     db_conn.commit()
     r = client.get("/api/user")
     client.cookies.clear()
     assert r.status_code == 200
     assert r.json()["primary_platform"] == "tidal"
+
+
+def test_user_endpoint_youtube_only_primary(db_conn, set_session_cookie):
+    """youtube만 연결한 유저 → primary_platform='youtube' (무료 baseline)."""
+    from datetime import datetime, timedelta, timezone
+    from mrms.db.user_track import upsert_oauth
+
+    user_id = set_session_cookie("primary_yt_only@example.com")
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    upsert_oauth(db_conn, user_id, "youtube", "YT", "YR", expires, ["scope"])
+    db_conn.commit()
+    r = client.get("/api/user")
+    client.cookies.clear()
+    assert r.status_code == 200
+    assert r.json()["primary_platform"] == "youtube"
+
+
+def test_user_endpoint_no_oauth_primary_none(db_conn, set_session_cookie):
+    """아무 플랫폼도 연결 안 한 유저 → primary_platform=None (재생 불가)."""
+    set_session_cookie("primary_unconnected@example.com")
+    r = client.get("/api/user")
+    client.cookies.clear()
+    assert r.status_code == 200
+    assert r.json()["primary_platform"] is None
 
 
 def test_mrt_latest_includes_spotify_track_id(db_conn, set_session_cookie):
@@ -236,13 +260,13 @@ def test_mrt_latest_spotify_user_gets_spotify_tracks(db_conn, set_session_cookie
     import numpy as np
     from mrms.db import user_embedding as ue
 
+    from datetime import datetime, timedelta, timezone
+    from mrms.db.user_track import upsert_oauth
+
     user_id = set_session_cookie("spotify_filter_test@example.com")
-    # Spotify primary로 설정
-    with db_conn.cursor() as cur:
-        cur.execute(
-            'UPDATE "User" SET "primaryPlatform" = %s WHERE id = %s',
-            ("spotify", user_id),
-        )
+    # Spotify 연결 → primary 계산 결과 'spotify' (tidal 미연결)
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    upsert_oauth(db_conn, user_id, "spotify", "SP", "SR", expires, ["scope"])
 
     rng = np.random.default_rng(2026)
     for idx in range(3):
@@ -297,3 +321,54 @@ def test_mrt_latest_spotify_user_gets_spotify_tracks(db_conn, set_session_cookie
     assert not any(tid in playlist_ids for tid in tidal_only_ids)
     # spotify_track_id 채워짐
     assert all(t.get("spotify_track_id") for t in persona_0["playlist"])
+
+
+def test_fetch_track_metadata_youtube_no_inner_filter(db_conn):
+    """youtube primary는 INNER 필터 없이 tidal/spotify 없는 트랙도 반환.
+
+    회귀 가드: 같은 트랙 셋에 대해 tidal/spotify primary는 INNER 필터로
+    가용 트랙만 반환 (youtube는 전체).
+    """
+    from mrms.api.main import _fetch_track_metadata
+
+    # tidal/spotify 둘 다 없는 트랙 1개 + tidal 가용 트랙 1개
+    with db_conn.cursor() as cur:
+        cur.execute('''
+            SELECT t.id FROM "Track" t
+            WHERE NOT EXISTS (
+                SELECT 1 FROM "TrackPlatform" tp
+                WHERE tp."trackId" = t.id AND tp.platform IN ('tidal', 'spotify')
+            )
+            LIMIT 1
+        ''')
+        bare_row = cur.fetchone()
+        cur.execute('''
+            SELECT DISTINCT t.id FROM "Track" t
+            JOIN "TrackPlatform" tp ON tp."trackId" = t.id AND tp.platform = 'tidal'
+            LIMIT 1
+        ''')
+        tidal_row = cur.fetchone()
+    if not bare_row or not tidal_row:
+        import pytest
+        pytest.skip("필요 데이터 부족 (platform 없는 트랙 + tidal 트랙)")
+
+    bare_id = bare_row[0]
+    tidal_id = tidal_row[0]
+    track_ids = [bare_id, tidal_id]
+
+    # youtube: INNER 필터 없음 → 두 트랙 모두 반환
+    yt_meta = _fetch_track_metadata(db_conn, track_ids, primary_platform="youtube")
+    assert bare_id in yt_meta, "youtube primary가 platform 없는 트랙을 필터링함"
+    assert tidal_id in yt_meta
+    # tidal_track_id/spotify_track_id는 None일 수 있음 (LEFT JOIN)
+    assert yt_meta[bare_id]["tidal_track_id"] is None
+    assert yt_meta[bare_id]["spotify_track_id"] is None
+
+    # 회귀: tidal primary는 INNER 필터 → bare_id 제외
+    tidal_meta = _fetch_track_metadata(db_conn, track_ids, primary_platform="tidal")
+    assert bare_id not in tidal_meta, "tidal primary INNER 필터 회귀"
+    assert tidal_id in tidal_meta
+
+    # 회귀: spotify primary도 INNER 필터 → bare_id 제외
+    sp_meta = _fetch_track_metadata(db_conn, track_ids, primary_platform="spotify")
+    assert bare_id not in sp_meta, "spotify primary INNER 필터 회귀"

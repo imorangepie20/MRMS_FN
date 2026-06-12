@@ -29,6 +29,7 @@ from mrms.api.schemas import (
     UserInfo,
 )
 from mrms.db.user_embedding import fetch_latest_playlists
+from mrms.db.user_track import resolve_primary_platform
 from mrms.recsys.mrt import derive_recommended_albums, derive_recommended_tracks
 
 
@@ -67,13 +68,13 @@ def user(
 ) -> UserInfo:
     with conn.cursor() as cur:
         cur.execute(
-            'SELECT email, "displayName", country, "primaryPlatform" FROM "User" WHERE id = %s',
+            'SELECT email, "displayName", country FROM "User" WHERE id = %s',
             (user_id,),
         )
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "User not found")
-        email, display_name, country, primary_platform = row
+        email, display_name, country = row
 
         cur.execute(
             'SELECT COUNT(*) FROM "UserPersona" WHERE "userId" = %s',
@@ -86,6 +87,10 @@ def user(
             (user_id,),
         )
         tracks_count = cur.fetchone()[0]
+
+    # primary는 저장값 대신 현재 연결된 플랫폼에서 계산 (구독 연결/해제 자동 반영).
+    # 미연결이면 None — UserInfo.primary_platform 타입에 맞춰 폴백.
+    primary_platform = resolve_primary_platform(conn, user_id)
 
     return UserInfo(
         user_id=user_id,
@@ -107,10 +112,21 @@ def _fetch_track_metadata(
 
     primary_platform='tidal': INNER JOIN tidal, LEFT JOIN spotify
     primary_platform='spotify': INNER JOIN spotify, LEFT JOIN tidal
+    primary_platform='youtube': INNER 필터 없음 — tidal/spotify 둘 다 LEFT JOIN.
+      youtube는 사전 매핑 ID 없이 재생 시점 resolve(검색)로 해결하므로
+      가용성 필터(INNER)를 걸지 않고 전체 트랙을 반환한다.
     """
     if not track_ids:
         return {}
-    if primary_platform == "spotify":
+    if primary_platform == "youtube":
+        # 무료 baseline — 가용성 필터 없이 tidal/spotify ID는 있으면 노출만.
+        join_clause = (
+            'LEFT JOIN "TrackPlatform" tp_t '
+            '   ON tp_t."trackId" = t.id AND tp_t.platform = \'tidal\' '
+            'LEFT JOIN "TrackPlatform" tp_s '
+            '   ON tp_s."trackId" = t.id AND tp_s.platform = \'spotify\' '
+        )
+    elif primary_platform == "spotify":
         join_clause = (
             'INNER JOIN "TrackPlatform" tp_s '
             '   ON tp_s."trackId" = t.id AND tp_s.platform = \'spotify\' '
@@ -158,11 +174,10 @@ def mrt_latest(
     top_tracks_n: int = 50,
     top_albums_n: int = 15,
 ) -> MrtLatestResponse:
-    # user의 primary_platform 확인
-    with conn.cursor() as cur:
-        cur.execute('SELECT "primaryPlatform" FROM "User" WHERE id = %s', (user_id,))
-        row = cur.fetchone()
-    primary_platform = row[0] if row else "tidal"
+    # user의 primary_platform — 저장값 대신 현재 연결된 플랫폼에서 계산
+    # (구독 연결/해제 자동 반영). 아무것도 연결 안 됐으면 기존 동작 보존 위해
+    # 'tidal' 폴백 (메타 조회의 INNER 필터 기준; 미연결 유저는 프론트가 재생 안 함).
+    primary_platform = resolve_primary_platform(conn, user_id) or "tidal"
 
     playlists = fetch_latest_playlists(conn, user_id, limit=3)
     if not playlists:

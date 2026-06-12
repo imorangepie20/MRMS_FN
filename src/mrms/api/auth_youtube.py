@@ -166,6 +166,8 @@ async def callback(
     else:
         user_id = get_or_create_user(conn, email)
 
+    # NOTE: primary는 이제 읽을 때 resolve_primary_platform로 계산하므로
+    # 아래 primaryPlatform CASE 세팅은 vestigial(무해). 남겨도 무방.
     with conn.cursor() as cur:
         cur.execute(
             '''UPDATE "User" SET

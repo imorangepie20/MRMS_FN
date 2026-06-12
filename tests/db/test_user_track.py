@@ -11,9 +11,54 @@ from mrms.db.user_track import (
     get_or_create_user,
     upsert_oauth,
     get_oauth,
+    resolve_primary_platform,
     find_track_id_by_isrc,
     upsert_user_track,
 )
+
+
+def _connect_oauth(db_conn, user_id, platform):
+    """테스트용 UserOAuth 연결 헬퍼 (롤백 보호 — commit 안 함)."""
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    upsert_oauth(db_conn, user_id, platform, "AT", "RT", expires, ["scope"])
+
+
+def test_resolve_primary_none_when_no_oauth(db_conn):
+    """아무 플랫폼도 연결 안 됨 → None."""
+    user_id = get_or_create_user(db_conn, email="prim_none@example.com")
+    assert resolve_primary_platform(db_conn, user_id) is None
+
+
+def test_resolve_primary_youtube_only(db_conn):
+    """youtube만 연결 → 'youtube'."""
+    user_id = get_or_create_user(db_conn, email="prim_yt@example.com")
+    _connect_oauth(db_conn, user_id, "youtube")
+    assert resolve_primary_platform(db_conn, user_id) == "youtube"
+
+
+def test_resolve_primary_spotify_beats_youtube(db_conn):
+    """spotify+youtube → 우선순위상 'spotify'."""
+    user_id = get_or_create_user(db_conn, email="prim_sp@example.com")
+    _connect_oauth(db_conn, user_id, "youtube")
+    _connect_oauth(db_conn, user_id, "spotify")
+    assert resolve_primary_platform(db_conn, user_id) == "spotify"
+
+
+def test_resolve_primary_tidal_beats_all(db_conn):
+    """tidal+youtube → 우선순위상 'tidal' (가장 premium)."""
+    user_id = get_or_create_user(db_conn, email="prim_td@example.com")
+    _connect_oauth(db_conn, user_id, "youtube")
+    _connect_oauth(db_conn, user_id, "tidal")
+    assert resolve_primary_platform(db_conn, user_id) == "tidal"
+
+
+def test_resolve_primary_tidal_over_spotify(db_conn):
+    """tidal+spotify+youtube 모두 → 'tidal'. 우선순위 tidal>spotify>youtube."""
+    user_id = get_or_create_user(db_conn, email="prim_all@example.com")
+    _connect_oauth(db_conn, user_id, "youtube")
+    _connect_oauth(db_conn, user_id, "spotify")
+    _connect_oauth(db_conn, user_id, "tidal")
+    assert resolve_primary_platform(db_conn, user_id) == "tidal"
 
 
 def test_create_user(db_conn):

@@ -13,7 +13,9 @@ class UserInfo(BaseModel):
     country: str | None = None
     personas_count: int
     user_tracks_count: int
-    primary_platform: str
+    # 현재 연결된 플랫폼에서 계산 (tidal > spotify > youtube). 아무것도
+    # 연결 안 됐으면 None (재생 불가). youtube = 무료 baseline.
+    primary_platform: str | None = None
 
 
 class PersonaTrack(BaseModel):

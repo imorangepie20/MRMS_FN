@@ -189,6 +189,10 @@ export async function initYoutubeSdk(): Promise<void> {
             } catch {
               /* getIframe 미지원 시 무시 */
             }
+            // tidal/spotify와 동일 — SDK 준비 완료를 store에 알려야
+            // PlayerBar의 "initializing" 배너가 사라지고 PlayButton이 활성화된다.
+            // (youtube가 primary인 무료 유저가 재생 가능해지는 지점)
+            usePlayerStore.setState({ sdkReady: true });
             resolve();
           },
           onStateChange: (e: { data: number }) => handleStateChange(e.data),

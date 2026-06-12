@@ -10,8 +10,10 @@ import * as youtubePlayer from "./youtube-player";
 
 export type Platform = "tidal" | "spotify" | "youtube";
 
-// youtube는 광고가 있어 항상 마지막 fallback 전용 — primary 불가
-export type PrimaryPlatform = Exclude<Platform, "youtube">;
+// primary는 현재 연결된 최선 플랫폼 (tidal > spotify > youtube).
+// youtube는 무료 baseline이라 primary로도 올 수 있다 (유료 구독 없는 유저).
+// 단, tidal/spotify가 primary일 때는 youtube가 여전히 광고 때문에 마지막 fallback.
+export type PrimaryPlatform = Platform;
 
 // fallback 우선순위 — tidal → spotify → youtube (youtube는 광고 때문에 항상 마지막)
 const FALLBACK_ORDER: Platform[] = ["tidal", "spotify", "youtube"];
@@ -53,7 +55,8 @@ const PLAYERS: Record<Platform, PlayerAdapter> = {
   },
 };
 
-// 사용자 선호 (primary) — initPlayer가 세팅. youtube는 primary 불가 (광고).
+// 사용자 선호 (primary) — initPlayer가 세팅. 현재 연결된 최선 플랫폼
+// (tidal > spotify > youtube). 무료 유저는 youtube가 primary일 수 있다.
 let primary: PrimaryPlatform | null = null;
 // 현재 실제로 소리를 내는 플랫폼 — loadAndPlay가 세팅. 컨트롤 라우팅 기준.
 let active: Platform | null = null;
@@ -75,9 +78,13 @@ const unavailable: Record<Platform, boolean> = {
 
 
 export async function initPlayer(
-  primaryPlatform: PrimaryPlatform,
+  primaryPlatform: PrimaryPlatform | null,
 ): Promise<void> {
   primary = primaryPlatform;
+  // 미연결 유저(primary=null): 연결된 플랫폼이 없으므로 어떤 SDK도 초기화하지
+  // 않는다. playOrderFor(null)=[]이라 재생 시도도 안 함 (재생 불가, 기존과 동일).
+  // 콜백/SDK는 구독 연결 후 재마운트 때 다시 init된다.
+  if (primaryPlatform === null) return;
   // 트랙 종료 시 facade가 큐를 진행 (교차 플랫폼 포함) — injection으로 순환 import 회피
   tidalPlayer.setOnTrackEnd(() => void advanceToNext());
   spotifyPlayer.setOnTrackEnd(() => void advanceToNext());
@@ -119,6 +126,21 @@ function fallbacksFor(pref: Platform): Platform[] {
 }
 
 
+/**
+ * primary 기준 전체 재생 시도 순서.
+ * - primary가 youtube(무료 유저): [youtube, tidal, spotify] — youtube로 먼저 재생.
+ * - primary가 tidal/spotify: [primary, 나머지 non-youtube, youtube] — youtube는
+ *   광고 때문에 항상 맨 마지막 fallback.
+ * primary가 null이면 연결된 플랫폼 없음 → 빈 배열 (재생 불가, 기존과 동일).
+ */
+function playOrderFor(pref: Platform | null): Platform[] {
+  if (pref === null) return [];
+  if (pref === "youtube") return ["youtube", "tidal", "spotify"];
+  // tidal/spotify primary: primary 먼저, 나머지 non-youtube, youtube 맨 마지막
+  return [pref, ...FALLBACK_ORDER.filter((p) => p !== pref && p !== "youtube"), "youtube"];
+}
+
+
 /** 합성 youtube ID ('yt_' + hash) 방어 — IFrame에 넘기면 invalid video. null 취급. */
 export function realYoutubeId(id: string | null | undefined): string | null {
   if (!id || id.startsWith("yt_")) return null;
@@ -135,9 +157,7 @@ function idOf(track: QueueTrack, p: Platform): string | null {
 
 /** 이 트랙이 재생될 플랫폼. primary 우선, 없으면 fallback 순서대로, 전부 없으면 null. */
 export function getPlatformForTrack(track: QueueTrack): Platform | null {
-  const pref: Platform = primary ?? "tidal";
-  if (idOf(track, pref)) return pref;
-  for (const p of fallbacksFor(pref)) {
+  for (const p of playOrderFor(primary)) {
     if (idOf(track, p)) return p;
   }
   return null;
@@ -265,36 +285,25 @@ async function playOn(
 
 
 /**
- * 트랙 재생 — primary 우선, 실패/ID 부재 시 fallback 순서대로.
- * ID가 비어 있으면 재생 시점에 resolve API로 lazy 해결 (성공 시 queue에 patch).
- * youtube는 광고가 있어 항상 마지막 — primary 쪽 resolve까지 전부 실패한 뒤에만 시도.
+ * 트랙 재생 — playOrderFor(primary) 순서대로 시도.
+ * 각 플랫폼: ID 있으면 직행, 없으면 재생 시점 resolve API로 lazy 해결 (성공 시 queue에 patch).
+ * - tidal/spotify primary: primary → 나머지 non-youtube → youtube(광고 때문에 맨 마지막).
+ * - youtube primary(무료 유저): youtube 먼저 시도 (ID 없으면 resolve(youtube)로 해결).
+ * 모든 await 뒤 generation 체크로 race 시 이중 재생 방지.
  */
 export async function loadAndPlay(track: QueueTrack): Promise<void> {
   const generation = ++playGeneration;
   retriedTrackId = null; // 명시적 재생 — 비동기 에러 재시도 마커 리셋
 
-  const pref: Platform = primary ?? "tidal";
+  let target = track;
   let lastError: Error | null = null;
 
-  // 1) primary ID 있으면 우선 시도
-  if (idOf(track, pref)) {
-    try {
-      await playOn(pref, track, generation);
-      return;
-    } catch (e) {
-      if (generation !== playGeneration) return; // 더 새로운 요청이 인계
-      lastError = e as Error;
-    }
-  }
-
-  // 2) non-youtube fallback 순회 — ID 있으면 직행, 없으면 resolve로 lazy 해결
-  //    (연동 안 된 플랫폼은 스킵. youtube는 primary resolve보다도 뒤 — step 4)
-  let target = track;
-  for (const p of fallbacksFor(pref)) {
-    if (p === "youtube" || unavailable[p]) continue;
+  for (const p of playOrderFor(primary)) {
+    if (unavailable[p]) continue;
+    // ID 없으면 resolve로 lazy 해결 (연동 카탈로그 검색)
     if (!idOf(target, p)) {
       const resolved = await resolveTrackId(p, target);
-      if (generation !== playGeneration) return;
+      if (generation !== playGeneration) return; // 더 새로운 요청이 인계
       if (resolved) target = patchTrackId(target, p, resolved);
     }
     if (!idOf(target, p)) continue;
@@ -304,40 +313,6 @@ export async function loadAndPlay(track: QueueTrack): Promise<void> {
     } catch (e) {
       if (generation !== playGeneration) return;
       lastError = e as Error;
-    }
-  }
-
-  // 3) primary ID도 없었으면 primary 쪽 resolve도 시도
-  if (!idOf(target, pref)) {
-    const resolved = await resolveTrackId(pref, target);
-    if (generation !== playGeneration) return;
-    if (resolved) {
-      target = patchTrackId(target, pref, resolved);
-      try {
-        await playOn(pref, target, generation);
-        return;
-      } catch (e) {
-        if (generation !== playGeneration) return;
-        lastError = e as Error;
-      }
-    }
-  }
-
-  // 4) youtube — 광고 때문에 항상 마지막 fallback (직행 ID → resolve)
-  if (!unavailable.youtube) {
-    if (!idOf(target, "youtube")) {
-      const resolved = await resolveTrackId("youtube", target);
-      if (generation !== playGeneration) return;
-      if (resolved) target = patchTrackId(target, "youtube", resolved);
-    }
-    if (idOf(target, "youtube")) {
-      try {
-        await playOn("youtube", target, generation);
-        return;
-      } catch (e) {
-        if (generation !== playGeneration) return;
-        lastError = e as Error;
-      }
     }
   }
 

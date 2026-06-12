@@ -75,6 +75,32 @@ def get_oauth(
     }
 
 
+# primary 우선순위: tidal > spotify > youtube.
+# tidal/spotify는 유료(프리미엄), youtube는 무료 baseline fallback.
+# 구독 연결/해제가 UserOAuth 존재 여부로 자동 반영되도록 읽을 때 계산한다.
+_PRIMARY_PRIORITY = {"tidal": 0, "spotify": 1, "youtube": 2}
+
+
+def resolve_primary_platform(conn: psycopg.Connection, user_id: str) -> str | None:
+    """현재 연결된(UserOAuth 존재) 플랫폼 중 최선을 primary로 반환.
+
+    우선순위 tidal > spotify > youtube. 아무것도 연결 안 됐으면 None
+    (재생 불가 — 호출부에서 기존 동작 유지).
+
+    구독을 끊으면 (UserOAuth 삭제) 자동으로 한 단계 내려간다 (compute-on-read).
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            'SELECT platform FROM "UserOAuth" WHERE "userId" = %s',
+            (user_id,),
+        )
+        platforms = [r[0] for r in cur.fetchall()]
+    known = [p for p in platforms if p in _PRIMARY_PRIORITY]
+    if not known:
+        return None
+    return min(known, key=lambda p: _PRIMARY_PRIORITY[p])
+
+
 def find_track_id_by_isrc(conn: psycopg.Connection, isrc: str) -> str | None:
     """Track id 반환 (없으면 None)."""
     with conn.cursor() as cur:

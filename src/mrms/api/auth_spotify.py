@@ -120,6 +120,8 @@ async def callback(
     # User upsert
     # primaryPlatform: 새 user (UserOAuth(tidal) 없음)면 'spotify'로 설정,
     # 기존 Tidal 사용자가 같은 email로 들어온 경우 primaryPlatform 그대로 유지.
+    # NOTE: primary는 이제 읽을 때 resolve_primary_platform로 계산하므로
+    # 이 저장값 세팅은 vestigial(무해). 남겨도 무방.
     user_id = get_or_create_user(conn, email)
     with conn.cursor() as cur:
         cur.execute(

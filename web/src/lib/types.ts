@@ -5,7 +5,9 @@ export interface UserInfo {
   country: string | null;
   personas_count: number;
   user_tracks_count: number;
-  primary_platform: "tidal" | "spotify";
+  // 현재 연결된 플랫폼에서 계산 (tidal > spotify > youtube). 아무것도 연결
+  // 안 된 유저는 null (재생 불가). 구독 연결/해제가 자동 반영된다.
+  primary_platform: "tidal" | "spotify" | "youtube" | null;
 }
 
 export interface PersonaTrack {

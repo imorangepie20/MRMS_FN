@@ -366,16 +366,20 @@ export function PlayerBar() {
   const sdkReady = usePlayerStore((s) => s.sdkReady);
   const { user } = useUser();
 
+  const primaryPlatform = user?.primary_platform ?? null;
+
   useEffect(() => {
-    if (!user) return;
+    // 미연결 유저(primary=null): initPlayer가 no-op (어떤 SDK도 안 띄움).
+    // 구독 연결 시 primary가 바뀌면 effect가 다시 돌며 해당 SDK를 init한다.
+    if (!primaryPlatform) return;
     (async () => {
       try {
-        await initPlayer(user.primary_platform);
+        await initPlayer(primaryPlatform);
       } catch (e) {
         usePlayerStore.setState({ errorMsg: (e as Error).message });
       }
     })();
-  }, [user]);
+  }, [primaryPlatform]);
 
   return (
     <div className="fixed bottom-0 left-0 md:left-60 right-0 bg-[var(--mrms-ink)] text-[var(--mrms-paper)] px-4 md:px-14 py-2.5 md:py-3 border-t border-[var(--mrms-rust)] z-40">
