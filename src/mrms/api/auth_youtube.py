@@ -38,10 +38,21 @@ OAUTH_VERIFIER_COOKIE = "mrms_yt_pkce_verifier"
 OAUTH_STATE_MAX_AGE = 600  # 10 min
 
 
+def _cred(*names: str) -> str:
+    """env에서 첫 비어있지 않은 값 — YOUTUBE_* 우선, GOOGLE_* 폴백.
+
+    OAuth client creds를 GOOGLE_CLIENT_ID/SECRET에 둬도 동작 (키 이름은 임의)."""
+    for name in names:
+        v = (os.environ.get(name) or "").strip()
+        if v:
+            return v
+    return ""
+
+
 def _client() -> YouTubeOAuthClient:
     return YouTubeOAuthClient(
-        client_id=os.environ["YOUTUBE_CLIENT_ID"],
-        client_secret=os.environ["YOUTUBE_CLIENT_SECRET"],
+        client_id=_cred("YOUTUBE_CLIENT_ID", "GOOGLE_CLIENT_ID"),
+        client_secret=_cred("YOUTUBE_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET"),
         redirect_uri=os.environ.get(
             "YOUTUBE_REDIRECT_URI",
             "http://localhost:8000/api/auth/youtube/callback",
