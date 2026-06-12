@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 
 import { AuthCard } from "@/components/auth/auth-card";
 import { TidalConnectModal } from "@/components/auth/TidalConnectModal";
-import { YouTubeImportButton } from "@/components/auth/YouTubeImportButton";
 import { Button } from "@/components/ui/button";
 
 
@@ -59,7 +58,6 @@ function LoginContent() {
         >
           YouTube로 시작하기
         </Button>
-        <YouTubeImportButton />
       </div>
       <TidalConnectModal open={tidalOpen} onOpenChange={setTidalOpen} />
     </AuthCard>
