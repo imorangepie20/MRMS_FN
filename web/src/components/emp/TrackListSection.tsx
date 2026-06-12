@@ -22,9 +22,12 @@ export function TrackListSection({
   section: EmpSection;
   index?: number;
 }) {
+  const COLLAPSED = 10;
   const item = section.items[0];
   const [tracks, setTracks] = useState<EmpItemTrack[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? tracks : tracks.slice(0, COLLAPSED);
 
   useEffect(() => {
     if (!item) return;
@@ -69,7 +72,7 @@ export function TrackListSection({
         </div>
       ) : (
         <ol>
-          {tracks.map((t, i) => {
+          {visible.map((t, i) => {
             const playable = isPlayable(t);
             const rank = i + 1;
             return (
@@ -138,6 +141,15 @@ export function TrackListSection({
             );
           })}
         </ol>
+      )}
+
+      {!loading && tracks.length > COLLAPSED && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-2 font-mono text-[10px] tracking-editorial uppercase text-(--mrms-rust) bg-transparent border-0 cursor-pointer hover:underline"
+        >
+          {expanded ? "− 접기" : `+ 더보기 (${tracks.length - COLLAPSED})`}
+        </button>
       )}
     </section>
   );
