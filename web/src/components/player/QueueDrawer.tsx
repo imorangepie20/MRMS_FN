@@ -1,7 +1,7 @@
 "use client";
 
 import { ListMusic, Play } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   Sheet,
@@ -19,6 +19,17 @@ export function QueueDrawer() {
   const [open, setOpen] = useState(false);
   const queue = usePlayerStore((s) => s.queue);
   const currentIdx = usePlayerStore((s) => s.currentIdx);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const currentRef = useRef<HTMLLIElement | null>(null);
+
+  // 드로어 열릴 때 현재 재생 트랙으로 스크롤 (Sheet 애니메이션 후)
+  useEffect(() => {
+    if (!open) return;
+    const id = setTimeout(() => {
+      currentRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 200);
+    return () => clearTimeout(id);
+  }, [open, currentIdx]);
 
   const onJump = async (idx: number) => {
     usePlayerStore.setState({ currentIdx: idx, position: 0 });
@@ -64,16 +75,34 @@ export function QueueDrawer() {
               {queue.map((t, i) => {
                 const isCurrent = i === currentIdx;
                 return (
-                  <li key={`${t.track_id}_${i}`}>
+                  <li key={`${t.track_id}_${i}`} ref={isCurrent ? currentRef : undefined}>
                     <button
                       onClick={() => onJump(i)}
-                      className={`group w-full text-left grid grid-cols-[24px_44px_1fr] gap-3 py-2 items-center border-b border-[var(--mrms-rule)] last:border-b-0 cursor-pointer bg-transparent border-x-0 border-t-0 ${
-                        isCurrent ? "" : "hover:bg-[var(--mrms-paper)]"
+                      aria-current={isCurrent ? "true" : undefined}
+                      className={`group w-full text-left grid grid-cols-[24px_44px_1fr] gap-3 py-2 items-center border-b border-[var(--mrms-rule)] last:border-b-0 cursor-pointer border-x-0 border-t-0 ${
+                        isCurrent
+                          ? "bg-[var(--mrms-rust)]/[0.07] -mx-6 px-6 border-b-transparent"
+                          : "bg-transparent hover:bg-[var(--mrms-paper)]"
                       }`}
                     >
-                      <span className="relative size-4 text-right">
+                      <span className="relative size-4 flex items-center justify-end">
                         {isCurrent ? (
-                          <span className="block size-3 ml-auto bg-[var(--mrms-rust)] rounded-full" />
+                          <span
+                            className="flex items-end justify-end gap-[2px] h-3.5"
+                            aria-label={isPlaying ? "재생 중" : "일시정지"}
+                          >
+                            {[0, 1, 2].map((b) => (
+                              <span
+                                key={b}
+                                className={`w-[2px] bg-[var(--mrms-rust)] ${isPlaying ? "mrms-eq-bar" : ""}`}
+                                style={
+                                  isPlaying
+                                    ? { height: "100%", animationDelay: `${b * 0.18}s` }
+                                    : { height: ["45%", "70%", "55%"][b] }
+                                }
+                              />
+                            ))}
+                          </span>
                         ) : (
                           <>
                             <span className="font-mono text-[11px] text-[var(--mrms-ink-mute)] tabular-nums group-hover:opacity-0 transition-opacity">

@@ -146,3 +146,13 @@
 .font-mono { font-family: var(--font-mono, "IBM Plex Mono"), ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 .tracking-editorial { letter-spacing: 0.08em; }
 .tracking-editorial-wide { letter-spacing: 0.14em; }
+
+/* === Now-playing equalizer (큐의 현재 재생 트랙 표시) === */
+@keyframes mrms-eq {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+.mrms-eq-bar {
+  transform-origin: bottom;
+  animation: mrms-eq 0.85s ease-in-out infinite;
+}
