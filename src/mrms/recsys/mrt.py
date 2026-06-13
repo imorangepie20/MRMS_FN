@@ -143,6 +143,32 @@ def generate_user_mrt(
     return len(track_ids)
 
 
+def select_stale_mrt_users(conn: psycopg.Connection, *, k: int = DEFAULT_K) -> list[str]:
+    """MRT 재생성 대상 유저: 현재 임베딩 보유 UserTrack 수가 k 이상이고,
+    그 수가 마지막 MRT 계산 시점(UserEmbedding.computedFrom, 없으면 0)보다 큰 유저.
+
+    신규 유저(UserEmbedding 없음=baseline 0) + 미스곡 임베딩으로 카운트 오른
+    기존 유저 둘 다 포착. computedFrom == 현재 수면 MRT가 최신 → 제외.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            '''SELECT u.id
+               FROM "User" u
+               JOIN LATERAL (
+                 SELECT count(*) AS cnt
+                 FROM "UserTrack" ut
+                 JOIN "TrackEmbedding" e ON e."trackId" = ut."trackId"
+                 WHERE ut."userId" = u.id AND e."modelVersion" = %s
+               ) c ON TRUE
+               LEFT JOIN "UserEmbedding" ue
+                 ON ue."userId" = u.id AND ue."modelVersion" = %s
+               WHERE c.cnt >= %s
+                 AND c.cnt > COALESCE(ue."computedFrom", 0)''',
+            (CATALOG_MODEL_VERSION, MODEL_VERSION, k),
+        )
+        return [r[0] for r in cur.fetchall()]
+
+
 def derive_recommended_tracks(
     playlists: list[dict[str, Any]],
     top_n: int = 20,

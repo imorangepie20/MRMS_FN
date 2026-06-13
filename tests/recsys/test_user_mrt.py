@@ -65,3 +65,17 @@ def test_generate_user_mrt_skips_when_below_k(db_conn, cleanup):
     uid = _seed_user_with_tracks(db_conn, n_tracks=2)
     assert generate_user_mrt(db_conn, uid, k=3) is None
     cleanup('DELETE FROM "UserTrack" WHERE "userId"=%s', (uid,))
+
+
+def test_select_stale_mrt_users(db_conn, cleanup):
+    from mrms.recsys.mrt import generate_user_mrt, select_stale_mrt_users
+    uid = _seed_user_with_tracks(db_conn, n_tracks=6)
+    # MRT 아직 없음 → stale (computedFrom 없음, baseline 0)
+    assert uid in select_stale_mrt_users(db_conn, k=3)
+    # MRT 생성 후 → 더 이상 stale 아님 (computedFrom=6 == 현재 6)
+    generate_user_mrt(db_conn, uid, k=3); db_conn.commit()
+    assert uid not in select_stale_mrt_users(db_conn, k=3)
+    cleanup('DELETE FROM "PlaylistHistory" WHERE "userId"=%s', (uid,))
+    cleanup('DELETE FROM "UserPersona" WHERE "userId"=%s', (uid,))
+    cleanup('DELETE FROM "UserEmbedding" WHERE "userId"=%s', (uid,))
+    cleanup('DELETE FROM "UserTrack" WHERE "userId"=%s', (uid,))
