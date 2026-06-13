@@ -6,9 +6,6 @@ from __future__ import annotations
 
 import logging
 
-import httpx
-import psycopg
-
 from mrms.emp.base import upsert_track_and_emp_source
 from mrms.search.normalize import normalize_spotify_track, normalize_tidal_track
 
