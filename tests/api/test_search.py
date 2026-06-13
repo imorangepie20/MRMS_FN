@@ -44,3 +44,30 @@ def test_search_returns_groups_and_persists(login, db_conn, cleanup):
     cleanup('DELETE FROM "EMPSource" WHERE "trackId" = %s', (t["track_id"],))
     cleanup('DELETE FROM "TrackPlatform" WHERE "trackId" = %s', (t["track_id"],))
     cleanup('DELETE FROM "Track" WHERE id = %s', (t["track_id"],))
+
+
+@respx.mock
+def test_expand_spotify_album_persists_tracks(login, db_conn, cleanup):
+    user_id, session_id = login()
+    client.cookies.set("mrms_session", session_id)
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    upsert_oauth(db_conn, user_id, "spotify", access_token="SP", refresh_token="R",
+                 expires_at=expires, scopes=[])
+    db_conn.commit()
+    cleanup('DELETE FROM "UserOAuth" WHERE "userId" = %s', (user_id,))
+    cleanup('DELETE FROM "Track" WHERE isrc = %s', ("EXPAND00001",))
+    respx.get("https://api.spotify.com/v1/albums/al1/tracks").mock(return_value=Response(200, json={
+        "items": [{"id": "spx1", "name": "T1", "artists": [{"name": "A"}],
+                   "duration_ms": 100000, "external_ids": {"isrc": "EXPAND00001"}}]}))
+
+    r = client.post("/api/search/expand",
+                    json={"platform": "spotify", "item_type": "album", "item_id": "al1"})
+    assert r.status_code == 200
+    assert r.json()["source_id"] == "album:al1"
+    with db_conn.cursor() as cur:
+        cur.execute(
+            '''SELECT COUNT(*) FROM "EMPSource" WHERE source_id='album:al1' AND source_type='search' ''')
+        assert cur.fetchone()[0] >= 1
+    client.cookies.clear()
+    cleanup('DELETE FROM "EMPSource" WHERE source_id = %s', ("album:al1",))
+    cleanup('DELETE FROM "Track" WHERE isrc = %s', ("EXPAND00001",))

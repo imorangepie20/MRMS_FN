@@ -4,6 +4,9 @@ from __future__ import annotations
 import httpx
 import psycopg
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+from mrms.search.expand import fetch_container_tracks, persist_container_tracks
 
 from mrms.api.auth_spotify import get_token as _spotify_token
 from mrms.api.auth_tidal import _get_access_token as _tidal_token
@@ -72,3 +75,32 @@ async def search(
         "playlists": agg["playlists"],
         "skipped_platforms": skipped,
     }
+
+
+class ExpandReq(BaseModel):
+    platform: str
+    item_type: str  # 'album' | 'playlist'
+    item_id: str
+
+
+@router.post("/expand")
+async def expand(
+    req: ExpandReq,
+    user_id: str = Depends(get_current_user_id),
+    conn: psycopg.Connection = Depends(db_conn),
+):
+    if req.item_type not in ("album", "playlist") or req.platform not in ("tidal", "spotify"):
+        raise HTTPException(400, "bad platform/item_type")
+    with conn.cursor() as cur:
+        cur.execute('SELECT country FROM "User" WHERE id = %s', (user_id,))
+        u = cur.fetchone()
+    country = u[0] if u and u[0] else "US"
+    try:
+        tok = await (_spotify_tok if req.platform == "spotify" else _tidal_tok)(user_id, conn)
+    except Exception:
+        raise HTTPException(401, f"{req.platform} auth unavailable")
+    async with httpx.AsyncClient(timeout=15.0) as http:
+        tracks = await fetch_container_tracks(
+            http, req.platform, req.item_type, req.item_id, tok, country)
+    source_id = persist_container_tracks(conn, tracks, req.item_type, req.item_id)
+    return {"source_id": source_id, "count": len(tracks)}
