@@ -26,11 +26,13 @@
 - [decisions/ADR-002-pgt-library-mrt-curation.md](decisions/ADR-002-pgt-library-mrt-curation.md): PGT 라이브러리(5섹션 파생 그룹핑) + MRT→PGT 이동(display 필터) + MRT prune
 - [decisions/ADR-003-mrt-reactions.md](decisions/ADR-003-mrt-reactions.md): MRT 4종 반응(좋아요/취향저격/싫어요=영구차단/관심없어요=일시숨김) — UserBlocked 재사용
 - [decisions/ADR-004-tidal-spectrum-equalizer.md](decisions/ADR-004-tidal-spectrum-equalizer.md): Tidal 전용 진짜 스펙트럼 비주얼 이퀄라이저 — audio element를 Web Audio AnalyserNode로 탭(SDK 우회 불필요)
+- [decisions/ADR-005-search-emp-expansion.md](decisions/ADR-005-search-emp-expansion.md): 검색 → EMP 확장 — Tidal+Spotify 라이브 검색을 우리 포맷으로 정규화·표시하며 동시에 EMP 적재(사용자 주도 import)
 
 ## 설계 / 계획 (superpowers)
 
 설계 스펙은 [superpowers/specs/](superpowers/specs/), 구현 계획은 [superpowers/plans/](superpowers/plans/)에 날짜 prefix로 누적.
 
+- [superpowers/specs/2026-06-14-search-emp-expansion-design.md](superpowers/specs/2026-06-14-search-emp-expansion-design.md): 검색 → EMP 확장 상세 설계 ([ADR-005](decisions/ADR-005-search-emp-expansion.md)의 근거 문서)
 - [superpowers/specs/2026-06-14-tidal-spectrum-equalizer-design.md](superpowers/specs/2026-06-14-tidal-spectrum-equalizer-design.md): Tidal 전용 진짜 스펙트럼 이퀄라이저 상세 설계 ([ADR-004](decisions/ADR-004-tidal-spectrum-equalizer.md)의 근거 문서)
 - [superpowers/plans/2026-06-14-tidal-spectrum-equalizer.md](superpowers/plans/2026-06-14-tidal-spectrum-equalizer.md): 위 설계의 구현 계획 (Vitest 셋업 + binsToBarHeights + 캡처 레이어 + activePlatform + 컴포넌트, TDD 6 태스크)
 - [superpowers/specs/2026-06-14-mrt-reactions-design.md](superpowers/specs/2026-06-14-mrt-reactions-design.md): MRT 4종 반응 상세 설계 ([ADR-003](decisions/ADR-003-mrt-reactions.md)의 근거 문서)
