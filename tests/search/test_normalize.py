@@ -79,3 +79,35 @@ def test_normalize_tidal_track():
     assert t["artist"] == "NewJeans"
     assert t["duration_ms"] == 179000
     assert t["isrc"] == "KRA401900002"
+
+
+from mrms.search.normalize import merge_tracks
+
+
+def test_merge_same_isrc_combines_platforms():
+    sp = {"platform": "spotify", "platform_track_id": "sp1", "title": "Ditto",
+          "artist": "NewJeans", "album_title": "OMG", "album_cover": "c1",
+          "duration_ms": 185000, "isrc": "KRA401900001"}
+    td = {"platform": "tidal", "platform_track_id": "999", "title": "Ditto",
+          "artist": "NewJeans", "album_title": "OMG", "album_cover": "c2",
+          "duration_ms": 185000, "isrc": "KRA401900001"}
+    merged = merge_tracks([sp, td])
+    assert len(merged) == 1
+    m = merged[0]
+    assert m["isrc"] == "KRA401900001"
+    assert m["spotify_track_id"] == "sp1"
+    assert m["tidal_track_id"] == "999"
+    assert m["title"] == "Ditto"
+
+
+def test_merge_no_isrc_kept_separate():
+    a = {"platform": "spotify", "platform_track_id": "sp1", "title": "x",
+         "artist": "y", "album_title": None, "album_cover": None,
+         "duration_ms": None, "isrc": None}
+    b = {"platform": "tidal", "platform_track_id": "td1", "title": "x",
+         "artist": "y", "album_title": None, "album_cover": None,
+         "duration_ms": None, "isrc": None}
+    merged = merge_tracks([a, b])
+    assert len(merged) == 2
+    assert merged[0]["spotify_track_id"] == "sp1" and merged[0]["tidal_track_id"] is None
+    assert merged[1]["tidal_track_id"] == "td1" and merged[1]["spotify_track_id"] is None

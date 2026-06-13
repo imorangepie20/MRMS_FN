@@ -114,3 +114,48 @@ def normalize_tidal_playlist(item) -> dict | None:
         "cover_url": _tidal_cover_url(item) if item.get("squareImage") is None else None,
         "track_count": item.get("numberOfTracks"),
     }
+
+
+def _usable_isrc(isrc) -> bool:
+    return bool(isrc) and len(str(isrc)) == 12 and str(isrc).isalnum()
+
+
+def _to_flat(t: dict) -> dict:
+    """단일 플랫폼 트랙 → flat 응답 트랙(track_id는 persist 후 채움)."""
+    return {
+        "track_id": None,
+        "title": t["title"],
+        "artist": t["artist"],
+        "album_title": t.get("album_title"),
+        "album_cover": t.get("album_cover"),
+        "duration_ms": t.get("duration_ms"),
+        "isrc": t.get("isrc"),
+        "tidal_track_id": t["platform_track_id"] if t["platform"] == "tidal" else None,
+        "spotify_track_id": t["platform_track_id"] if t["platform"] == "spotify" else None,
+    }
+
+
+def merge_tracks(tracks: list[dict]) -> list[dict]:
+    """플랫폼별 normalize 트랙 리스트 → flat 응답 트랙. 같은 ISRC면 1행(두 플랫폼 ID).
+    ISRC 없으면 개별. 입력 순서 보존."""
+    by_isrc: dict[str, dict] = {}
+    out: list[dict] = []
+    for t in tracks:
+        isrc = t.get("isrc")
+        if _usable_isrc(isrc):
+            key = str(isrc).upper()
+            if key in by_isrc:
+                flat = by_isrc[key]
+                if t["platform"] == "tidal":
+                    flat["tidal_track_id"] = t["platform_track_id"]
+                else:
+                    flat["spotify_track_id"] = t["platform_track_id"]
+                flat["album_cover"] = flat["album_cover"] or t.get("album_cover")
+                flat["album_title"] = flat["album_title"] or t.get("album_title")
+                continue
+            flat = _to_flat(t)
+            by_isrc[key] = flat
+            out.append(flat)
+        else:
+            out.append(_to_flat(t))
+    return out
