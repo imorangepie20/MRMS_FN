@@ -4,12 +4,16 @@
 
 export const BAR_COUNT = 48;
 
-const PEAK_GAIN = 0.8;
+const PEAK_GAIN = 0.6;
 const RESPONSE_GAMMA = 0.95;
 const NOISE_FLOOR = 0.04;
-const HIGH_FREQUENCY_GAIN = 2.6;
+const HIGH_FREQUENCY_GAIN = 1.5;
 const ATTACK = 0.95; // 상승은 빠르게
 const RELEASE = 0.32; // 하강은 느리게
+
+// 막대를 매핑할 상한 빈 비율 (0..1, Nyquist 대비). 음악 에너지는 저~중음에
+// 몰려 있고 상위 고음 구간은 거의 비어 있어, 막대를 실제 쓰이는 하단에 집중시킨다.
+const MAX_BIN_RATIO = 0.35;
 
 /** 막대 index 가 차지하는 [start, end) 주파수 빈 범위 (로그 간격). */
 export function logBandRange(index: number, binCount: number): [number, number] {
@@ -17,7 +21,7 @@ export function logBandRange(index: number, binCount: number): [number, number] 
     return [0, binCount];
   }
   const minBin = 1;
-  const maxBin = binCount - 1;
+  const maxBin = Math.max(2, Math.floor(binCount * MAX_BIN_RATIO));
   const minLog = Math.log(minBin);
   const maxLog = Math.log(maxBin);
   const startRatio = index / BAR_COUNT;

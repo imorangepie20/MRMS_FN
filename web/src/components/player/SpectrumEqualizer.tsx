@@ -7,6 +7,9 @@ import { getTidalAnalyser } from "@/lib/tidal-player";
 import { usePlayerStore } from "@/store/player";
 
 const MIN_VISIBLE_PCT = 2;
+// 정규화 높이(0..1)를 위로 더 채우는 수직 스케일. 100%에서 클램프하므로
+// 게이팅/감마 SHAPE는 그대로 두고 진폭(상하 스케일)만 키운다.
+const VSCALE = 1.2;
 
 export function SpectrumEqualizer() {
   const activePlatform = usePlayerStore((s) => s.activePlatform);
@@ -35,7 +38,7 @@ export function SpectrumEqualizer() {
       for (let i = 0; i < BAR_COUNT; i++) {
         const el = barRefs.current[i];
         if (el) {
-          el.style.height = `${Math.max(MIN_VISIBLE_PCT, heights[i] * 100)}%`;
+          el.style.height = `${Math.min(100, Math.max(MIN_VISIBLE_PCT, heights[i] * 100 * VSCALE))}%`;
         }
       }
       frameId = requestAnimationFrame(tick);
@@ -65,7 +68,7 @@ export function SpectrumEqualizer() {
   return (
     <div
       aria-hidden
-      className="absolute bottom-full left-0 right-0 h-10 flex items-end justify-center gap-[2px] px-4 md:px-14 pointer-events-none"
+      className="absolute bottom-full left-0 right-0 h-16 flex items-end justify-center gap-[2px] px-4 md:px-14 pointer-events-none"
     >
       {Array.from({ length: BAR_COUNT }, (_, i) => (
         <span

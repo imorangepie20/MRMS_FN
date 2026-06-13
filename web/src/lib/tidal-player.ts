@@ -38,8 +38,11 @@ function ensureAnalyser(): void {
       audioCtx = new Ctx();
       const srcNode = audioCtx.createMediaElementSource(el); // element당 1회
       analyserNode = audioCtx.createAnalyser();
-      analyserNode.fftSize = 256; // frequencyBinCount = 128
+      analyserNode.fftSize = 1024; // frequencyBinCount = 512 (넓고 세밀한 주파수 범위)
       analyserNode.smoothingTimeConstant = 0; // 스무딩은 컴포넌트가 직접
+      // dB 윈도우에 헤드룸 — 라우드한 HiFi 소스가 255에 덜 박혀 막대 saturation(꼭대기 클리핑) 완화
+      analyserNode.minDecibels = -90;
+      analyserNode.maxDecibels = -10;
       srcNode.connect(analyserNode);
       analyserNode.connect(audioCtx.destination); // 필수
     }
