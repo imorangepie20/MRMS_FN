@@ -227,3 +227,55 @@ export interface EmpItemTrack {
   liked?: boolean;
   pct?: boolean;
 }
+
+// ── PGT (Personal Generated Tracks) ────────────────────────────────────────
+
+export interface PgtTrack {
+  track_id: string;
+  title: string;
+  artist: string;
+  album_id: string | null;
+  album_title: string | null;
+  album_cover: string | null;
+  tidal_track_id: string | null;
+  spotify_track_id: string | null;
+  duration_ms: number | null;
+  liked: boolean;
+  pct: boolean;
+}
+
+export interface PgtAlbumGroup {
+  album_id: string;
+  title: string;
+  artist: string;
+  track_count: number;
+}
+
+export interface PgtArtistGroup {
+  artist_id: string;
+  name: string;
+  track_count: number;
+}
+
+export interface PgtImportedPlaylist {
+  source: string;
+  name: string;
+  track_count: number;
+}
+
+export interface UserPlaylistSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string | null;
+  track_count: number;
+}
+
+export interface PgtSections {
+  liked: number;
+  pct: number;
+  albums: number;
+  artists: number;
+  imported_playlists: PgtImportedPlaylist[];
+  user_playlists: UserPlaylistSummary[];
+}

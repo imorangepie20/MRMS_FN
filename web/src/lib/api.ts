@@ -1,4 +1,13 @@
-import type { MrtLatestResponse, TidalTokenResponse, UserInfo } from "./types";
+import type {
+  MrtLatestResponse,
+  PgtAlbumGroup,
+  PgtArtistGroup,
+  PgtSections,
+  PgtTrack,
+  TidalTokenResponse,
+  UserInfo,
+  UserPlaylistSummary,
+} from "./types";
 
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
@@ -33,4 +42,47 @@ export function getTidalToken(): Promise<TidalTokenResponse> {
 
 export function refreshTidalToken(): Promise<TidalTokenResponse> {
   return fetchJson<TidalTokenResponse>("/auth/tidal/refresh", { method: "POST" });
+}
+
+
+// ── PGT (Personal Generated Tracks) ────────────────────────────────────────
+
+export function getPgtSections(): Promise<PgtSections> {
+  return fetchJson<PgtSections>("/pgt/sections");
+}
+
+export function getPgtLiked(): Promise<{ tracks: PgtTrack[] }> {
+  return fetchJson<{ tracks: PgtTrack[] }>("/pgt/liked");
+}
+
+export function getPgtPct(): Promise<{ tracks: PgtTrack[] }> {
+  return fetchJson<{ tracks: PgtTrack[] }>("/pgt/pct");
+}
+
+export function getPgtAlbums(): Promise<{ albums: PgtAlbumGroup[] }> {
+  return fetchJson<{ albums: PgtAlbumGroup[] }>("/pgt/albums");
+}
+
+export function getPgtAlbumTracks(albumId: string): Promise<{ tracks: PgtTrack[] }> {
+  return fetchJson<{ tracks: PgtTrack[] }>(`/pgt/albums/${albumId}`);
+}
+
+export function getPgtArtists(): Promise<{ artists: PgtArtistGroup[] }> {
+  return fetchJson<{ artists: PgtArtistGroup[] }>("/pgt/artists");
+}
+
+export function getPgtArtistTracks(artistId: string): Promise<{ tracks: PgtTrack[] }> {
+  return fetchJson<{ tracks: PgtTrack[] }>(`/pgt/artists/${artistId}`);
+}
+
+export function getPgtImportedTracks(source: string): Promise<{ tracks: PgtTrack[] }> {
+  return fetchJson<{ tracks: PgtTrack[] }>(`/pgt/imported-playlists/tracks?source=${encodeURIComponent(source)}`);
+}
+
+export function getUserPlaylists(): Promise<{ playlists: UserPlaylistSummary[] }> {
+  return fetchJson<{ playlists: UserPlaylistSummary[] }>("/user/playlists");
+}
+
+export function getPlaylistTracks(id: string): Promise<{ tracks: PgtTrack[] }> {
+  return fetchJson<{ tracks: PgtTrack[] }>(`/playlists/${id}/tracks`);
 }

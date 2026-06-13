@@ -18,16 +18,7 @@ export const navGroups: NavGroup[] = [
       { title: "EMP", href: "/emp", num: "§ 02", badge: "2.4k" },
       { title: "PGT", href: "/pgt", num: "§ 03", badge: "42" },
       { title: "PCT", href: "/pct", num: "§ 04", badge: "9" },
-    ],
-  },
-  {
-    label: "Library",
-    items: [
-      { title: "Liked", href: "/library/liked", num: "L1", badge: "35" },
-      { title: "Playlists", href: "/library/playlists", num: "L2", badge: "6" },
-      { title: "Albums", href: "/library/albums", num: "L3", badge: "12" },
-      { title: "Artists", href: "/library/artists", num: "L4", badge: "28" },
-      { title: "Recent", href: "/library/recent", num: "L5", badge: "∞" },
+      { title: "Library", href: "/library", num: "§ 05", badge: "PGT" },
     ],
   },
   {
