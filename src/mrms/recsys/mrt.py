@@ -57,9 +57,18 @@ def search_for_persona(
                  AND t.id NOT IN (
                    SELECT "trackId" FROM "UserTrack" WHERE "userId" = %s
                  )
+                 AND t.id NOT IN (
+                   SELECT "targetId" FROM "UserBlocked"
+                     WHERE "userId" = %s AND "targetType" = 'track' AND reason = 'disliked'
+                   UNION
+                   SELECT tt.id FROM "Track" tt
+                     JOIN "UserBlocked" ub
+                       ON ub."targetId" = tt."albumId" AND ub."targetType" = 'album'
+                     WHERE ub."userId" = %s AND ub.reason = 'disliked'
+                 )
                ORDER BY e.embedding <=> %s
                LIMIT %s''',
-            (centroid_np, catalog_model_version, user_id, centroid_np, candidate_pool),
+            (centroid_np, catalog_model_version, user_id, user_id, user_id, centroid_np, candidate_pool),
         )
         rows = cur.fetchall()
     results = [
