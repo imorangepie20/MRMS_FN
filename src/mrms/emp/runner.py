@@ -139,6 +139,7 @@ def _run_youtube_misses(limit: int = 500) -> dict:
 
 def _run_regenerate_mrt(conn: psycopg.Connection) -> dict:
     """stale MRT 유저 재생성 (in-process). 유저별 try/except + commit로 격리."""
+    from mrms.db.user_blocked import clear_dismissed
     from mrms.db.user_embedding import prune_playlist_history
     from mrms.recsys.mrt import generate_user_mrt, select_stale_mrt_users
 
@@ -159,6 +160,7 @@ def _run_regenerate_mrt(conn: psycopg.Connection) -> dict:
             if generate_user_mrt(conn, uid) is not None:
                 conn.commit()
                 prune_playlist_history(conn, uid)   # 최신 N generation만 유지
+                clear_dismissed(conn, uid)   # 일시 숨김 리셋 → 다음 generation 재추천 가능
                 regenerated += 1
         except Exception:
             safe_rollback(conn)

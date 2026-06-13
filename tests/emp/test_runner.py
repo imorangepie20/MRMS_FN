@@ -253,3 +253,18 @@ def test_regenerate_calls_prune(db_conn, monkeypatch):
     from mrms.emp.runner import _run_regenerate_mrt
     _run_regenerate_mrt(db_conn)
     assert pruned == ["u1"]
+
+
+def test_regenerate_clears_dismissed(db_conn, monkeypatch):
+    """_run_regenerate_mrt가 재생성된 유저마다 clear_dismissed를 호출."""
+    import mrms.recsys.mrt as mrt
+    import mrms.db.user_embedding as ue
+    import mrms.db.user_blocked as ub
+    monkeypatch.setattr(mrt, "select_stale_mrt_users", lambda conn, **k: ["u1"])
+    monkeypatch.setattr(mrt, "generate_user_mrt", lambda conn, uid, **k: 5)
+    monkeypatch.setattr(ue, "prune_playlist_history", lambda conn, uid, **k: 0)
+    cleared = []
+    monkeypatch.setattr(ub, "clear_dismissed", lambda conn, uid: cleared.append(uid) or 0)
+    from mrms.emp.runner import _run_regenerate_mrt
+    _run_regenerate_mrt(db_conn)
+    assert cleared == ["u1"]
