@@ -8,12 +8,6 @@ import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
 
-from mrms.config import EMBEDDING_MODEL_VERSION
-from mrms.db.user_embedding import (
-    insert_playlist_history,
-    upsert_user_embedding,
-    upsert_user_persona,
-)
 from mrms.db.user_track import get_oauth, upsert_user_track
 from mrms.onboarding.spotify_collection import (
     fetch_spotify_favorite_tracks,
@@ -26,19 +20,13 @@ from mrms.onboarding.tidal_favorites import (
     fetch_tidal_playlist_tracks,
     fetch_tidal_user_playlists,
 )
-from mrms.recsys.mrt import search_for_persona
-from mrms.recsys.persona import (
-    NotEnoughTracksError,
-    aggregate_user_vector,
-    cluster_user_tracks,
+from mrms.recsys.mrt import (
+    CATALOG_MODEL_VERSION,
+    DEFAULT_CANDIDATE_POOL,
+    DEFAULT_K,
+    DEFAULT_TOP_N,
+    generate_user_mrt,
 )
-
-
-MODEL_VERSION = f"{EMBEDDING_MODEL_VERSION}+persona-K3"
-CATALOG_MODEL_VERSION = EMBEDDING_MODEL_VERSION
-DEFAULT_K = 3
-DEFAULT_TOP_N = 20
-DEFAULT_CANDIDATE_POOL = 30
 
 
 def _extract_tidal_uid(access_token: str) -> str:
@@ -139,43 +127,16 @@ async def run_onboarding(
                 status.fail("음악 플랫폼 연결 또는 플레이리스트 import가 필요합니다")
                 return
 
-        # 2. UserTrack 임베딩 + cluster + MRT (platform 무관)
+        # 2. UserTrack 임베딩 + cluster + MRT (platform 무관) — generate_user_mrt 공유 함수로 위임
         status.set("computing_embedding", 50, "음악 취향 분석 중...")
-        track_ids, X = _fetch_user_track_matrix(conn, user_id)
-        if len(track_ids) < k:
-            status.fail(f"트랙 임베딩이 부족합니다 ({len(track_ids)}곡 < K={k})")
-            return
-
         status.set("clustering", 75, f"페르소나 {k}개 추출 중...")
-        try:
-            result = cluster_user_tracks(X, k=k)
-        except NotEnoughTracksError as e:
-            status.fail(f"클러스터링 실패: {e}")
+        n_tracks = generate_user_mrt(
+            conn, user_id, k=k, top_n=persona_top_n, candidate_pool=candidate_pool,
+        )
+        if n_tracks is None:
+            status.fail(f"트랙 임베딩이 부족합니다 (< K={k})")
             return
-
-        user_vec = aggregate_user_vector(result.centroids, result.weights)
-        upsert_user_embedding(conn, user_id, MODEL_VERSION, user_vec, computed_from=len(track_ids))
-        for idx in range(k):
-            upsert_user_persona(
-                conn, user_id, persona_idx=idx,
-                embedding=result.centroids[idx],
-                track_count=int(result.weights[idx]),
-            )
-
         status.set("generating_mrt", 90, "추천 생성 중...")
-        for idx in range(k):
-            recs = search_for_persona(
-                conn, user_id, result.centroids[idx],
-                catalog_model_version=CATALOG_MODEL_VERSION,
-                candidate_pool=candidate_pool,
-                top_n=persona_top_n,
-            )
-            track_id_list = [r["track_id"] for r in recs]
-            score_list = [r["similarity"] for r in recs]
-            insert_playlist_history(
-                conn, user_id, track_id_list, MODEL_VERSION,
-                context={"personaIdx": idx, "kind": "persona", "scores": score_list},
-            )
         conn.commit()
 
         status.set("done", 100, "완료")
