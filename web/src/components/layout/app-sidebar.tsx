@@ -80,7 +80,7 @@ export function AppSidebar() {
                         <Link
                           key={sub.href}
                           href={sub.href}
-                          className="py-0.5 font-mono text-[10px] tracking-editorial text-[var(--mrms-ink-soft)] no-underline hover:text-[var(--mrms-rust)]"
+                          className="py-0.5 font-mono text-[10px] tracking-editorial text-[var(--mrms-ink)] no-underline hover:text-[var(--mrms-rust)]"
                         >
                           {sub.title}
                         </Link>
