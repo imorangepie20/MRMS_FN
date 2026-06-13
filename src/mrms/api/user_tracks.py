@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.db.ids import stable_id as _id
+from mrms.db.user_blocked import block_target
 
 
 router = APIRouter(prefix="/api/user/tracks", tags=["user_tracks"])
@@ -119,6 +120,50 @@ def collect_album(
             )
     conn.commit()
     return {"collected": len(track_ids)}
+
+
+@router.post("/{track_id}/dislike")
+def dislike_track(
+    track_id: str,
+    user_id: str = Depends(get_current_user_id),
+    conn=Depends(db_conn),
+):
+    """싫어요 — 트랙 영구 제외."""
+    block_target(conn, user_id, track_id, "track", "disliked")
+    return {"disliked": True}
+
+
+@router.post("/{track_id}/dismiss")
+def dismiss_track(
+    track_id: str,
+    user_id: str = Depends(get_current_user_id),
+    conn=Depends(db_conn),
+):
+    """관심없어요 — 트랙 일시 숨김."""
+    block_target(conn, user_id, track_id, "track", "dismissed")
+    return {"dismissed": True}
+
+
+@router.post("/album/{album_id}/dislike")
+def dislike_album(
+    album_id: str,
+    user_id: str = Depends(get_current_user_id),
+    conn=Depends(db_conn),
+):
+    """싫어요 — 앨범 영구 제외."""
+    block_target(conn, user_id, album_id, "album", "disliked")
+    return {"disliked": True}
+
+
+@router.post("/album/{album_id}/dismiss")
+def dismiss_album(
+    album_id: str,
+    user_id: str = Depends(get_current_user_id),
+    conn=Depends(db_conn),
+):
+    """관심없어요 — 앨범 일시 숨김."""
+    block_target(conn, user_id, album_id, "album", "dismissed")
+    return {"dismissed": True}
 
 
 @router.get("/{track_id}/state")
