@@ -2,6 +2,8 @@
 
 `scripts/09_generate_mrt.py`를 정기적으로 호출해 모든 사용자의 MRT를 1주 2회 갱신.
 
+> **2026-06-13 변경:** 미스곡 임베딩 + stale 유저 MRT 재생성이 EMP 파이프라인 스테이지(`youtube_misses`/`regenerate_mrt`)로 통합됨 ([ADR-001](decisions/ADR-001-youtube-newuser-automation.md)). 일상적 신규 유저 MRT 갱신은 파이프라인 스테이지가 담당하므로, 이 `09 --all` cron은 **전체 백필 백스톱**으로만 유지(주기 축소 권장).
+
 ## Linux / WSL / Mac (crontab)
 
 ```bash

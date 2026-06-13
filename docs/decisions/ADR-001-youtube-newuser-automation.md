@@ -4,7 +4,7 @@
 
 ## 상태
 
-제안 — 설계 승인됨, 구현 대기. (구현 완료 시 `승인`으로 갱신)
+승인 — 구현 완료 (2026-06-13). 파이프라인 스테이지 `youtube_misses`/`regenerate_mrt` + `generate_user_mrt` 공유 함수(DRY: run_onboarding·scripts/09도 이 함수 사용). 브랜치 `feat/youtube-newuser-automation`.
 
 ## 결정
 
