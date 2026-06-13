@@ -4,7 +4,7 @@
 
 ## 상태
 
-제안 — 설계 승인됨, 구현 대기. (구현 완료 시 `승인`으로 갱신)
+승인 — **구현 완료** (2026-06-14). UserBlocked `reason` 컬럼 + 반응 엔드포인트(dislike/dismiss × 트랙/앨범) + 제외 3지점(`mrt_latest` 둘 다 / `search_for_persona` disliked / `_run_regenerate_mrt` clear_dismissed) + 프론트 4 아이콘 + 풍선 툴팁. 브랜치 `feat/mrt-reactions`. ⚠️ 배포 시 prod DB에 `20260614100000_add_userblocked_reason` 마이그레이션 적용 필요(UserBlocked 테이블 + reason 컬럼).
 
 ## 결정
 
