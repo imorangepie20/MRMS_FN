@@ -32,6 +32,7 @@
 설계 스펙은 [superpowers/specs/](superpowers/specs/), 구현 계획은 [superpowers/plans/](superpowers/plans/)에 날짜 prefix로 누적.
 
 - [superpowers/specs/2026-06-14-tidal-spectrum-equalizer-design.md](superpowers/specs/2026-06-14-tidal-spectrum-equalizer-design.md): Tidal 전용 진짜 스펙트럼 이퀄라이저 상세 설계 ([ADR-004](decisions/ADR-004-tidal-spectrum-equalizer.md)의 근거 문서)
+- [superpowers/plans/2026-06-14-tidal-spectrum-equalizer.md](superpowers/plans/2026-06-14-tidal-spectrum-equalizer.md): 위 설계의 구현 계획 (Vitest 셋업 + binsToBarHeights + 캡처 레이어 + activePlatform + 컴포넌트, TDD 6 태스크)
 - [superpowers/specs/2026-06-14-mrt-reactions-design.md](superpowers/specs/2026-06-14-mrt-reactions-design.md): MRT 4종 반응 상세 설계 ([ADR-003](decisions/ADR-003-mrt-reactions.md)의 근거 문서)
 - [superpowers/plans/2026-06-14-mrt-reactions.md](superpowers/plans/2026-06-14-mrt-reactions.md): 위 설계의 구현 계획 (UserBlocked reason + 반응 엔드포인트 + 제외 3지점 + 프론트, TDD 7 태스크)
 - [superpowers/specs/2026-06-13-pgt-library-mrt-curation-design.md](superpowers/specs/2026-06-13-pgt-library-mrt-curation-design.md): PGT 라이브러리 + MRT 큐레이션 상세 설계 ([ADR-002](decisions/ADR-002-pgt-library-mrt-curation.md)의 근거 문서)
