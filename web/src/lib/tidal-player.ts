@@ -17,6 +17,43 @@ let onTrackError: ((failedTidalId: string | null) => void) | null = null;
 // 마지막으로 load한 tidal track id — error 이벤트 발생 시 어떤 트랙 실패인지 식별
 let loadedTidalId: string | null = null;
 
+// ── Web Audio 캡처 (비주얼 이퀄라이저용) ──────────────────
+// audioEl 을 1회만 그래프로 라우팅한다(createMediaElementSource 는 element당 1회).
+let audioCtx: AudioContext | null = null;
+let analyserNode: AnalyserNode | null = null;
+
+// loadAndPlay / resumePlayback (유저 제스처 경로) 첫머리에서 매번 호출.
+// 그래프가 한번 생기면 audioEl 의 모든 출력이 영구히 그래프 경유 →
+// destination 연결 필수(안 하면 무음). 실패해도 재생은 막지 않는다(EQ만 생략).
+function ensureAnalyser(): void {
+  try {
+    const el = ensureAudio();
+    if (!audioCtx) {
+      type WindowWithWebkit = Window & {
+        webkitAudioContext?: typeof AudioContext;
+      };
+      const Ctx =
+        window.AudioContext ?? (window as WindowWithWebkit).webkitAudioContext;
+      if (!Ctx) return; // Web Audio 미지원 → EQ만 생략
+      audioCtx = new Ctx();
+      const srcNode = audioCtx.createMediaElementSource(el); // element당 1회
+      analyserNode = audioCtx.createAnalyser();
+      analyserNode.fftSize = 256; // frequencyBinCount = 128
+      analyserNode.smoothingTimeConstant = 0; // 스무딩은 컴포넌트가 직접
+      srcNode.connect(analyserNode);
+      analyserNode.connect(audioCtx.destination); // 필수
+    }
+    if (audioCtx.state === "suspended") void audioCtx.resume();
+  } catch {
+    audioCtx = null;
+    analyserNode = null;
+  }
+}
+
+export function getTidalAnalyser(): AnalyserNode | null {
+  return analyserNode;
+}
+
 // 교차 재생 시 비활성 플랫폼의 이벤트가 store를 덮어쓰지 않도록 facade가 제어
 let active = true;
 
@@ -117,6 +154,7 @@ export async function initTidalSdk(_token?: unknown): Promise<void> {
 
 export async function loadAndPlay(tidalTrackId: string): Promise<void> {
   const el = ensureAudio();
+  ensureAnalyser();
   loadedTidalId = tidalTrackId;
   usePlayerStore.setState({ position: 0, durationSec: 0, isPreview: false });
   el.src = streamUrl(tidalTrackId);
@@ -133,6 +171,7 @@ export async function pausePlayback(): Promise<void> {
 
 export async function resumePlayback(): Promise<void> {
   const el = ensureAudio();
+  ensureAnalyser();
   await el.play();
 }
 
