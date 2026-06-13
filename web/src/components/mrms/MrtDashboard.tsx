@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { Heart, Play, Sparkles } from "lucide-react";
 
+import { collectAlbum } from "@/lib/api";
+
 import { AlbumDetailModal } from "@/components/album/AlbumDetailModal";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { CreatePlaylistModal } from "@/components/playlist/CreatePlaylistModal";
@@ -38,6 +40,7 @@ export function MrtDashboard({ user, mrt }: Props) {
   const [createOpen, setCreateOpen] = useState(false);
   const [albumModal, setAlbumModal] = useState<string | null>(null);
   const [playlistModal, setPlaylistModal] = useState<string | null>(null);
+  const [collectingAlbum, setCollectingAlbum] = useState<string | null>(null);
 
   const generatedDate = mrt.generated_at ? new Date(mrt.generated_at) : null;
   const generatedLabel = generatedDate
@@ -208,30 +211,46 @@ export function MrtDashboard({ user, mrt }: Props) {
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-3 gap-y-4 md:gap-x-3.5 md:gap-y-5">
             {mrt.recommended_albums.map((a) => (
-              <button
-                key={a.album_id}
-                onClick={() => setAlbumModal(a.album_id)}
-                className="cursor-pointer text-left bg-transparent border-0 p-0"
-              >
-                <AlbumArt
-                  artist={a.artist}
-                  album={a.title}
-                  initialUrl={a.cover_url ?? null}
-                  className="aspect-square mb-2.5"
-                />
-                <div
-                  className="font-display text-[14px] font-semibold leading-tight truncate"
-                  title={a.title}
+              <div key={a.album_id} className="text-left">
+                <button
+                  onClick={() => setAlbumModal(a.album_id)}
+                  className="cursor-pointer text-left bg-transparent border-0 p-0 w-full"
                 >
-                  {a.title}
-                </div>
-                <div
-                  className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5 truncate"
-                  title={a.artist}
+                  <AlbumArt
+                    artist={a.artist}
+                    album={a.title}
+                    initialUrl={a.cover_url ?? null}
+                    className="aspect-square mb-2.5"
+                  />
+                  <div
+                    className="font-display text-[14px] font-semibold leading-tight truncate"
+                    title={a.title}
+                  >
+                    {a.title}
+                  </div>
+                  <div
+                    className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5 truncate"
+                    title={a.artist}
+                  >
+                    {a.artist}
+                  </div>
+                </button>
+                <button
+                  disabled={collectingAlbum === a.album_id}
+                  onClick={async () => {
+                    setCollectingAlbum(a.album_id);
+                    try {
+                      await collectAlbum(a.album_id);
+                      window.location.reload();
+                    } catch {
+                      setCollectingAlbum(null);
+                    }
+                  }}
+                  className="mt-1.5 bg-transparent border border-[var(--mrms-ink-mute)] px-2 py-0.5 font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-soft)] cursor-pointer disabled:opacity-40 disabled:cursor-default hover:border-[var(--mrms-ink)] hover:text-[var(--mrms-ink)] transition-colors"
                 >
-                  {a.artist}
-                </div>
-              </button>
+                  {collectingAlbum === a.album_id ? "…" : "담기"}
+                </button>
+              </div>
             ))}
           </div>
           {mrt.recommended_albums.length === 0 && (

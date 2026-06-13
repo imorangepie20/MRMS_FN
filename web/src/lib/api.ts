@@ -86,3 +86,12 @@ export function getUserPlaylists(): Promise<{ playlists: UserPlaylistSummary[] }
 export function getPlaylistTracks(id: string): Promise<{ tracks: PgtTrack[] }> {
   return fetchJson<{ tracks: PgtTrack[] }>(`/playlists/${id}/tracks`);
 }
+
+
+// ── MRT actions ────────────────────────────────────────────────────────────────
+
+export function collectAlbum(albumId: string): Promise<{ collected: number }> {
+  return fetchJson<{ collected: number }>(`/user/tracks/album/${albumId}/collect`, {
+    method: "POST",
+  });
+}
