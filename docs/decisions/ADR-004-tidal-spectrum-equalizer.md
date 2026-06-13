@@ -4,7 +4,7 @@
 
 ## 상태
 
-승인 — 구현 예정. 브랜치 `feat/tidal-spectrum-equalizer`(예정). 상세 설계 [2026-06-14-tidal-spectrum-equalizer-design.md](../superpowers/specs/2026-06-14-tidal-spectrum-equalizer-design.md).
+승인 — **구현 완료 + prod 배포** (2026-06-14). 브랜치 `feat/tidal-spectrum-equalizer` → main 머지 후 수동 verify 기반 시각 튜닝(`f5a1be1`: dB 헤드룸 + 게인 + fftSize 1024 + MAX_BIN_RATIO 0.35 + 띠 높이/VSCALE). 단위테스트 7/7, prod 배포 smoke test 통과. 상세 설계 [2026-06-14-tidal-spectrum-equalizer-design.md](../superpowers/specs/2026-06-14-tidal-spectrum-equalizer-design.md).
 
 ## 결정
 
