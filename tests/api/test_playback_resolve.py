@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import respx
@@ -15,7 +15,6 @@ from httpx import Response
 from mrms.api.main import app
 from mrms.db.ids import stable_id
 from mrms.db.user_track import upsert_oauth
-
 
 client = TestClient(app)
 
@@ -299,39 +298,54 @@ def yt_user(login):
     client.cookies.clear()
 
 
-def _yt_search_mock(results):
-    """_get_ytmusic 대체용 — search 결과만 고정한 YTMusic 대역."""
-    yt = MagicMock()
-    yt.search.return_value = results
-    return yt
+def _yt_si(vid, title, channel="", desc=""):
+    """Data API search.items 형태."""
+    return {
+        "id": {"videoId": vid},
+        "snippet": {"title": title, "channelTitle": channel, "description": desc},
+    }
 
 
-def test_youtube_text_match_then_upsert(db_conn, yt_user, make_track):
-    """텍스트+duration 매칭 성공 → real videoId 반환 + TrackPlatform 영속."""
+def _yt_vi(vid, *, embeddable=True, duration="PT3M21S"):
+    """Data API videos.items 형태 (status.embeddable + contentDetails.duration)."""
+    return {
+        "id": vid,
+        "status": {"embeddable": embeddable},
+        "contentDetails": {"duration": duration},
+    }
+
+
+def _patch_yt_dataapi(search_items, video_items):
+    """_get_json(search→videos)을 Data API 응답으로 고정 대체."""
+    from mrms.api import playback_resolve as pr
+
+    async def fake(http, url, *, params, headers, what):
+        return {"items": search_items if url == pr.YOUTUBE_SEARCH_URL else video_items}
+
+    return patch("mrms.api.playback_resolve._get_json", new=fake)
+
+
+def test_youtube_text_match_then_upsert(db_conn, yt_user, make_track, monkeypatch):
+    """제목+아티스트+길이 스코어링 → best embeddable videoId 반환 + TrackPlatform 영속."""
+    monkeypatch.setenv("YOUTUBE_DATA_API_KEY", "test-key")
     track_id = make_track(
         title="yt resolve song a", artist="YT Resolve Artist A", duration_ms=200000
     )
-    yt = _yt_search_mock([
-        {  # 제목은 맞지만 아티스트 불일치 → 탈락
-            "videoId": "ytWRONG0001",
-            "title": "yt resolve song a",
-            "artists": [{"name": "Someone Else"}],
-            "duration_seconds": 200,
-        },
-        {  # title/artist 일치 + duration ±5초 → 선택
-            "videoId": "ytRIGHT0001",
-            "title": "YT Resolve Song A",
-            "artists": [{"name": "YT Resolve Artist A"}],
-            "duration_seconds": 201,
-        },
-    ])
-    with patch("mrms.api.playback_resolve._get_ytmusic", return_value=yt):
+    search = [
+        # 제목만 맞고 아티스트/길이 불일치 → 35점 < 45 탈락
+        _yt_si("ytWRONG0001", "yt resolve song a", channel="Someone Else"),
+        # 제목+아티스트(채널)+길이+공식 → 선택
+        _yt_si("ytRIGHT0001", "YT Resolve Song A", channel="YT Resolve Artist A"),
+    ]
+    videos = [
+        _yt_vi("ytWRONG0001", duration="PT5M00S"),  # 300s — 길이 가산점 없음
+        _yt_vi("ytRIGHT0001", duration="PT3M21S"),  # 201s ≈ 200s → +20
+    ]
+    with _patch_yt_dataapi(search, videos):
         r = _resolve(track_id, "youtube")
 
     assert r.status_code == 200
     assert r.json() == {"platform_track_id": "ytRIGHT0001"}
-    # songs 필터로 검색했는지
-    assert yt.search.call_args.kwargs.get("filter") == "songs"
 
     with db_conn.cursor() as cur:
         cur.execute(
@@ -342,16 +356,21 @@ def test_youtube_text_match_then_upsert(db_conn, yt_user, make_track):
         assert cur.fetchone() == ("ytRIGHT0001",)
 
 
-def test_youtube_no_match_404(db_conn, yt_user, make_track):
-    """그럴듯한 후보 없으면 404 — TrackPlatform도 안 생김."""
+def test_youtube_no_match_404(db_conn, yt_user, make_track, monkeypatch):
+    """매칭 후보 없거나 embed 불가뿐이면 404 — TrackPlatform도 안 생김."""
+    monkeypatch.setenv("YOUTUBE_DATA_API_KEY", "test-key")
     track_id = make_track(title="YT Obscure Song", artist="YT Nobody Band")
-    yt = _yt_search_mock([{
-        "videoId": "ytX00000001",
-        "title": "Totally Different",
-        "artists": [{"name": "Other Artist"}],
-        "duration_seconds": 100,
-    }])
-    with patch("mrms.api.playback_resolve._get_ytmusic", return_value=yt):
+    search = [
+        # 제목/아티스트는 맞지만 embed 불가 → 후보에서 탈락
+        _yt_si("ytNOEMB0001", "YT Obscure Song", channel="YT Nobody Band"),
+        # embed 가능하나 전혀 다른 곡 → 스코어 미달
+        _yt_si("ytX00000001", "Totally Different", channel="Other Artist"),
+    ]
+    videos = [
+        _yt_vi("ytNOEMB0001", embeddable=False),
+        _yt_vi("ytX00000001", embeddable=True),
+    ]
+    with _patch_yt_dataapi(search, videos):
         r = _resolve(track_id, "youtube")
 
     assert r.status_code == 404
@@ -365,9 +384,12 @@ def test_youtube_no_match_404(db_conn, yt_user, make_track):
         assert cur.fetchone() is None
 
 
-def test_youtube_synthetic_mapping_ignored_and_replaced(db_conn, yt_user, make_track):
+def test_youtube_synthetic_mapping_ignored_and_replaced(
+    db_conn, yt_user, make_track, monkeypatch
+):
     """합성('yt_…') 매핑은 없는 것으로 취급 — 재검색해서 real로 교체,
     합성 ID는 절대 반환되지 않음."""
+    monkeypatch.setenv("YOUTUBE_DATA_API_KEY", "test-key")
     track_id = make_track(
         title="yt resolve song b", artist="YT Resolve Artist B", duration_ms=200000
     )
@@ -380,13 +402,10 @@ def test_youtube_synthetic_mapping_ignored_and_replaced(db_conn, yt_user, make_t
         )
     db_conn.commit()
 
-    yt = _yt_search_mock([{
-        "videoId": "ytREAL00001",
-        "title": "yt resolve song b",
-        "artists": [{"name": "YT Resolve Artist B"}],
-        "duration_seconds": 200,
-    }])
-    with patch("mrms.api.playback_resolve._get_ytmusic", return_value=yt):
+    with _patch_yt_dataapi(
+        [_yt_si("ytREAL00001", "yt resolve song b", channel="YT Resolve Artist B")],
+        [_yt_vi("ytREAL00001", duration="PT3M20S")],
+    ):
         r = _resolve(track_id, "youtube")
 
     assert r.status_code == 200
@@ -413,12 +432,12 @@ def test_youtube_existing_real_mapping_skips_search(db_conn, yt_user, make_track
         )
     db_conn.commit()
 
-    with patch("mrms.api.playback_resolve._get_ytmusic") as get_yt:
+    with patch("mrms.api.playback_resolve._resolve_youtube") as resolve_yt:
         r = _resolve(track_id, "youtube")
 
     assert r.status_code == 200
     assert r.json() == {"platform_track_id": "ytPRE000001"}
-    get_yt.assert_not_called()
+    resolve_yt.assert_not_called()
 
 
 # ───────────────────────── 에러 경로 ─────────────────────────

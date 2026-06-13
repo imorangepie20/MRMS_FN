@@ -11,15 +11,15 @@ GET /api/playback/resolve/{track_id}?platform=spotify|tidal|youtube
   ISRC 필터는 openapi.tidal.com /v2/tracks?filter[isrc]=,
   텍스트 검색은 api.tidal.com /v1/search/tracks (playbackinfo와 같은
   Bearer 사용자 토큰 패턴 — artists가 인라인이라 매칭 검증에 적합).
-- YouTube: 유저 OAuth 불필요 — Setting 'youtube_auth_json'(ytmusicapi
-  browser auth)이 있으면 인증, 없으면 무인증 YTMusic. ISRC 미지원이라
-  텍스트+duration 매칭만. 합성('yt_…') ID는 IFrame에서 재생 불가 —
-  절대 만들지도 반환하지도 않는다.
+- YouTube: 유저 OAuth/토큰 불필요 — 서버 API 키(YOUTUBE_DATA_API_KEY)로
+  공식 Data API v3 검색(videoEmbeddable=true) + videos.status로 embeddable
+  확정 + 스코어링. ytmusicapi(비공식)는 'songs' 검색이 수시로 죽어 불가.
+  합성('yt_…') ID는 IFrame 재생 불가 — 만들지도 반환하지도 않는다.
 """
 from __future__ import annotations
 
-import asyncio
-import json
+import os
+import re
 from typing import Literal
 
 import httpx
@@ -30,17 +30,13 @@ from mrms.api.auth_spotify import get_token as _spotify_token
 from mrms.api.auth_tidal import _get_access_token as _tidal_token
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.db.ids import stable_id
-from mrms.db.settings import get_setting
 from mrms.sync.jsonapi import flatten_jsonapi
-
 
 router = APIRouter(prefix="/api/playback", tags=["playback"])
 
 SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search"
 TIDAL_V2_TRACKS_URL = "https://openapi.tidal.com/v2/tracks"
 TIDAL_V1_SEARCH_URL = "https://api.tidal.com/v1/search/tracks"
-
-YOUTUBE_AUTH_SETTING_KEY = "youtube_auth_json"
 
 SEARCH_LIMIT = 5
 DURATION_TOLERANCE_MS = 5000
@@ -241,60 +237,109 @@ async def _resolve_tidal(
 
 # YTMusic 인스턴스 캐시 — auth raw 문자열이 키 (Setting 교체 시 새 인스턴스).
 # 무인증은 "" 키. 생성 비용(헤더 셋업)만 아끼는 단순 캐시.
-_ytmusic_cache: dict[str, object] = {}
+# ── YouTube Data API v3 (공식) ──
+# ytmusicapi(비공식)는 'songs' 검색이 수시로 전역 0이 돼 신뢰 불가 →
+# 공식 Data API로 검색(videoEmbeddable=true) + videos.status로 embeddable 확정 +
+# 스코어링. (my-forever-music YouTubePlaybackTargetResolver 포팅)
+YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
+YOUTUBE_VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos"
+YT_SEARCH_LIMIT = 12
+YT_SCORE_THRESHOLD = 45
+YT_DURATION_TOLERANCE_MS = 8_000
+YT_BAD_TERMS = (
+    "karaoke", "노래방", "tj노래방", "금영", "instrumental",
+    "reaction", "cover", "tutorial", "piano version",
+)
 
 
-def _get_ytmusic(auth_raw: str | None):
-    """인증/무인증 YTMusic 인스턴스. import는 lazy.
-
-    auth JSON 파싱 실패는 무인증 폴백 (검색은 무인증도 동작)."""
-    key = auth_raw or ""
-    inst = _ytmusic_cache.get(key)
-    if inst is None:
-        from ytmusicapi import YTMusic
-
-        auth = None
-        if auth_raw:
-            try:
-                auth = json.loads(auth_raw)
-            except ValueError:
-                auth = None  # 무인증 폴백
-        inst = YTMusic(auth) if auth else YTMusic()
-        _ytmusic_cache[key] = inst
-    return inst
+def _yt_normalize(s: str | None) -> str:
+    """소문자 → 괄호/대괄호 내용 제거 → 영숫자+한글 외 공백 → 공백 정리."""
+    if not s:
+        return ""
+    s = s.lower()
+    s = re.sub(r"\([^)]*\)", " ", s)
+    s = re.sub(r"\[[^\]]*\]", " ", s)
+    s = re.sub(r"[^a-z0-9가-힣]+", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
 
 
-async def _resolve_youtube(yt, track: dict) -> str | None:
-    """ytmusicapi 텍스트 검색 (sync → to_thread). ISRC 미지원 —
-    텍스트+duration 매칭만 (_pick_match 재사용)."""
-    try:
-        results = await asyncio.to_thread(
-            yt.search,
-            f'{track["title"]} {track["artist"]}',
-            filter="songs",
-            limit=SEARCH_LIMIT,
-        )
-    except Exception as e:
-        raise HTTPException(502, f"youtube search failed: {type(e).__name__}: {str(e)[:200]}")
+def _iso8601_to_ms(d: str | None) -> int | None:
+    """ISO8601 duration(PT#H#M#S) → ms. 파싱 실패 시 None."""
+    if not d:
+        return None
+    m = re.fullmatch(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", d)
+    if not m:
+        return None
+    h, mi, s = (int(x) if x else 0 for x in m.groups())
+    return (h * 3600 + mi * 60 + s) * 1000
 
-    candidates: list[dict] = []
-    for item in results or []:
-        if not isinstance(item, dict) or not item.get("videoId"):
-            continue
-        duration_sec = item.get("duration_seconds")
-        candidates.append({
-            "id": str(item["videoId"]),
-            "title": item.get("title"),
-            "artists": [
-                a.get("name") for a in item.get("artists") or [] if isinstance(a, dict)
-            ],
-            "isrc": None,
-            "duration_ms": int(duration_sec) * 1000 if duration_sec else None,
-        })
-    best = _pick_match(
-        candidates, track["title"], track["artist"], track["duration_ms"],
+
+def _yt_score(title: str, artist: str, duration_ms: int | None, cand: dict) -> int:
+    """후보 점수 — 제목+35/아티스트+30/길이±8s+20/공식+15/노래방·커버 등 −45."""
+    hay = _yt_normalize(f"{cand['title']} {cand['channel']} {cand.get('description', '')}")
+    nt, na = _yt_normalize(title), _yt_normalize(artist)
+    score = 0
+    if nt and (nt in hay or _yt_normalize(cand["title"]) in nt):
+        score += 35
+    if na and na in hay:
+        score += 30
+    cd = cand.get("duration_ms")
+    if duration_ms and cd and abs(duration_ms - cd) <= YT_DURATION_TOLERANCE_MS:
+        score += 20
+    ct, cc = _yt_normalize(cand["title"]), _yt_normalize(cand["channel"])
+    if "official" in ct or "provided to youtube" in ct or "official" in cc or (na and na in cc):
+        score += 15
+    if any(t in hay for t in YT_BAD_TERMS):
+        score -= 45
+    return score
+
+
+async def _resolve_youtube(http: httpx.AsyncClient, key: str, track: dict) -> str | None:
+    """Data API v3 — embeddable 영상 검색 + videos.status 확정 + 스코어링 best videoId."""
+    q = f'{track["title"]} {track["artist"]}'.strip() or track["title"]
+    body = await _get_json(
+        http, YOUTUBE_SEARCH_URL,
+        params={
+            "part": "snippet", "type": "video", "videoEmbeddable": "true",
+            "maxResults": YT_SEARCH_LIMIT, "q": q, "key": key,
+        },
+        headers={"Accept": "application/json"}, what="youtube search",
     )
-    return best["id"] if best else None
+    hits: dict[str, dict] = {}
+    for it in body.get("items", []):
+        vid = (it.get("id") or {}).get("videoId")
+        if not vid:
+            continue
+        sn = it.get("snippet") or {}
+        hits[vid] = {
+            "title": sn.get("title") or "",
+            "channel": sn.get("channelTitle") or "",
+            "description": sn.get("description") or "",
+        }
+    if not hits:
+        return None
+
+    # videos.status로 embeddable 확정 + duration 확보
+    vbody = await _get_json(
+        http, YOUTUBE_VIDEOS_URL,
+        params={"part": "status,contentDetails", "id": ",".join(hits), "key": key},
+        headers={"Accept": "application/json"}, what="youtube video details",
+    )
+    best: str | None = None
+    best_score = 0
+    for it in vbody.get("items", []):
+        vid = it.get("id")
+        if vid not in hits or not (it.get("status") or {}).get("embeddable", False):
+            continue
+        cand = {
+            **hits[vid],
+            "duration_ms": _iso8601_to_ms((it.get("contentDetails") or {}).get("duration")),
+        }
+        sc = _yt_score(track["title"], track["artist"], track["duration_ms"], cand)
+        if sc >= YT_SCORE_THRESHOLD and sc > best_score:
+            best_score = sc
+            best = vid
+    return best
 
 
 # ───────────────────────── Endpoint ─────────────────────────
@@ -338,14 +383,12 @@ async def resolve_track(
         return {"platform_track_id": row[0]}
 
     if platform == "youtube":
-        # 유저 OAuth 단계 불필요 — Setting 'youtube_auth_json' 사용 (없으면 무인증).
-        # YTMusic 생성은 browser auth일 때 base_headers(cached_property) 경유로
-        # music.youtube.com에 블로킹 GET(get_visitor_id)을 날림 — 캐시 미스 시
-        # 이벤트 루프가 외부 RTT 동안 정지하므로 to_thread로 옮긴다.
-        yt = await asyncio.to_thread(
-            _get_ytmusic, get_setting(conn, YOUTUBE_AUTH_SETTING_KEY)
-        )
-        platform_track_id = await _resolve_youtube(yt, track)
+        # 유저 OAuth/토큰 불필요 — 서버 API 키로 공식 Data API 검색 (resolve-on-demand).
+        key = os.environ.get("YOUTUBE_DATA_API_KEY", "").strip()
+        if not key:
+            raise HTTPException(412, "YOUTUBE_DATA_API_KEY 미설정 — YouTube resolve 불가")
+        async with httpx.AsyncClient(timeout=10.0) as http:
+            platform_track_id = await _resolve_youtube(http, key, track)
     else:
         # 3. 플랫폼 토큰 — OAuth 미연결/refresh 실패는 미인증(401) 취급
         # (tidal refresh 실패는 HTTPException이 아닌 예외로 올라올 수 있어 broad catch)
