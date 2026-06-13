@@ -18,7 +18,6 @@ export const navGroups: NavGroup[] = [
       { title: "EMP", href: "/emp", num: "§ 02", badge: "2.4k" },
       { title: "PGT", href: "/pgt", num: "§ 03", badge: "42" },
       { title: "PCT", href: "/pct", num: "§ 04", badge: "9" },
-      { title: "Library", href: "/library", num: "§ 05", badge: "PGT" },
     ],
   },
   {
