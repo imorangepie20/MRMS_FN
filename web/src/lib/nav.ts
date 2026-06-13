@@ -1,8 +1,14 @@
+export type NavSubItem = {
+  title: string;
+  href: string;         // /pgt?tab=liked 처럼 쿼리로 섹션 지정
+};
+
 export type NavItem = {
   title: string;
   href: string;
   num: string;          // "§ 01", "L1" 등 editorial 번호 라벨
   badge?: string;       // 우측 카운트/상태
+  children?: NavSubItem[];  // 사이드바 서브메뉴
 };
 
 export type NavGroup = {
@@ -16,7 +22,16 @@ export const navGroups: NavGroup[] = [
     items: [
       { title: "MRT", href: "/mrt", num: "§ 01", badge: "50" },
       { title: "EMP", href: "/emp", num: "§ 02", badge: "2.4k" },
-      { title: "PGT", href: "/pgt", num: "§ 03", badge: "42" },
+      {
+        title: "PGT", href: "/pgt", num: "§ 03", badge: "42",
+        children: [
+          { title: "Liked", href: "/pgt?tab=liked" },
+          { title: "Playlists", href: "/pgt?tab=playlists" },
+          { title: "Albums", href: "/pgt?tab=albums" },
+          { title: "Artists", href: "/pgt?tab=artists" },
+          { title: "PCT", href: "/pgt?tab=pct" },
+        ],
+      },
       { title: "PCT", href: "/pct", num: "§ 04", badge: "9" },
     ],
   },

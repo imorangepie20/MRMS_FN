@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Heart, Play, Sparkles } from "lucide-react";
 
 import { AlbumArt } from "@/components/mrms/AlbumArt";
@@ -617,15 +618,24 @@ function StatCell({ label, value }: { label: string; value: number | string }) {
 // ── Main PgtLibrary component ────────────────────────────────────────────────
 
 export function PgtLibrary() {
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
   const [sections, setSections] = useState<PgtSections | null>(null);
   const [sectionsLoading, setSectionsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>("liked");
+  const [activeTab, setActiveTab] = useState<Tab>(
+    TABS.some((t) => t.id === tabParam) ? (tabParam as Tab) : "liked",
+  );
 
   useEffect(() => {
     getPgtSections()
       .then(setSections)
       .finally(() => setSectionsLoading(false));
   }, []);
+
+  // 사이드바 서브메뉴(/pgt?tab=...) 클릭 시 탭 동기화
+  useEffect(() => {
+    if (TABS.some((t) => t.id === tabParam)) setActiveTab(tabParam as Tab);
+  }, [tabParam]);
 
   const today = new Date();
   const dateStr = today.toLocaleDateString("en-US", {

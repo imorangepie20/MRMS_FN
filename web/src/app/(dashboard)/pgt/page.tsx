@@ -1,5 +1,11 @@
+import { Suspense } from "react";
+
 import { PgtLibrary } from "@/components/mrms/PgtLibrary";
 
 export default function PgtPage() {
-  return <PgtLibrary />;
+  return (
+    <Suspense fallback={null}>
+      <PgtLibrary />
+    </Suspense>
+  );
 }

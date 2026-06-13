@@ -40,33 +40,47 @@ export function AppSidebar() {
             {group.items.map((item) => {
               const active = pathname === item.href;
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`relative grid grid-cols-[32px_1fr_auto] gap-1 items-baseline py-1.5 border-b border-[var(--mrms-rule)]/50 last:border-b-0 transition-[padding] hover:pl-1 ${active ? "" : ""}`}
-                >
-                  {active && (
+                <div key={item.href}>
+                  <Link
+                    href={item.href}
+                    className="relative grid grid-cols-[32px_1fr_auto] gap-1 items-baseline py-1.5 border-b border-[var(--mrms-rule)]/50 last:border-b-0 transition-[padding] hover:pl-1"
+                  >
+                    {active && (
+                      <span
+                        aria-hidden
+                        className="absolute -left-6 top-1/2 w-3.5 h-px bg-[var(--mrms-rust)]"
+                      />
+                    )}
                     <span
-                      aria-hidden
-                      className="absolute -left-6 top-1/2 w-3.5 h-px bg-[var(--mrms-rust)]"
-                    />
-                  )}
-                  <span
-                    className={`font-mono text-[10px] tracking-editorial ${active ? "text-[var(--mrms-rust)]" : "text-[var(--mrms-ink-mute)]"}`}
-                  >
-                    {item.num}
-                  </span>
-                  <span
-                    className={`font-display text-[14px] leading-tight ${active ? "text-[var(--mrms-ink)] font-semibold" : "text-[var(--mrms-ink-soft)] font-medium"}`}
-                  >
-                    {item.title}
-                  </span>
-                  {item.badge && (
-                    <span className="font-mono text-[9px] text-[var(--mrms-ink-mute)]">
-                      {item.badge}
+                      className={`font-mono text-[10px] tracking-editorial ${active ? "text-[var(--mrms-rust)]" : "text-[var(--mrms-ink-mute)]"}`}
+                    >
+                      {item.num}
                     </span>
+                    <span
+                      className={`font-display text-[14px] leading-tight ${active ? "text-[var(--mrms-ink)] font-semibold" : "text-[var(--mrms-ink-soft)] font-medium"}`}
+                    >
+                      {item.title}
+                    </span>
+                    {item.badge && (
+                      <span className="font-mono text-[9px] text-[var(--mrms-ink-mute)]">
+                        {item.badge}
+                      </span>
+                    )}
+                  </Link>
+                  {item.children && (
+                    <div className="pl-8 mt-0.5 mb-1 flex flex-col">
+                      {item.children.map((sub) => (
+                        <Link
+                          key={sub.href}
+                          href={sub.href}
+                          className="py-0.5 font-mono text-[10px] tracking-editorial text-[var(--mrms-ink-mute)] no-underline hover:text-[var(--mrms-rust)]"
+                        >
+                          {sub.title}
+                        </Link>
+                      ))}
+                    </div>
                   )}
-                </Link>
+                </div>
               );
             })}
           </div>
