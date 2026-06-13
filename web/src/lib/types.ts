@@ -279,3 +279,30 @@ export interface PgtSections {
   imported_playlists: PgtImportedPlaylist[];
   user_playlists: UserPlaylistSummary[];
 }
+
+export interface SearchTrack {
+  track_id: string;
+  title: string;
+  artist: string;
+  album_title: string | null;
+  album_cover: string | null;
+  duration_ms: number | null;
+  isrc: string | null;
+  tidal_track_id: string | null;
+  spotify_track_id: string | null;
+}
+export interface SearchContainer {
+  type: "album" | "playlist";
+  platform: "tidal" | "spotify";
+  platform_id: string;
+  title: string | null;
+  subtitle: string;
+  cover_url: string | null;
+  track_count: number | null;
+}
+export interface SearchResponse {
+  tracks: SearchTrack[];
+  albums: SearchContainer[];
+  playlists: SearchContainer[];
+  skipped_platforms: string[];
+}
