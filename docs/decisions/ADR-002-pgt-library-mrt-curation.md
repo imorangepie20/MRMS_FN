@@ -4,7 +4,7 @@
 
 ## 상태
 
-제안 — 설계 승인됨, 구현 대기. (구현 완료 시 `승인`으로 갱신)
+승인 — **A 구현 완료** (2026-06-13). PGT 5섹션(`db/pgt.py` 파생 + 기존 Playlist 재사용) + `/library` 화면 + MRT→PGT 이동(`mrt_latest` UserTrack 제외 필터) + 앨범 collect + `prune_playlist_history`(regenerate_mrt 연동). 임포트 플리 1급 모델링(kind/platform + import→Playlist 행)은 **B 보류**. 브랜치 `feat/pgt-library-mrt-curation`.
 
 ## 결정
 
