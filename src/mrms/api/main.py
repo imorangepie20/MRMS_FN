@@ -208,6 +208,11 @@ def mrt_latest(
             )
             owned = {r[0] for r in cur.fetchall()}
 
+    # 싫어요(disliked)/관심없어요(dismissed) 반응한 트랙·앨범도 표시에서 제외
+    from mrms.db.user_blocked import blocked_track_ids
+    blocked = blocked_track_ids(conn, user_id, ["disliked", "dismissed"]) if all_track_ids else set()
+    hidden = owned | blocked
+
     # UserPersona의 trackCount 매핑
     with conn.cursor() as cur:
         cur.execute(
@@ -223,8 +228,8 @@ def mrt_latest(
         scores = ctx.get("scores", [])
         playlist: list[PersonaTrack] = []
         for tid, sc in zip(p["trackIds"][:top_n], scores[:top_n]):
-            if tid in owned:
-                continue  # PGT 보유 트랙 → MRT에서 제외
+            if tid in hidden:
+                continue  # PGT 보유 트랙 + 부정 반응 트랙 → MRT에서 제외
             m = meta.get(tid)
             if not m:
                 continue  # Tidal 미가용 → skip
@@ -284,11 +289,11 @@ def mrt_latest(
             pct=user_track_state.get(r["track_id"], (False, False))[1],
         )
         for r in rec_tracks_raw
-        if r["track_id"] in meta and r["track_id"] not in owned  # Tidal 가용 + PGT 미보유
+        if r["track_id"] in meta and r["track_id"] not in hidden  # Tidal 가용 + PGT 미보유·미차단
     ]
 
-    # owned 트랙은 album 집계에도 기여하지 않도록 track_to_album에서 제외
-    track_to_album = {tid: m["album_id"] for tid, m in meta.items() if tid not in owned}
+    # owned·차단 트랙은 album 집계에도 기여하지 않도록 track_to_album에서 제외
+    track_to_album = {tid: m["album_id"] for tid, m in meta.items() if tid not in hidden}
     rec_albums_raw = derive_recommended_albums(playlists_with_scores, track_to_album, top_n=top_albums_n)
     # album_id → (title, artist) 조회
     album_titles: dict[str, tuple[str, str]] = {}
