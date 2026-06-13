@@ -79,7 +79,9 @@ async def test_run_pipeline_records_run(db_conn, cleanup):
          patch("mrms.emp.runner._run_importer_youtube", new=fake_import_youtube), \
          patch("mrms.emp.runner._run_audio_download", return_value=ok_stage), \
          patch("mrms.emp.runner._run_extract_embeddings", return_value=ok_stage), \
-         patch("mrms.emp.runner._run_load_to_db", return_value=ok_stage):
+         patch("mrms.emp.runner._run_youtube_misses", return_value=ok_stage), \
+         patch("mrms.emp.runner._run_load_to_db", return_value=ok_stage), \
+         patch("mrms.emp.runner._run_regenerate_mrt", return_value=ok_stage):
         run_id = await run_pipeline(db_conn, platform="all", triggered_by="manual")
 
     cleanup('DELETE FROM "IngestionRun" WHERE id = %s', (run_id,))
@@ -141,7 +143,9 @@ async def test_run_pipeline_partial_on_failure(db_conn, cleanup):
          patch("mrms.emp.runner._run_importer_youtube", new=fake_import_youtube), \
          patch("mrms.emp.runner._run_audio_download", return_value=fail_stage), \
          patch("mrms.emp.runner._run_extract_embeddings", return_value=ok_stage), \
-         patch("mrms.emp.runner._run_load_to_db", return_value=ok_stage):
+         patch("mrms.emp.runner._run_youtube_misses", return_value=ok_stage), \
+         patch("mrms.emp.runner._run_load_to_db", return_value=ok_stage), \
+         patch("mrms.emp.runner._run_regenerate_mrt", return_value=ok_stage):
         run_id = await run_pipeline(db_conn, platform="all", triggered_by="scheduler")
 
     cleanup('DELETE FROM "IngestionRun" WHERE id = %s', (run_id,))
@@ -198,3 +202,41 @@ def test_fail_stale_runs_and_has_active(db_conn, cleanup):
         assert cur.fetchone()[0] == "failed"
 
     finish_run(db_conn, run_id, "failed")  # idempotent 확인용
+
+
+async def test_run_pipeline_includes_youtube_and_mrt_stages(db_conn, cleanup):
+    """run_pipeline → youtube_misses + regenerate_mrt 스테이지 기록 (순서 포함)."""
+    from mrms.emp.runner import run_pipeline
+
+    async def _imp(conn):
+        return {"tracks_new": 1, "tracks_existing": 0, "playlists_processed": 1, "errors": []}
+
+    ok = {"status": "success", "duration_ms": 10, "stdout": "", "stderr": "", "error": None}
+    mrt_ok = {"status": "success", "duration_ms": 10, "stdout": "stale=0 regenerated=0 failed=0",
+              "stderr": "", "error": None}
+
+    with patch("mrms.emp.runner._run_importer_tidal", new=_imp), \
+         patch("mrms.emp.runner._run_importer_spotify", new=_imp), \
+         patch("mrms.emp.runner._run_importer_flo", new=_imp), \
+         patch("mrms.emp.runner._run_importer_melon", new=_imp), \
+         patch("mrms.emp.runner._run_importer_vibe", new=_imp), \
+         patch("mrms.emp.runner._run_importer_apple", new=_imp), \
+         patch("mrms.emp.runner._run_importer_youtube", new=_imp), \
+         patch("mrms.emp.runner._run_audio_download", return_value=ok), \
+         patch("mrms.emp.runner._run_extract_embeddings", return_value=ok), \
+         patch("mrms.emp.runner._run_youtube_misses", return_value=ok), \
+         patch("mrms.emp.runner._run_load_to_db", return_value=ok), \
+         patch("mrms.emp.runner._run_regenerate_mrt", return_value=mrt_ok):
+        run_id = await run_pipeline(db_conn, platform="all", triggered_by="manual")
+
+    cleanup('DELETE FROM "IngestionRun" WHERE id = %s', (run_id,))
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT status, stages FROM "IngestionRun" WHERE id = %s', (run_id,))
+        status, stages = cur.fetchone()
+    names = [s["stage"] for s in stages]
+    assert status == "success"
+    assert "youtube_misses" in names
+    assert "regenerate_mrt" in names
+    assert names.index("youtube_misses") > names.index("extract_embeddings")
+    assert names.index("youtube_misses") < names.index("load_to_db")
+    assert names.index("regenerate_mrt") > names.index("load_to_db")

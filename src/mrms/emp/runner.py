@@ -1,6 +1,7 @@
 """파이프라인 runner — importers + 02/03/10 호출 + IngestionRun 기록."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -15,6 +16,14 @@ from mrms.emp.base import fmt_exc, safe_rollback
 # repo 루트 절대 경로 (editable install 기준 src/mrms/emp/runner.py → 3단계 위)
 # — systemd WorkingDirectory 외의 cwd에서 호출돼도 스크립트 경로가 깨지지 않음
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+
+from mrms.config import settings  # noqa: E402 (module-level constant 초기화 후 import)
+
+# 유저 라이브러리 youtube 미스곡 전용 오디오 디렉토리 — EMP 카탈로그 audio_dir과 분리해
+# 메인 03(decode 캐시 사용)이 미스곡 m4a를 건너뛰는 문제를 회피한다.
+_YT_MISSES_DIR = settings.audio_dir.parent / "audio_yt_misses"
+# 존재하지 않는 경로 → 03의 use_cache=False → audio-dir 직접 디코딩(캐시 우회).
+_NO_DECODE_CACHE = settings.data_root / "_no_decode_cache"
 
 
 def _ms_since(t0: float) -> int:
@@ -103,6 +112,64 @@ def _run_load_to_db() -> dict:
     return _run_script([sys.executable, _script_path("10_load_emp_embeddings.py")])
 
 
+def _run_youtube_misses(limit: int = 500) -> dict:
+    """유저 라이브러리 youtube 미스곡: 13(다운로드, 전용 dir) + 03(추출, 캐시 우회).
+
+    npy는 03 기본 out-dir(embed_dir/mert_v1_95m)에 생성 → 이후 load_to_db(10)이
+    fetch_pending으로 미스곡을 잡아 적재한다. 메인 audio_dir과 분리해 decode 캐시
+    충돌을 피한다. GPU 디바이스는 MRMS_EMBED_DEVICE(기본 cuda)로 지정."""
+    t0 = time.monotonic()
+    dl = _run_script([
+        sys.executable, _script_path("13_embed_youtube_misses.py"),
+        "--limit", str(limit), "--sleep", "2",
+        "--audio-dir", str(_YT_MISSES_DIR),
+    ])
+    if dl["status"] != "success":
+        dl["duration_ms"] = _ms_since(t0)
+        return dl
+    ex = _run_script([
+        sys.executable, _script_path("03_extract_embeddings.py"),
+        "--audio-dir", str(_YT_MISSES_DIR),
+        "--cache-dir", str(_NO_DECODE_CACHE),
+        "--device", os.environ.get("MRMS_EMBED_DEVICE", "cuda"),
+    ])
+    ex["duration_ms"] = _ms_since(t0)
+    return ex
+
+
+def _run_regenerate_mrt(conn: psycopg.Connection) -> dict:
+    """stale MRT 유저 재생성 (in-process). 유저별 try/except + commit로 격리."""
+    from mrms.recsys.mrt import generate_user_mrt, select_stale_mrt_users
+
+    t0 = time.monotonic()
+    try:
+        users = select_stale_mrt_users(conn)
+    except Exception as e:
+        safe_rollback(conn)
+        return {"status": "failed", "duration_ms": _ms_since(t0),
+                "stdout": "", "stderr": "", "error": fmt_exc(e, 300)}
+    regenerated = 0
+    failed = 0
+    for uid in users:
+        try:
+            # 기본 k/top_n/candidate_pool(DEFAULT_*) 사용 — 이는 운영 MRT의 정본 값이며,
+            # select_stale_mrt_users가 거르는 MODEL_VERSION(+persona-K3 = DEFAULT_K)과 일치해야 한다.
+            # onboarding/scripts09가 비기본 top_n·candidate_pool로 바꾸면 여기도 맞춰야 추천 폭이 안 어긋난다.
+            if generate_user_mrt(conn, uid) is not None:
+                conn.commit()
+                regenerated += 1
+        except Exception:
+            safe_rollback(conn)
+            failed += 1
+    return {
+        "status": "success" if failed == 0 else "partial",
+        "duration_ms": _ms_since(t0),
+        "stdout": f"stale={len(users)} regenerated={regenerated} failed={failed}",
+        "stderr": "",
+        "error": None if failed == 0 else f"{failed} user(s) failed",
+    }
+
+
 async def _import_stage(
     conn: psycopg.Connection, run_id: str, stage_name: str, importer_fn
 ) -> bool:
@@ -169,9 +236,21 @@ async def run_pipeline(
         if s["status"] != "success":
             overall_ok = False
 
+        # youtube 미스곡 다운로드 + 전용 추출 (신규)
+        s = _run_youtube_misses()
+        append_stage(conn, run_id, {"stage": "youtube_misses", **s})
+        if s["status"] != "success":
+            overall_ok = False
+
         # load to DB
         s = _run_load_to_db()
         append_stage(conn, run_id, {"stage": "load_to_db", **s})
+        if s["status"] != "success":
+            overall_ok = False
+
+        # stale MRT 재생성 (신규)
+        s = _run_regenerate_mrt(conn)
+        append_stage(conn, run_id, {"stage": "regenerate_mrt", **s})
         if s["status"] != "success":
             overall_ok = False
     except BaseException:
