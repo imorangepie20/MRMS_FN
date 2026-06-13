@@ -260,6 +260,7 @@ async function playOn(
   if (generation !== playGeneration) return;
 
   active = platform;
+  usePlayerStore.setState({ activePlatform: platform });
   for (const p of FALLBACK_ORDER) PLAYERS[p].setActive(p === platform);
 
   await PLAYERS[platform].loadAndPlay(idOf(track, platform)!);

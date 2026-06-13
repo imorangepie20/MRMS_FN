@@ -15,12 +15,16 @@ export type QueueTrack = {
 
 export type RepeatMode = "off" | "all" | "one";
 
+// 현재 소리내는 플랫폼. lib/player.ts 의 Platform 과 값 동일하나, store→facade
+// import 순환을 피하려고 로컬에 둔다.
+export type ActivePlatform = "tidal" | "spotify" | "youtube";
 
 export type PlayerState = {
   // 상태
   queue: QueueTrack[];
   currentIdx: number;
   isPlaying: boolean;
+  activePlatform: ActivePlatform | null;
   position: number;       // 0~1 진행률
   durationSec: number;
   volume: number;          // 0~1
@@ -53,6 +57,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   queue: [],
   currentIdx: 0,
   isPlaying: false,
+  activePlatform: null,
   position: 0,
   durationSec: 0,
   volume: 0.8,
@@ -90,6 +95,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       queue: [],
       currentIdx: 0,
       isPlaying: false,
+      activePlatform: null,
       position: 0,
       durationSec: 0,
     }),
