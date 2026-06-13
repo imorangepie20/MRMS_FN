@@ -16,6 +16,7 @@ from mrms.api.auth_tidal import playback_router as tidal_playback_router, router
 from mrms.api.auth_youtube import router as auth_youtube_router
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.api.onboarding_api import router as onboarding_router
+from mrms.api.pgt import router as pgt_router
 from mrms.api.playback_resolve import router as playback_resolve_router
 from mrms.api.playlists import router as playlists_router
 from mrms.api.user_tracks import router as user_tracks_router
@@ -54,6 +55,7 @@ app.include_router(albums_router)
 app.include_router(artwork_router)
 app.include_router(admin_emp_router)
 app.include_router(emp_browse_router)
+app.include_router(pgt_router)
 
 
 @app.get("/api/health")
