@@ -33,7 +33,6 @@ export const navGroups: NavGroup[] = [
           { title: "PCT", href: "/pgt?tab=pct" },
         ],
       },
-      { title: "PCT", href: "/pct", num: "§ 04", full: "Personal Core Tracks", badge: "9" },
     ],
   },
   {
