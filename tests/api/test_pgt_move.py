@@ -67,6 +67,70 @@ def _seed_catalog_track(conn) -> tuple[str, str, str]:
     return artist_id, album_id, track_id
 
 
+def _seed_album(conn, n: int = 3) -> tuple[str, list[str]]:
+    """Artist + Album + n Tracks 생성. (album_id, [track_id, ...]) 반환."""
+    tag = uuid.uuid4().hex[:8]
+    artist_id = _id(f"test|pgtcollect|artist|{tag}")
+    album_id = _id(f"test|pgtcollect|album|{tag}")
+    track_ids = [_id(f"test|pgtcollect|track|{tag}|{i}") for i in range(n)]
+
+    with conn.cursor() as cur:
+        cur.execute(
+            '''INSERT INTO "Artist" (id, name, "nameNormalized")
+               VALUES (%s, %s, %s) ON CONFLICT (id) DO NOTHING''',
+            (artist_id, f"CollectArtist-{tag}", f"collectartist-{tag}"),
+        )
+        cur.execute(
+            '''INSERT INTO "Album" (id, title, "albumType", "artistId")
+               VALUES (%s, %s, %s, %s) ON CONFLICT (id) DO NOTHING''',
+            (album_id, f"CollectAlbum-{tag}", "album", artist_id),
+        )
+        for i, tid in enumerate(track_ids):
+            cur.execute(
+                '''INSERT INTO "Track"
+                     (id, isrc, title, "titleNormalized", "durationMs", "artistId", "albumId")
+                   VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING''',
+                (
+                    tid,
+                    f"PGTCOL{tag.upper()}{i:02d}",
+                    f"CollectTrack-{tag}-{i}",
+                    f"collecttrack-{tag}-{i}",
+                    210000,
+                    artist_id,
+                    album_id,
+                ),
+            )
+    conn.commit()
+    return album_id, track_ids, artist_id
+
+
+def test_album_collect(db_conn, set_session_cookie, cleanup):
+    """앨범 collect: 앨범의 모든 트랙을 PGT(source='liked')로 담기."""
+    user_id = set_session_cookie(f"album-collect-{uuid.uuid4().hex[:6]}@test.com")
+    album_id, track_ids, artist_id = _seed_album(db_conn, n=3)
+
+    # cleanup 등록순서: Artist → Album → Track(s) → UserTrack
+    # 실행순서(역순):   UserTrack → Track(s) → Album → Artist
+    cleanup('DELETE FROM "Artist" WHERE id=%s', (artist_id,))
+    cleanup('DELETE FROM "Album" WHERE id=%s', (album_id,))
+    for tid in track_ids:
+        cleanup('DELETE FROM "Track" WHERE id=%s', (tid,))
+    cleanup('DELETE FROM "UserTrack" WHERE "userId"=%s', (user_id,))
+
+    r = client.post(f"/api/user/tracks/album/{album_id}/collect")
+    assert r.status_code == 200 and r.json()["collected"] == 3
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            '''SELECT count(*) FROM "UserTrack"
+               WHERE "userId"=%s AND "trackId"=ANY(%s) AND source='liked' ''',
+            (user_id, track_ids),
+        )
+        assert cur.fetchone()[0] == 3
+
+    client.cookies.clear()
+
+
 def test_moved_track_excluded_from_mrt(db_conn, set_session_cookie, cleanup):
     """MRT→PGT 이동: like하면 mrt/latest recommended_tracks에서 제외된다."""
     user_id = set_session_cookie(f"pgt-move-{uuid.uuid4().hex[:6]}@test.com")

@@ -100,6 +100,27 @@ def toggle_pct(
         return {"pct": new_value}
 
 
+@router.post("/album/{album_id}/collect")
+def collect_album(
+    album_id: str,
+    user_id: str = Depends(get_current_user_id),
+    conn=Depends(db_conn),
+):
+    """앨범의 카탈로그 트랙 전부를 PGT로 담기 (source='liked'). collected 수 반환."""
+    with conn.cursor() as cur:
+        cur.execute('SELECT id FROM "Track" WHERE "albumId" = %s', (album_id,))
+        track_ids = [r[0] for r in cur.fetchall()]
+        for tid in track_ids:
+            cur.execute(
+                '''INSERT INTO "UserTrack" (id, "userId", "trackId", source, "isCore", platform)
+                   VALUES (%s, %s, %s, 'liked', false, 'mrms')
+                   ON CONFLICT ("userId", "trackId") DO NOTHING''',
+                (_id(f"usertrack|{user_id}|{tid}"), user_id, tid),
+            )
+    conn.commit()
+    return {"collected": len(track_ids)}
+
+
 @router.get("/{track_id}/state")
 def get_track_state(
     track_id: str,
