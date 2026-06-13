@@ -239,9 +239,11 @@ model UserBlocked {
   userId     String
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   targetId   String
-  targetType String   // 'track' | 'artist'
+  targetType String   // 'track' | 'album' | 'artist'
+  reason     String   @default("disliked") // 'disliked'(영구) | 'dismissed'(일시)
   createdAt  DateTime @default(now())
 
+  @@unique([userId, targetId, targetType])
   @@index([userId])
 }
 
