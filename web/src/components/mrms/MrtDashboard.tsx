@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Heart, Play, Sparkles } from "lucide-react";
+import { EyeOff, Heart, Play, Sparkles, ThumbsDown } from "lucide-react";
 
-import { collectAlbum } from "@/lib/api";
+import { collectAlbum, dislikeAlbum, dislikeTrack, dismissAlbum, dismissTrack } from "@/lib/api";
 
 import { AlbumDetailModal } from "@/components/album/AlbumDetailModal";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
@@ -41,6 +41,8 @@ export function MrtDashboard({ user, mrt }: Props) {
   const [albumModal, setAlbumModal] = useState<string | null>(null);
   const [playlistModal, setPlaylistModal] = useState<string | null>(null);
   const [collectingAlbum, setCollectingAlbum] = useState<string | null>(null);
+  const [dislikingAlbum, setDislikingAlbum] = useState<string | null>(null);
+  const [dismissingAlbum, setDismissingAlbum] = useState<string | null>(null);
 
   const generatedDate = mrt.generated_at ? new Date(mrt.generated_at) : null;
   const generatedLabel = generatedDate
@@ -235,21 +237,66 @@ export function MrtDashboard({ user, mrt }: Props) {
                     {a.artist}
                   </div>
                 </button>
-                <button
-                  disabled={collectingAlbum === a.album_id}
-                  onClick={async () => {
-                    setCollectingAlbum(a.album_id);
-                    try {
-                      await collectAlbum(a.album_id);
-                      window.location.reload();
-                    } catch {
-                      setCollectingAlbum(null);
-                    }
-                  }}
-                  className="mt-1.5 bg-transparent border border-[var(--mrms-ink-mute)] px-2 py-0.5 font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-soft)] cursor-pointer disabled:opacity-40 disabled:cursor-default hover:border-[var(--mrms-ink)] hover:text-[var(--mrms-ink)] transition-colors"
-                >
-                  {collectingAlbum === a.album_id ? "…" : "담기"}
-                </button>
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <button
+                    disabled={collectingAlbum === a.album_id}
+                    onClick={async () => {
+                      setCollectingAlbum(a.album_id);
+                      try {
+                        await collectAlbum(a.album_id);
+                        window.location.reload();
+                      } catch {
+                        setCollectingAlbum(null);
+                      }
+                    }}
+                    title="담기 · 앨범을 라이브러리에 담기"
+                    className="bg-transparent border border-[var(--mrms-ink-mute)] px-2 py-0.5 font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-soft)] cursor-pointer disabled:opacity-40 disabled:cursor-default hover:border-[var(--mrms-ink)] hover:text-[var(--mrms-ink)] transition-colors"
+                  >
+                    {collectingAlbum === a.album_id ? "…" : "담기"}
+                  </button>
+                  <button
+                    disabled={dislikingAlbum === a.album_id}
+                    onClick={async () => {
+                      setDislikingAlbum(a.album_id);
+                      try {
+                        await dislikeAlbum(a.album_id);
+                        window.location.reload();
+                      } catch {
+                        setDislikingAlbum(null);
+                      }
+                    }}
+                    aria-label="싫어요"
+                    title="싫어요 · 앨범 추천에서 영구 제외"
+                    className="bg-transparent border-0 cursor-pointer p-1 disabled:opacity-40 disabled:cursor-default"
+                  >
+                    <ThumbsDown
+                      className="size-3.5"
+                      strokeWidth={1.6}
+                      stroke="var(--mrms-ink-mute)"
+                    />
+                  </button>
+                  <button
+                    disabled={dismissingAlbum === a.album_id}
+                    onClick={async () => {
+                      setDismissingAlbum(a.album_id);
+                      try {
+                        await dismissAlbum(a.album_id);
+                        window.location.reload();
+                      } catch {
+                        setDismissingAlbum(null);
+                      }
+                    }}
+                    aria-label="관심없어요"
+                    title="관심없어요 · 이번 추천에서 숨기기"
+                    className="bg-transparent border-0 cursor-pointer p-1 disabled:opacity-40 disabled:cursor-default"
+                  >
+                    <EyeOff
+                      className="size-3.5"
+                      strokeWidth={1.6}
+                      stroke="var(--mrms-ink-mute)"
+                    />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -481,6 +528,7 @@ function TrackRow({
         <button
           onClick={onLike}
           aria-label="좋아요"
+          title="좋아요 · 라이브러리에 담기"
           className="bg-transparent border-0 cursor-pointer p-1"
         >
           <Heart
@@ -493,6 +541,7 @@ function TrackRow({
         <button
           onClick={onPct}
           aria-label="취향저격"
+          title="취향저격 · 핵심 취향(PCT)에 추가"
           className="bg-transparent border-0 cursor-pointer p-1"
         >
           <Sparkles
@@ -500,6 +549,44 @@ function TrackRow({
             strokeWidth={1.6}
             fill={pct ? "var(--mrms-rust)" : "none"}
             stroke={pct ? "var(--mrms-rust)" : "var(--mrms-ink-mute)"}
+          />
+        </button>
+        <button
+          onClick={async () => {
+            try {
+              await dislikeTrack(track.track_id);
+              window.location.reload();
+            } catch {
+              // silent — row stays visible on error
+            }
+          }}
+          aria-label="싫어요"
+          title="싫어요 · 추천에서 영구 제외"
+          className="bg-transparent border-0 cursor-pointer p-1"
+        >
+          <ThumbsDown
+            className="size-3.5"
+            strokeWidth={1.6}
+            stroke="var(--mrms-ink-mute)"
+          />
+        </button>
+        <button
+          onClick={async () => {
+            try {
+              await dismissTrack(track.track_id);
+              window.location.reload();
+            } catch {
+              // silent — row stays visible on error
+            }
+          }}
+          aria-label="관심없어요"
+          title="관심없어요 · 이번 추천에서 숨기기"
+          className="bg-transparent border-0 cursor-pointer p-1"
+        >
+          <EyeOff
+            className="size-3.5"
+            strokeWidth={1.6}
+            stroke="var(--mrms-ink-mute)"
           />
         </button>
       </div>

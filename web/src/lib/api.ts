@@ -95,3 +95,15 @@ export function collectAlbum(albumId: string): Promise<{ collected: number }> {
     method: "POST",
   });
 }
+
+export const dislikeTrack = (trackId: string): Promise<{ disliked: boolean }> =>
+  fetchJson<{ disliked: boolean }>(`/user/tracks/${trackId}/dislike`, { method: "POST" });
+
+export const dismissTrack = (trackId: string): Promise<{ dismissed: boolean }> =>
+  fetchJson<{ dismissed: boolean }>(`/user/tracks/${trackId}/dismiss`, { method: "POST" });
+
+export const dislikeAlbum = (albumId: string): Promise<{ disliked: boolean }> =>
+  fetchJson<{ disliked: boolean }>(`/user/tracks/album/${albumId}/dislike`, { method: "POST" });
+
+export const dismissAlbum = (albumId: string): Promise<{ dismissed: boolean }> =>
+  fetchJson<{ dismissed: boolean }>(`/user/tracks/album/${albumId}/dismiss`, { method: "POST" });
