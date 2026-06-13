@@ -139,6 +139,7 @@ def _run_youtube_misses(limit: int = 500) -> dict:
 
 def _run_regenerate_mrt(conn: psycopg.Connection) -> dict:
     """stale MRT 유저 재생성 (in-process). 유저별 try/except + commit로 격리."""
+    from mrms.db.user_embedding import prune_playlist_history
     from mrms.recsys.mrt import generate_user_mrt, select_stale_mrt_users
 
     t0 = time.monotonic()
@@ -157,6 +158,7 @@ def _run_regenerate_mrt(conn: psycopg.Connection) -> dict:
             # onboarding/scripts09가 비기본 top_n·candidate_pool로 바꾸면 여기도 맞춰야 추천 폭이 안 어긋난다.
             if generate_user_mrt(conn, uid) is not None:
                 conn.commit()
+                prune_playlist_history(conn, uid)   # 최신 N generation만 유지
                 regenerated += 1
         except Exception:
             safe_rollback(conn)

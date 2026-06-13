@@ -240,3 +240,16 @@ async def test_run_pipeline_includes_youtube_and_mrt_stages(db_conn, cleanup):
     assert names.index("youtube_misses") > names.index("extract_embeddings")
     assert names.index("youtube_misses") < names.index("load_to_db")
     assert names.index("regenerate_mrt") > names.index("load_to_db")
+
+
+def test_regenerate_calls_prune(db_conn, monkeypatch):
+    """_run_regenerate_mrt가 재생성된 유저마다 prune_playlist_history를 호출."""
+    import mrms.recsys.mrt as mrt
+    import mrms.db.user_embedding as ue
+    monkeypatch.setattr(mrt, "select_stale_mrt_users", lambda conn, **k: ["u1"])
+    monkeypatch.setattr(mrt, "generate_user_mrt", lambda conn, uid, **k: 5)
+    pruned = []
+    monkeypatch.setattr(ue, "prune_playlist_history", lambda conn, uid, **k: pruned.append(uid) or 0)
+    from mrms.emp.runner import _run_regenerate_mrt
+    _run_regenerate_mrt(db_conn)
+    assert pruned == ["u1"]
