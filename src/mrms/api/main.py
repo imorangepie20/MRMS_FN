@@ -198,6 +198,16 @@ def mrt_latest(
     all_track_ids = list({tid for p in playlists_sorted for tid in p["trackIds"]})
     meta = _fetch_track_metadata(conn, all_track_ids, primary_platform=primary_platform)
 
+    # MRT→PGT '이동': 이미 PGT(UserTrack)에 담은 트랙은 추천에서 제외(이력 보존, display 필터)
+    owned: set[str] = set()
+    if all_track_ids:
+        with conn.cursor() as cur:
+            cur.execute(
+                'SELECT "trackId" FROM "UserTrack" WHERE "userId"=%s AND "trackId"=ANY(%s)',
+                (user_id, all_track_ids),
+            )
+            owned = {r[0] for r in cur.fetchall()}
+
     # UserPersona의 trackCount 매핑
     with conn.cursor() as cur:
         cur.execute(
@@ -213,6 +223,8 @@ def mrt_latest(
         scores = ctx.get("scores", [])
         playlist: list[PersonaTrack] = []
         for tid, sc in zip(p["trackIds"][:top_n], scores[:top_n]):
+            if tid in owned:
+                continue  # PGT 보유 트랙 → MRT에서 제외
             m = meta.get(tid)
             if not m:
                 continue  # Tidal 미가용 → skip
@@ -272,10 +284,11 @@ def mrt_latest(
             pct=user_track_state.get(r["track_id"], (False, False))[1],
         )
         for r in rec_tracks_raw
-        if r["track_id"] in meta  # Tidal 가용한 것만
+        if r["track_id"] in meta and r["track_id"] not in owned  # Tidal 가용 + PGT 미보유
     ]
 
-    track_to_album = {tid: m["album_id"] for tid, m in meta.items()}
+    # owned 트랙은 album 집계에도 기여하지 않도록 track_to_album에서 제외
+    track_to_album = {tid: m["album_id"] for tid, m in meta.items() if tid not in owned}
     rec_albums_raw = derive_recommended_albums(playlists_with_scores, track_to_album, top_n=top_albums_n)
     # album_id → (title, artist) 조회
     album_titles: dict[str, tuple[str, str]] = {}
