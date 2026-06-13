@@ -56,10 +56,17 @@ export function AppSidebar() {
                     >
                       {item.num}
                     </span>
-                    <span
-                      className={`font-display text-[14px] leading-tight ${active ? "text-[var(--mrms-ink)] font-semibold" : "text-[var(--mrms-ink-soft)] font-medium"}`}
-                    >
-                      {item.title}
+                    <span className="min-w-0">
+                      <span
+                        className={`font-display text-[14px] leading-tight ${active ? "text-[var(--mrms-ink)] font-semibold" : "text-[var(--mrms-ink-soft)] font-medium"}`}
+                      >
+                        {item.title}
+                      </span>
+                      {item.full && (
+                        <span className="block font-mono text-[8px] tracking-editorial uppercase leading-tight truncate text-[var(--mrms-ink-mute)]">
+                          {item.full}
+                        </span>
+                      )}
                     </span>
                     {item.badge && (
                       <span className="font-mono text-[9px] text-[var(--mrms-ink-mute)]">
