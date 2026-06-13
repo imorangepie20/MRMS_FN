@@ -163,6 +163,32 @@ def fetch_latest_playlists(
     ]
 
 
+def prune_playlist_history(
+    conn: psycopg.Connection,
+    user_id: str,
+    keep_generations: int = 2,
+) -> int:
+    """유저의 PlaylistHistory를 최신 keep_generations generation만 남기고 삭제.
+
+    generation 경계는 한 번의 MRT 생성이 페르소나별 행을 거의 동시(clock_timestamp)에
+    넣는 점을 이용해 1초 버킷(date_trunc('second'))으로 묶는다. 삭제된 행 수 반환."""
+    with conn.cursor() as cur:
+        cur.execute(
+            '''WITH gens AS (
+                 SELECT DISTINCT date_trunc('second', "generatedAt") AS g
+                 FROM "PlaylistHistory" WHERE "userId" = %s
+                 ORDER BY g DESC LIMIT %s
+               )
+               DELETE FROM "PlaylistHistory"
+               WHERE "userId" = %s
+                 AND date_trunc('second', "generatedAt") NOT IN (SELECT g FROM gens)''',
+            (user_id, keep_generations, user_id),
+        )
+        deleted = cur.rowcount
+    conn.commit()
+    return deleted
+
+
 def list_all_user_emails(conn: psycopg.Connection) -> list[str]:
     with conn.cursor() as cur:
         cur.execute('SELECT email FROM "User" ORDER BY "createdAt"')
