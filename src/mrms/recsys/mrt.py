@@ -8,7 +8,19 @@ import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
 
-from mrms.config import EMBEDDING_MODEL_VERSION
+from mrms.config import EMBEDDING_MODEL_VERSION, settings
+from mrms.db.user_embedding import (
+    insert_playlist_history,
+    upsert_user_embedding,
+    upsert_user_persona,
+)
+from mrms.recsys.persona import aggregate_user_vector, cluster_user_tracks
+
+MODEL_VERSION = f"{EMBEDDING_MODEL_VERSION}+persona-K3"
+CATALOG_MODEL_VERSION = EMBEDDING_MODEL_VERSION
+DEFAULT_K = 3
+DEFAULT_TOP_N = 20
+DEFAULT_CANDIDATE_POOL = 30
 
 
 def _ensure_vector_registered(conn: psycopg.Connection) -> None:
@@ -61,6 +73,74 @@ def search_for_persona(
         for r in rows
     ]
     return results[:top_n]
+
+
+def fetch_user_track_matrix(
+    conn: psycopg.Connection,
+    user_id: str,
+    catalog_model_version: str = CATALOG_MODEL_VERSION,
+) -> tuple[list[str], np.ndarray]:
+    """UserTrack의 256d 임베딩 행렬 (track_ids, X(N,256))."""
+    _ensure_vector_registered(conn)
+    with conn.cursor() as cur:
+        cur.execute(
+            '''SELECT ut."trackId", e.embedding
+               FROM "UserTrack" ut
+               JOIN "TrackEmbedding" e ON e."trackId" = ut."trackId"
+               WHERE ut."userId" = %s AND e."modelVersion" = %s''',
+            (user_id, catalog_model_version),
+        )
+        rows = cur.fetchall()
+    if not rows:
+        return [], np.zeros((0, settings.embedding_dim), dtype=np.float32)
+    track_ids = [r[0] for r in rows]
+    embs: list[np.ndarray] = []
+    for r in rows:
+        v = r[1]
+        if isinstance(v, str):
+            v = np.fromstring(v.strip("[]"), sep=",", dtype=np.float32)
+        embs.append(np.asarray(v, dtype=np.float32))
+    return track_ids, np.vstack(embs)
+
+
+def generate_user_mrt(
+    conn: psycopg.Connection,
+    user_id: str,
+    *,
+    k: int = DEFAULT_K,
+    top_n: int = DEFAULT_TOP_N,
+    candidate_pool: int = DEFAULT_CANDIDATE_POOL,
+) -> int | None:
+    """UserTrack 임베딩 → cluster → UserEmbedding/UserPersona → search → PlaylistHistory.
+
+    반환: 사용한 트랙 수(성공) / None(트랙<k → skip). **커밋은 호출자 책임.**
+    run_onboarding·scripts/09·regenerate_mrt 스테이지가 공유한다 (단일 출처).
+    주의: MODEL_VERSION이 "+persona-K3"로 고정이므로 모든 호출자는 k=DEFAULT_K(3)를 쓴다. k를 바꾸려면 MODEL_VERSION 상수도 함께 수정해야 modelVersion 태그가 어긋나지 않는다.
+    """
+    track_ids, X = fetch_user_track_matrix(conn, user_id)
+    if len(track_ids) < k:
+        return None
+
+    result = cluster_user_tracks(X, k=k)
+    user_vec = aggregate_user_vector(result.centroids, result.weights)
+    upsert_user_embedding(conn, user_id, MODEL_VERSION, user_vec, computed_from=len(track_ids))
+    for idx in range(k):
+        upsert_user_persona(
+            conn, user_id, persona_idx=idx,
+            embedding=result.centroids[idx], track_count=int(result.weights[idx]),
+        )
+    for idx in range(k):
+        recs = search_for_persona(
+            conn, user_id, result.centroids[idx],
+            catalog_model_version=CATALOG_MODEL_VERSION,
+            candidate_pool=candidate_pool, top_n=top_n,
+        )
+        insert_playlist_history(
+            conn, user_id, [r["track_id"] for r in recs], MODEL_VERSION,
+            context={"personaIdx": idx, "kind": "persona",
+                     "scores": [r["similarity"] for r in recs]},
+        )
+    return len(track_ids)
 
 
 def derive_recommended_tracks(
