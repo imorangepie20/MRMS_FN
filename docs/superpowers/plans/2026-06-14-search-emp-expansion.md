@@ -430,7 +430,7 @@ from mrms.search.spotify import search_spotify
 from mrms.search.tidal import search_tidal
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 @respx.mock
 async def test_search_spotify_groups():
     respx.get("https://api.spotify.com/v1/search").mock(return_value=Response(200, json={
@@ -454,7 +454,7 @@ async def test_search_spotify_groups():
     assert len(r["playlists"]) == 1  # None 항목 제거
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 @respx.mock
 async def test_search_tidal_albums_degrade_on_404():
     respx.get("https://api.tidal.com/v1/search/tracks").mock(return_value=Response(200, json={
@@ -468,17 +468,9 @@ async def test_search_tidal_albums_degrade_on_404():
     assert len(r["tracks"]) == 1 and r["tracks"][0]["platform_track_id"] == "1"
     assert r["albums"] == [] and r["playlists"] == []  # degrade
 ```
+(이 프로젝트는 `pytest-asyncio` strict 모드 — 각 async 테스트에 `@pytest.mark.asyncio` 필요. anyio conftest 불필요.)
 
-`tests/search/conftest.py` (anyio backend):
-```python
-import pytest
-
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-```
-
-- [ ] **Step 2: 실패 확인** — `pytest tests/search/test_adapters.py -v` → FAIL (모듈 없음).
+- [ ] **Step 2: 실패 확인** — `.venv/bin/pytest tests/search/test_adapters.py -v` → FAIL (모듈 없음).
 
 - [ ] **Step 3: 구현 spotify.py** — `src/mrms/search/spotify.py`:
 ```python
