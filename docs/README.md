@@ -23,11 +23,14 @@
 ## 결정 기록 (ADR)
 
 - [decisions/ADR-001-youtube-newuser-automation.md](decisions/ADR-001-youtube-newuser-automation.md): YouTube 신규 유저 자동화 — 미스곡 임베딩 + MRT 재생성을 EMP 파이프라인 스테이지로 통합
+- [decisions/ADR-002-pgt-library-mrt-curation.md](decisions/ADR-002-pgt-library-mrt-curation.md): PGT 라이브러리(5섹션 파생 그룹핑) + MRT→PGT 이동(display 필터) + MRT prune
 
 ## 설계 / 계획 (superpowers)
 
 설계 스펙은 [superpowers/specs/](superpowers/specs/), 구현 계획은 [superpowers/plans/](superpowers/plans/)에 날짜 prefix로 누적.
 
+- [superpowers/specs/2026-06-13-pgt-library-mrt-curation-design.md](superpowers/specs/2026-06-13-pgt-library-mrt-curation-design.md): PGT 라이브러리 + MRT 큐레이션 상세 설계 ([ADR-002](decisions/ADR-002-pgt-library-mrt-curation.md)의 근거 문서)
+- [superpowers/plans/2026-06-13-pgt-library-mrt-curation.md](superpowers/plans/2026-06-13-pgt-library-mrt-curation.md): 위 설계의 구현 계획 (A 범위 — PGT 섹션 API+화면 → MRT 이동 → prune, TDD 9 태스크)
 - [superpowers/specs/2026-06-13-youtube-newuser-automation-design.md](superpowers/specs/2026-06-13-youtube-newuser-automation-design.md): 신규 유저 자동화 상세 설계 ([ADR-001](decisions/ADR-001-youtube-newuser-automation.md)의 근거 문서)
 - [superpowers/plans/2026-06-13-youtube-newuser-automation.md](superpowers/plans/2026-06-13-youtube-newuser-automation.md): 위 설계의 구현 계획 (generate_user_mrt 추출 + 2 파이프라인 스테이지 + stale 판정, TDD 7 태스크)
 - [superpowers/specs/2026-06-13-youtube-taste-phase2-embedding.md](superpowers/specs/2026-06-13-youtube-taste-phase2-embedding.md): Phase 2 — YouTube 미스곡 임베딩 메커니즘(yt-dlp→MERT→TrackEmbedding)
