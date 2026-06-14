@@ -362,7 +362,7 @@ function VolumeBlock() {
 }
 
 
-export function PlayerBar() {
+export function PlayerBar({ sidebarInset = true }: { sidebarInset?: boolean } = {}) {
   const errorMsg = usePlayerStore((s) => s.errorMsg);
   const sdkReady = usePlayerStore((s) => s.sdkReady);
   const { user } = useUser();
@@ -383,7 +383,7 @@ export function PlayerBar() {
   }, [primaryPlatform]);
 
   return (
-    <div className="fixed bottom-0 left-0 md:left-60 right-0 bg-[var(--mrms-ink)] text-[var(--mrms-paper)] px-4 md:px-14 py-2.5 md:py-3 border-t border-[var(--mrms-rust)] z-40">
+    <div className={`fixed bottom-0 left-0 ${sidebarInset ? "md:left-60" : ""} right-0 bg-[var(--mrms-ink)] text-[var(--mrms-paper)] px-4 md:px-14 py-2.5 md:py-3 border-t border-[var(--mrms-rust)] z-40`}>
       {/* spectrum equalizer — Tidal 재생 중에만 표시, 배너보다 아래 레이어 */}
       <SpectrumEqualizer />
       {/* error / loading row */}
@@ -400,7 +400,7 @@ export function PlayerBar() {
           </button>
         </div>
       )}
-      {!sdkReady && !errorMsg && (
+      {primaryPlatform && !sdkReady && !errorMsg && (
         <div className="absolute bottom-full left-0 right-0 px-14 py-1 bg-[var(--mrms-paper)] text-[var(--mrms-ink)] text-xs font-mono tracking-editorial uppercase">
           plyr · initializing
         </div>

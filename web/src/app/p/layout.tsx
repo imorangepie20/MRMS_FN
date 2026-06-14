@@ -22,7 +22,7 @@ export default function PublicShareLayout({
         </span>
       </header>
       <main className="flex-1 pb-32 md:pb-36">{children}</main>
-      <PlayerBar />
+      <PlayerBar sidebarInset={false} />
     </div>
   );
 }
