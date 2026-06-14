@@ -70,13 +70,6 @@ export function SearchResults({ data }: { data: SearchResponse }) {
 
   return (
     <div>
-      {/* Skipped platforms notice */}
-      {data.skipped_platforms.length > 0 && (
-        <div className="font-mono text-[11px] text-(--mrms-ink-mute) mb-6">
-          {data.skipped_platforms.join(", ")} 미연동 — 부분 결과
-        </div>
-      )}
-
       {/* Tracks */}
       {data.tracks.length > 0 && (
         <div className="mb-8">
