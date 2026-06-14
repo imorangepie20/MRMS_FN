@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from mrms.llm.situation import SituationInterpretation, build_preset
+import pytest
+
+from mrms.llm.situation import SituationInterpretation, SituationLLMError, build_preset, interpret_situation
 
 
 def _interp(**over) -> SituationInterpretation:
@@ -36,3 +38,46 @@ def test_build_preset_all_zero_weight_falls_back_to_uniform():
     p = build_preset(_interp(valence_weight=0, energy_weight=0, tempo_weight=0,
                              acousticness_weight=0, instrumentalness_weight=0))
     assert all(p[ax][2] == 1.0 for ax in p)
+
+
+# ---------------------------------------------------------------------------
+# interpret_situation — fake client (no real network call)
+# ---------------------------------------------------------------------------
+
+class _FakeModels:
+    def __init__(self, result):
+        self._result = result  # SituationInterpretation-bearing resp, or Exception
+
+    def generate_content(self, **kwargs):
+        if isinstance(self._result, Exception):
+            raise self._result
+        return self._result
+
+
+class _FakeResp:
+    def __init__(self, parsed):
+        self.parsed = parsed
+
+
+class _FakeClient:
+    def __init__(self, result):
+        self.models = _FakeModels(result)
+
+
+def test_interpret_situation_returns_parsed():
+    interp = _interp(mood_label="rainy reading")
+    client = _FakeClient(_FakeResp(interp))
+    out = interpret_situation("비 오는 아침 독서", client=client)
+    assert out.mood_label == "rainy reading"
+
+
+def test_interpret_situation_none_parsed_raises():
+    client = _FakeClient(_FakeResp(None))  # max_output_tokens 초과 등 → None
+    with pytest.raises(SituationLLMError):
+        interpret_situation("아무거나", client=client)
+
+
+def test_interpret_situation_api_error_raises():
+    client = _FakeClient(RuntimeError("boom"))
+    with pytest.raises(SituationLLMError):
+        interpret_situation("아무거나", client=client)

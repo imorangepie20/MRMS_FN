@@ -1,7 +1,11 @@
 """상황 자유텍스트 → Gemini 해석 → wellness preset. 웰니스 프레이밍(치료 표방 금지)."""
 from __future__ import annotations
 
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field
+
+from mrms.config import settings
 
 
 class SituationInterpretation(BaseModel):
@@ -69,3 +73,33 @@ def build_preset(interp: SituationInterpretation) -> dict[str, tuple[float, floa
     if sum(weights.values()) == 0.0:
         weights = {k: 1.0 for k in weights}
     return {ax: (centers[ax], _DEFAULT_SIGMA[ax], weights[ax]) for ax in centers}
+
+
+def _client() -> genai.Client:
+    return genai.Client(api_key=settings.gemini_api_key)
+
+
+def interpret_situation(
+    text: str, *, client: genai.Client | None = None
+) -> SituationInterpretation:
+    """상황 텍스트 → Gemini 구조화 출력 → SituationInterpretation. 실패 시 SituationLLMError."""
+    client = client or _client()
+    try:
+        resp = client.models.generate_content(
+            model=settings.gemini_model,
+            contents=text,
+            config=types.GenerateContentConfig(
+                system_instruction=_SITUATION_PROMPT,
+                response_mime_type="application/json",
+                response_schema=SituationInterpretation,
+                max_output_tokens=2048,
+                # 2.5-flash 기본 thinking 비활성 — 구조화 출력 None 위험 회피 + 지연 단축
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
+        )
+    except Exception as e:  # 어떤 SDK/네트워크 오류든 SituationLLMError로 → API 502
+        raise SituationLLMError(str(e)) from e
+    parsed = resp.parsed
+    if parsed is None:
+        raise SituationLLMError("LLM이 유효한 해석을 반환하지 않음")
+    return parsed
