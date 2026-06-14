@@ -80,18 +80,15 @@ def test_import_track_happy(login, monkeypatch):
 
 
 def test_import_playlist_happy(login, monkeypatch):
+    # Spotify playlist는 공개 embed로 — 인증 불필요(알고리즘 포함)
     _, sid = login()
     client.cookies.set("mrms_session", sid)
-    monkeypatch.setattr(iu, "get_app_token", _apptok)
 
-    async def fake_container(http, platform, item_type, item_id, tok, country):
-        return [_ntrack("spotify", "p1", "USABC1234561"), _ntrack("spotify", "p2", "USABC1234562")]
+    async def fake_embed(http, item_type, item_id):
+        return ([_ntrack("spotify", "p1", "USABC1234561"),
+                 _ntrack("spotify", "p2", "USABC1234562")], "My Playlist")
 
-    async def fake_title(http, platform, item_type, item_id, tok, country):
-        return "My Playlist"
-
-    monkeypatch.setattr(iu, "fetch_container_tracks", fake_container)
-    monkeypatch.setattr(iu, "_container_title", fake_title)
+    monkeypatch.setattr(iu, "fetch_spotify_embed", fake_embed)
     monkeypatch.setattr(iu, "persist_container_tracks", _backfill_persist)
     r = client.post("/api/import/url", json={"url": "https://open.spotify.com/playlist/pl?si=z"})
     assert r.status_code == 200
@@ -102,22 +99,24 @@ def test_import_playlist_happy(login, monkeypatch):
     client.cookies.clear()
 
 
-def test_spotify_playlist_falls_back_to_user_token(login, monkeypatch):
-    # Spotify playlist는 앱 토큰 403(빈 결과) → 연동된 유저 토큰으로 폴백
+def test_spotify_playlist_embed_empty_falls_back_to_token(login, monkeypatch):
+    # embed 실패(빈 결과) → 앱/유저 토큰 경로로 폴백
     _, sid = login()
     client.cookies.set("mrms_session", sid)
+
+    async def empty_embed(http, item_type, item_id):
+        return [], None
 
     async def user_tok(user_id, conn):
         return "usertok"
 
     async def fake_container(http, platform, item_type, item_id, tok, country):
-        if tok == "usertok":
-            return [_ntrack("spotify", "p1", "USABC1234561")]
-        return []  # 앱 토큰: 403처럼 빈 결과
+        return [_ntrack("spotify", "p1", "USABC1234561")] if tok == "usertok" else []
 
     async def fake_title(http, platform, item_type, item_id, tok, country):
         return "PL"
 
+    monkeypatch.setattr(iu, "fetch_spotify_embed", empty_embed)
     monkeypatch.setattr(iu, "get_app_token", _apptok)
     monkeypatch.setattr(iu, "_spotify_tok", user_tok)
     monkeypatch.setattr(iu, "fetch_container_tracks", fake_container)

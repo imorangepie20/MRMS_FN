@@ -7,12 +7,14 @@ from __future__ import annotations
 import logging
 
 from mrms.emp.base import upsert_track_and_emp_source
+from mrms.emp.spotify import _entity_cover, _normalize_track, parse_next_data
 from mrms.search.normalize import normalize_spotify_track, normalize_tidal_track
 
 log = logging.getLogger(__name__)
 
 SPOTIFY = "https://api.spotify.com/v1"
 TIDAL = "https://api.tidal.com/v1"
+SPOTIFY_EMBED = "https://open.spotify.com/embed"
 
 
 async def _spotify_album_tracks(http, token, album_id):
@@ -114,3 +116,25 @@ async def _container_title(http, platform, item_type, item_id, token, country):
         return r.json().get("title") if r.status_code == 200 else None
     except Exception:
         return None
+
+
+async def fetch_spotify_embed(http, item_type, item_id):
+    """Spotify playlist/album을 공개 embed 위젯으로 — 인증 불필요(알고리즘 플레이리스트 포함).
+
+    Web API는 dev-mode/알고리즘 플레이리스트에서 403/404 → embed 스크래핑으로 우회.
+    반환: (정규화 트랙 리스트, 컨테이너 이름|None). 실패 시 ([], None)."""
+    r = await http.get(f"{SPOTIFY_EMBED}/{item_type}/{item_id}",
+                       headers={"User-Agent": "Mozilla/5.0"})
+    if r.status_code != 200:
+        return [], None
+    entity = parse_next_data(r.text)
+    if not entity:
+        return [], None
+    cover = _entity_cover(entity)
+    out = []
+    for node in entity.get("trackList") or []:
+        nt = _normalize_track(node)  # {platform_track_id, title, artist, duration_ms}
+        if nt:
+            out.append({**nt, "platform": "spotify", "album_title": None,
+                        "album_cover": cover, "isrc": None})
+    return out, entity.get("name")

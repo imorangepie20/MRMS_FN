@@ -12,6 +12,7 @@ from mrms.search.app_token import get_app_token
 from mrms.search.expand import (
     _container_title,
     fetch_container_tracks,
+    fetch_spotify_embed,
     fetch_track,
     persist_container_tracks,
 )
@@ -44,33 +45,38 @@ async def import_url(
     title = None
     normalized: list = []
     async with httpx.AsyncClient(timeout=15.0) as http:
-        # 카탈로그 조회는 사용자 인증과 무관 — 앱 토큰(client_credentials) 우선,
-        # 안 되면(예: Spotify playlist 403) 연동된 유저 토큰으로 폴백. 재생만 연동 필요.
-        tokens: list[str] = []
-        for getter in (
-            lambda: get_app_token(http, platform),
-            lambda: (_spotify_tok if platform == "spotify" else _tidal_tok)(user_id, conn),
-        ):
-            try:
-                tokens.append(await getter())
-            except Exception:
-                continue
-        if not tokens:
-            raise HTTPException(502, f"{platform} 토큰을 얻을 수 없습니다")
+        # Spotify 플레이리스트는 공개 embed로 — 인증 불필요(알고리즘 플레이리스트 포함).
+        # 앨범/트랙은 앱 토큰 API가 잘 되고 ISRC도 있어 아래 토큰 경로 사용.
+        if platform == "spotify" and item_type == "playlist":
+            normalized, title = await fetch_spotify_embed(http, item_type, item_id)
 
-        used = None
-        for tok in tokens:
-            if item_type == "track":
-                one = await fetch_track(http, platform, item_id, tok, country)
-                cand = [one] if one else []
-            else:
-                cand = await fetch_container_tracks(
-                    http, platform, item_type, item_id, tok, country)
-            if cand:
-                normalized, used = cand, tok
-                break
-        if normalized and item_type != "track":
-            title = await _container_title(http, platform, item_type, item_id, used, country)
+        # 그 외(track·tidal) 또는 embed 실패 → 앱 토큰 우선, 유저 토큰 폴백. 재생만 연동 필요.
+        if not normalized:
+            tokens: list[str] = []
+            for getter in (
+                lambda: get_app_token(http, platform),
+                lambda: (_spotify_tok if platform == "spotify" else _tidal_tok)(user_id, conn),
+            ):
+                try:
+                    tokens.append(await getter())
+                except Exception:
+                    continue
+            if not tokens:
+                raise HTTPException(502, f"{platform} 토큰을 얻을 수 없습니다")
+
+            used = None
+            for tok in tokens:
+                if item_type == "track":
+                    one = await fetch_track(http, platform, item_id, tok, country)
+                    cand = [one] if one else []
+                else:
+                    cand = await fetch_container_tracks(
+                        http, platform, item_type, item_id, tok, country)
+                if cand:
+                    normalized, used = cand, tok
+                    break
+            if normalized and item_type != "track" and title is None:
+                title = await _container_title(http, platform, item_type, item_id, used, country)
 
     if not normalized:
         raise HTTPException(404, "트랙을 가져올 수 없습니다 (비공개·삭제·미지원·연동 필요)")
