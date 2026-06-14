@@ -76,6 +76,11 @@ wellness calm/sleep이 클래식에 쏠려 보인 원인은 그 중심점의 **a
 - acousticness를 습관적으로 높이지 말 것("조용함" ≠ "어쿠스틱").
 - 장르 컬럼 부재(`subgenres` 전부 빈 값, `kpopMood` 0) → 다양성은 **중심점 배치**로 제어한다. 결과가 한 장르로 쏠리면 후속으로 **아티스트 단위 cap**(결과 dedup)을 추가할 수 있으나, 현 데이터상 아티스트 다양성은 충분해 초기 미도입.
 
+**구현 보강(실측 반영):** 프롬프트만으론 부족했다 — 라이브 검증에서 "비 오는 아침 독서" 같은 일반 상황에 LLM이 "차분=어쿠스틱"으로 해석해 `acousticness` 중심 0.7·weight 0.9를 줘 **전 곡이 클래식/오케스트라**로 쏠렸다. 그래서 **코드 백스톱**을 추가:
+- 스키마에 `prefer_instrumental: bool` — LLM이 *명백히* 기악/배경/집중·공부/수면/명상/클래식/어쿠스틱(언플러그드)을 원하는 상황에서만 `true`.
+- `build_preset`: `prefer_instrumental=false`(일반)면 `acousticness`(center ≤0.40, weight ≤0.30)·`instrumentalness`(center ≤0.20, weight ≤0.40) **상한 강제**. `true`면 상한 해제(클래식·기악 허용).
+- 효과(실측): 동일 "독서" 상황이 클래식 벽 → Yoke Lore/Şanışer/Jefferson Airplane 등 보컬·다양으로 전환. "잔잔한 클래식 피아노 들으며 공부"는 `prefer_instrumental=true`로 클래식 정상 노출.
+
 ### 검증 / 폴백
 
 `build_preset`에서:
