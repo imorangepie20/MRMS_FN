@@ -76,3 +76,39 @@ def persist_container_tracks(conn, tracks, item_type, item_id):
             conn.rollback()
             log.warning("expand persist failed (%s): %s", t.get("platform_track_id"), e)
     return source_id
+
+
+async def _spotify_track(http, token, track_id):
+    r = await http.get(f"{SPOTIFY}/tracks/{track_id}",
+                       headers={"Authorization": f"Bearer {token}"})
+    return normalize_spotify_track(r.json()) if r.status_code == 200 else None
+
+
+async def _tidal_track(http, token, track_id, country):
+    r = await http.get(f"{TIDAL}/tracks/{track_id}",
+                       params={"countryCode": country},
+                       headers={"Authorization": f"Bearer {token}"})
+    return normalize_tidal_track(r.json()) if r.status_code == 200 else None
+
+
+async def fetch_track(http, platform, track_id, token, country):
+    """단일 트랙 → 정규화 트랙 1개 또는 None."""
+    if platform == "spotify":
+        return await _spotify_track(http, token, track_id)
+    return await _tidal_track(http, token, track_id, country)
+
+
+async def _container_title(http, platform, item_type, item_id, token, country):
+    """플레이리스트/앨범 이름(best-effort). 실패/미응답 시 None."""
+    try:
+        if platform == "spotify":
+            params = {"fields": "name"} if item_type == "playlist" else None
+            r = await http.get(f"{SPOTIFY}/{item_type}s/{item_id}", params=params,
+                               headers={"Authorization": f"Bearer {token}"})
+            return r.json().get("name") if r.status_code == 200 else None
+        r = await http.get(f"{TIDAL}/{item_type}s/{item_id}",
+                           params={"countryCode": country},
+                           headers={"Authorization": f"Bearer {token}"})
+        return r.json().get("title") if r.status_code == 200 else None
+    except Exception:
+        return None
