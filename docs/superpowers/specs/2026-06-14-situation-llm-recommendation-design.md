@@ -133,7 +133,7 @@ wellness calm/sleep이 클래식에 쏠려 보인 원인은 그 중심점의 **a
 
 ## 배포 영향 (신규)
 
-- 신규 의존성 `google-genai` → `requirements.txt`(또는 해당 deps 파일) 추가. deploy.sh의 `pip install`이 처리.
+- 신규 의존성 `google-genai` → `pyproject.toml`의 `[project] dependencies` 추가. deploy.sh의 `pip install`이 처리.
 - 신규 env `GEMINI_API_KEY` → **prod 서버에도 세팅 필요**(dev 입력 완료). Google AI Studio 키 권장.
 
 ## 비채택 대안
@@ -151,7 +151,7 @@ wellness calm/sleep이 클래식에 쏠려 보인 원인은 그 중심점의 **a
 3. `api/situation.py` + `main.py` 등록.
 4. 프론트 `/situation` 페이지 + `lib/api/situation.ts` + 타입 + nav.
 5. 단위·통합 테스트.
-6. `requirements`에 `google-genai` + prod `GEMINI_API_KEY` 세팅.
+6. `pyproject.toml`에 `google-genai` + prod `GEMINI_API_KEY` 세팅.
 
 ## 관련 문서
 

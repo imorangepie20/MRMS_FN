@@ -53,11 +53,16 @@ def _mood_fit_sql(preset: dict[str, tuple[float, float, float]]) -> str:
     return "exp(-0.5 * (" + " + ".join(terms) + "))"
 
 
-def recommend_wellness(
-    conn: psycopg.Connection, user_id: str, mood: str, n: int = 20
+def recommend_by_preset(
+    conn: psycopg.Connection,
+    user_id: str,
+    preset: dict[str, tuple[float, float, float]],
+    n: int = 20,
 ) -> list[dict[str, Any]]:
-    """무드 적합(소프트) × 취향(UserEmbedding cosine) 결합 top-n. 학습 없음.
+    """소프트 무드 적합(preset) × 취향(UserEmbedding cosine) 결합 top-n. 학습 없음.
 
+    preset = {축: (center, sigma, weight)} (= MOOD_PRESETS[mood] 형태).
+    값은 Python float이어야 함 — SQL에 인라인되므로 호출자가 검증·클램핑 책임.
     UserEmbedding 있으면 score=W_MOOD·mood_fit+W_TASTE·taste_sim, 없으면 mood_fit만.
     제외: UserTrack 보유 + UserBlocked disliked(track+album). 후보=임베딩∩피처 전 카탈로그.
 
@@ -66,10 +71,11 @@ def recommend_wellness(
       4=valence, 5=energy, 6=tempo,
       7=mood_fit, 8=tidal_id, 9=spotify_id, 10=taste_sim
     """
-    if mood not in MOOD_PRESETS:
-        raise ValueError(f"unknown mood: {mood}")
+    unknown = set(preset) - set(_FEATURE_COL)
+    if unknown:
+        raise ValueError(f"preset contains unsupported axes: {sorted(unknown)}")
     _ensure_vector_registered(conn)
-    fit_sql = _mood_fit_sql(MOOD_PRESETS[mood])
+    fit_sql = _mood_fit_sql(preset)
     ue = fetch_user_embedding(conn, user_id, USER_MV)
 
     exclude = '''
@@ -127,3 +133,12 @@ def recommend_wellness(
             "tidal_track_id": r[8], "spotify_track_id": r[9],
         })
     return out
+
+
+def recommend_wellness(
+    conn: psycopg.Connection, user_id: str, mood: str, n: int = 20
+) -> list[dict[str, Any]]:
+    """무드명 → MOOD_PRESETS preset → recommend_by_preset 위임. 알 수 없는 무드는 ValueError."""
+    if mood not in MOOD_PRESETS:
+        raise ValueError(f"unknown mood: {mood}")
+    return recommend_by_preset(conn, user_id, MOOD_PRESETS[mood], n)
