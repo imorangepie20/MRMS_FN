@@ -10,9 +10,9 @@ from mrms.db.playlist import (
     get_playlist,
     get_playlist_tracks,
     list_user_playlists,
+    set_playlist_share,
 )
 from mrms.db.user_track import get_user_track_states
-
 
 router = APIRouter(tags=["playlists"])
 
@@ -21,6 +21,10 @@ class CreatePlaylistRequest(BaseModel):
     name: str
     description: str | None = None
     track_ids: list[str] = Field(default_factory=list)
+
+
+class ShareRequest(BaseModel):
+    enabled: bool
 
 
 @router.post("/api/user/playlists")
@@ -68,3 +72,23 @@ def playlist_tracks_endpoint(
     for t in tracks:
         t["liked"], t["pct"] = states.get(t["track_id"], (False, False))
     return {"playlist": pl, "tracks": tracks}
+
+
+@router.post("/api/user/playlists/{playlist_id}/share")
+def toggle_playlist_share(
+    playlist_id: str,
+    body: ShareRequest,
+    user_id: str = Depends(get_current_user_id),
+    conn=Depends(db_conn),
+):
+    """공유 토글 (소유자만). enabled=true면 공개 링크 생성, false면 해제."""
+    pl = get_playlist(conn, playlist_id)
+    if not pl:
+        raise HTTPException(404, "playlist not found")
+    if pl["user_id"] != user_id:
+        raise HTTPException(403, "forbidden")
+    share_id = set_playlist_share(conn, playlist_id, body.enabled)
+    return {
+        "share_id": share_id,
+        "share_url": f"/p/{share_id}" if share_id else None,
+    }

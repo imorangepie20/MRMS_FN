@@ -4,7 +4,6 @@ from fastapi.testclient import TestClient
 
 from mrms.api.main import app
 
-
 client = TestClient(app)
 
 
@@ -137,4 +136,53 @@ def test_get_playlist_other_user_forbidden(db_conn, login):
 def test_no_auth_returns_401(db_conn):
     client.cookies.clear()
     r = client.get("/api/user/playlists")
+    assert r.status_code == 401
+
+
+def test_toggle_playlist_share(db_conn, login):
+    """POST .../share enabled=true → share_id + share_url, false → null."""
+    _, session_id = login("share-toggle@test.com")
+    track_ids = _pick_track_ids(db_conn, 1)
+    if not track_ids:
+        pytest.skip("Track 데이터 부족")
+    client.cookies.set("mrms_session", session_id)
+    pid = client.post(
+        "/api/user/playlists", json={"name": "S", "track_ids": track_ids}
+    ).json()["playlist"]["id"]
+
+    on = client.post(f"/api/user/playlists/{pid}/share", json={"enabled": True})
+    assert on.status_code == 200, on.text
+    share_id = on.json()["share_id"]
+    assert share_id
+    assert on.json()["share_url"] == f"/p/{share_id}"
+
+    off = client.post(f"/api/user/playlists/{pid}/share", json={"enabled": False})
+    assert off.status_code == 200
+    assert off.json()["share_id"] is None
+    assert off.json()["share_url"] is None
+    client.cookies.clear()
+
+
+def test_share_other_user_forbidden(db_conn, login):
+    """다른 사용자 playlist 공유 토글 → 403."""
+    _, session_a = login("share-owner@test.com")
+    track_ids = _pick_track_ids(db_conn, 1)
+    if not track_ids:
+        pytest.skip("Track 데이터 부족")
+    client.cookies.set("mrms_session", session_a)
+    pid = client.post(
+        "/api/user/playlists", json={"name": "P", "track_ids": track_ids}
+    ).json()["playlist"]["id"]
+
+    _, session_b = login("share-stranger@test.com")
+    client.cookies.set("mrms_session", session_b)
+    r = client.post(f"/api/user/playlists/{pid}/share", json={"enabled": True})
+    assert r.status_code == 403
+    client.cookies.clear()
+
+
+def test_share_requires_auth(db_conn):
+    """미인증 → 401."""
+    client.cookies.clear()
+    r = client.post("/api/user/playlists/whatever/share", json={"enabled": True})
     assert r.status_code == 401
