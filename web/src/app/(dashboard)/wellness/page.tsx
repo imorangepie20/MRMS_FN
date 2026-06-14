@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { fetchWellness } from "@/lib/api/wellness";
 import type { WellnessTrack } from "@/lib/types";
-import { ModalTrackList } from "@/components/track/ModalTrackList";
+import { ModalTrackList, PlayAllButton } from "@/components/track/ModalTrackList";
 
 const MOODS: { key: string; label: string; sub: string }[] = [
   { key: "calm", label: "이완", sub: "Calm" },
@@ -71,7 +71,17 @@ export default function WellnessPage() {
       {!loading && !error && active && tracks.length === 0 && (
         <div className="font-mono text-[11px] text-(--mrms-ink-mute)">추천 결과 없음</div>
       )}
-      {!loading && !error && tracks.length > 0 && <ModalTrackList tracks={tracks} />}
+      {!loading && !error && tracks.length > 0 && (
+        <>
+          <div className="mb-3 flex items-center justify-between border-b border-(--mrms-rule) pb-2">
+            <span className="font-mono text-[11px] uppercase tracking-editorial text-(--mrms-ink-mute)">
+              {tracks.length} tracks
+            </span>
+            <PlayAllButton tracks={tracks} />
+          </div>
+          <ModalTrackList tracks={tracks} />
+        </>
+      )}
     </div>
   );
 }
