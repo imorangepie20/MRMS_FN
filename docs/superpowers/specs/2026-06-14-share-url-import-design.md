@@ -1,17 +1,17 @@
-# 공유 URL 가져오기 (paste & play) 상세 설계
+# 공유 URL 가져오기 (Eat The Shared) 상세 설계
 
 작성일: `2026-06-14`
 상태: 설계 승인 — 구현 예정. ADR-[ADR-009](../../decisions/ADR-009-share-url-import.md).
 
 ## 목표
 
-카페 등에서 **공유받은 Tidal/Spotify 링크**(track·playlist·album)를 붙여넣으면 그 트랙들을 가져와 **바로 듣고**, EMP에 적재하는 단독 페이지. 그 뒤 좋아요/플레이리스트 담기는 **기존 트랙 액션에 맡긴다**. 직접 사용자 표현: "카페 같은데서 공유하는거 가져와서 듣는거 … 듣고 나서 좋아요 하거나 자기의 플레이리스트에 넣거나."
+카페 등에서 **공유받은 Tidal/Spotify 링크**(track·playlist·album)를 붙여넣으면 그 트랙들을 가져와 **바로 듣고**, EMP에 적재하는 단독 페이지 (masthead `Eat The Shared`). 그 뒤 좋아요/플레이리스트 담기는 **기존 트랙 액션에 맡긴다**. 직접 사용자 표현: "카페 같은데서 공유하는거 가져와서 듣는거 … 듣고 나서 좋아요 하거나 자기의 플레이리스트에 넣거나."
 
 핵심: 기존 **Search→EMP 확장(ADR-005)** 인프라 재사용 — 신규 코드는 **URL 파서 + 단일 트랙 fetch 2개 + 얇은 라우트**뿐. fetch(컨테이너)/normalize/persist 전부 재사용.
 
 ## 사용자 경험
 
-1. 단독 페이지 `/import` (masthead `paste & play`, nav=Discover) — URL 입력 + 버튼.
+1. 단독 페이지 `/import` (masthead `Eat The Shared`, nav=Discover) — URL 입력 + 버튼.
 2. 붙여넣고 가져오면: **제목(플레이리스트/앨범명 또는 곡명) 헤더 + `ModalTrackList`(+ `PlayAllButton`)**. track URL이면 1곡, container면 전체.
 3. 거기서 **재생 · 좋아요(♥→UserTrack) · 취향(✦)** 등 기존 행 액션. "공유받은 거 붙여넣고 듣다가 담기."
 4. 로딩/에러/idle 상태.

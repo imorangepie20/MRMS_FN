@@ -1,4 +1,4 @@
-# ADR-009 공유 URL 가져오기 (paste & play)
+# ADR-009 공유 URL 가져오기 (Eat The Shared)
 
 작성일: `2026-06-14`
 
