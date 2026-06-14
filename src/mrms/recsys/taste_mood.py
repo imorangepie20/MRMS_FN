@@ -106,11 +106,13 @@ def recommend_by_taste_mood(
              taf.valence, taf.energy, taf.tempo,
              tp_t."platformTrackId" AS tidal_id,
              tp_s."platformTrackId" AS spotify_id,
-             1 - (e.embedding <=> %(tvec)s) AS taste_sim
+             1 - (e.embedding <=> %(tvec)s) AS taste_sim,
+             alb.title AS album_title, t."durationMs" AS duration_ms
       FROM "TrackEmbedding" e
       JOIN "Track"  t  ON t.id = e."trackId"
       JOIN "Artist" ar ON ar.id = t."artistId"
       JOIN "TrackAudioFeatures" taf ON taf."trackId" = t.id AND taf."modelVersion" = %(mv)s
+      LEFT JOIN "Album" alb ON alb.id = t."albumId"
       LEFT JOIN "TrackPlatform" tp_t ON tp_t."trackId" = t.id AND tp_t.platform = 'tidal'
       LEFT JOIN "TrackPlatform" tp_s ON tp_s."trackId" = t.id AND tp_s.platform = 'spotify'
       WHERE e."modelVersion" = %(mv)s AND {exclude}
@@ -128,6 +130,7 @@ def recommend_by_taste_mood(
         mf = mood_fit_vet(float(r[4]), float(r[5]), float(r[6]), valence, energy, tempo)
         out.append({
             "track_id": r[0], "title": r[1], "artist": r[2], "album_id": r[3],
+            "album_title": r[10], "duration_ms": r[11],
             "valence": float(r[4]), "energy": float(r[5]), "tempo": float(r[6]),
             "mood_fit": mf, "taste_sim": float(r[9]), "score": mf,
             "tidal_track_id": r[7], "spotify_track_id": r[8],

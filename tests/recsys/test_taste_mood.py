@@ -71,6 +71,9 @@ def test_orders_by_mood_within_taste_and_excludes_owned(db_conn, cleanup):
     assert ids.index(near) < ids.index(far)  # 무드 중심에 가까운 곡이 먼저
     assert taste not in ids                  # 보유(UserTrack) 제외
     assert all("score" in r and "taste_sim" in r for r in recs)
+    # 아트워크(artist+album_title로 iTunes 조회)·시간 표시용 필드
+    assert all("album_title" in r and "duration_ms" in r for r in recs)
+    assert next(r for r in recs if r["track_id"] == near)["duration_ms"] == 180000
 
 
 def test_song_key_merges_versions_keeps_distinct():
