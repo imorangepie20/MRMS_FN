@@ -33,6 +33,7 @@
 설계 스펙은 [superpowers/specs/](superpowers/specs/), 구현 계획은 [superpowers/plans/](superpowers/plans/)에 날짜 prefix로 누적.
 
 - [superpowers/specs/2026-06-14-search-emp-expansion-design.md](superpowers/specs/2026-06-14-search-emp-expansion-design.md): 검색 → EMP 확장 상세 설계 ([ADR-005](decisions/ADR-005-search-emp-expansion.md)의 근거 문서)
+- [superpowers/specs/2026-06-14-search-page-editorial-polish-design.md](superpowers/specs/2026-06-14-search-page-editorial-polish-design.md): 검색 페이지 editorial 폴리시(헤더·input·스켈레톤·empty/idle, shadcn 룩 전환 없음)
 - [superpowers/plans/2026-06-14-search-emp-expansion.md](superpowers/plans/2026-06-14-search-emp-expansion.md): 위 설계의 구현 계획 (백엔드-퍼스트 2단계 — search 모듈+normalize/merge/persist+2 라우트, /search 페이지, TDD 10 태스크)
 - [superpowers/specs/2026-06-14-tidal-spectrum-equalizer-design.md](superpowers/specs/2026-06-14-tidal-spectrum-equalizer-design.md): Tidal 전용 진짜 스펙트럼 이퀄라이저 상세 설계 ([ADR-004](decisions/ADR-004-tidal-spectrum-equalizer.md)의 근거 문서)
 - [superpowers/plans/2026-06-14-tidal-spectrum-equalizer.md](superpowers/plans/2026-06-14-tidal-spectrum-equalizer.md): 위 설계의 구현 계획 (Vitest 셋업 + binsToBarHeights + 캡처 레이어 + activePlatform + 컴포넌트, TDD 6 태스크)
