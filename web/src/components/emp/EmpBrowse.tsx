@@ -114,7 +114,7 @@ export function EmpBrowse() {
           <div className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) mb-2">
             Section 02 / EMP — External Music Pool
           </div>
-          <h1 className="font-display font-bold text-[46px] md:text-[76px] leading-[0.9] tracking-[-0.035em] text-(--mrms-ink) mb-3">
+          <h1 className="font-display font-bold text-[32px] md:text-[44px] leading-[1.05] tracking-[-0.015em] text-(--mrms-ink) mb-3">
             External pool
           </h1>
           <p className="text-[14px] font-normal text-(--mrms-ink-soft) leading-relaxed max-w-[560px] border-l-2 border-(--mrms-rust) pl-3.5">
@@ -153,9 +153,9 @@ export function EmpBrowse() {
 
       {platformGroups.map((group) => (
         <div key={group.platform} className="mb-12">
-          {/* === BOLD PLATFORM DIVIDER — 플랫폼명 초대형 슬래브 === */}
+          {/* === PLATFORM DIVIDER — MRT 톤 헤딩 === */}
           <div className="mb-6 flex items-end justify-between gap-4 border-b-2 border-(--mrms-ink) pb-1">
-            <h2 className="font-display font-bold uppercase text-(--mrms-ink) leading-[0.85] tracking-[-0.04em] text-[22px] md:text-[39px]">
+            <h2 className="font-display font-bold text-(--mrms-ink) leading-[1.05] tracking-[-0.015em] text-[24px] md:text-[32px]">
               {group.platform}
             </h2>
             <div className="text-right shrink-0 pb-1.5">
