@@ -337,3 +337,10 @@ export interface SituationResponse {
   features: SituationFeatures;
   tracks: WellnessTrack[];
 }
+
+export interface ImportResult {
+  platform: string;
+  item_type: string;
+  title: string | null;
+  tracks: SearchTrack[];
+}
