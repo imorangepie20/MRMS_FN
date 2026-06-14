@@ -4,7 +4,7 @@ import uuid
 
 from mrms.db.ids import stable_id
 from mrms.db.user_track import get_or_create_user
-from mrms.recsys.taste_mood import recommend_by_taste_mood
+from mrms.recsys.taste_mood import _song_key, recommend_by_taste_mood
 
 EMB = "[" + ",".join(["0.0625"] * 256) + "]"  # 단일 방향 단위벡터 — 시드들이 서로 cosine 1
 
@@ -71,3 +71,30 @@ def test_orders_by_mood_within_taste_and_excludes_owned(db_conn, cleanup):
     assert ids.index(near) < ids.index(far)  # 무드 중심에 가까운 곡이 먼저
     assert taste not in ids                  # 보유(UserTrack) 제외
     assert all("score" in r and "taste_sim" in r for r in recs)
+
+
+def test_song_key_merges_versions_keeps_distinct():
+    a = "Najim Arshad"
+    assert _song_key(a, "Aaro Aaro Chare") == _song_key(a, 'Aaro Aaro Chare - From "Ring"')
+    assert _song_key("JIHYO", "Killin' Me Good") == _song_key("JIHYO", "Killin' Me Good (English Ver.)")
+    assert _song_key("Elton John", "Take Me To The Pilot") == _song_key("Elton John", "Take Me To The Pilot")
+    # 공백 없는 하이픈 단어는 보존 — 다른 곡 오병합 방지
+    assert _song_key("A", "Spider-Man") != _song_key("A", "Spider")
+    assert _song_key("A", "Song One") != _song_key("A", "Song Two")
+    # 아티스트 다르면 같은 제목도 다른 키
+    assert _song_key("A", "Hello") != _song_key("B", "Hello")
+
+
+def test_dedupes_same_song_versions(db_conn, cleanup):
+    uid = get_or_create_user(db_conn, f"tm_{uuid.uuid4().hex[:8]}@t.local")
+    cleanup('DELETE FROM "User" WHERE id = %s', (uid,))
+    taste = _seed_track(db_conn, cleanup, valence=0.5, energy=0.5, tempo=100.0, title="Taste")
+    _own(db_conn, cleanup, uid, taste)
+    # 같은 곡의 두 버전: 같은 아티스트명 + 같은 임베딩/무드, 제목만 접미사 차이
+    v1 = _seed_track(db_conn, cleanup, valence=0.40, energy=0.25, tempo=85.0,
+                     title="Dup Song", artist="Dup Artist")
+    v2 = _seed_track(db_conn, cleanup, valence=0.40, energy=0.25, tempo=85.0,
+                     title='Dup Song - From "Movie"', artist="Dup Artist")
+    recs = recommend_by_taste_mood(db_conn, uid, 0.40, 0.25, 85.0, n=500, pool_size=500)
+    ids = [r["track_id"] for r in recs]
+    assert len({v1, v2} & set(ids)) == 1     # 두 버전 중 정확히 하나만

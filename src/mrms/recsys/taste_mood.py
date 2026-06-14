@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 import numpy as np
@@ -52,6 +53,24 @@ def taste_vector(conn: psycopg.Connection, user_id: str) -> np.ndarray | None:
     if ue is not None:
         return np.asarray(ue["embedding"], dtype=np.float32)
     return None
+
+
+_SUFFIX_DASH = re.compile(r"\s+-\s.*$")      # " - From ...", " - Single Version"
+_SUFFIX_PAREN = re.compile(r"\s*[(\[].*$")   # "(English Ver.)", "[Remastered]"
+_NONWORD = re.compile(r"[^a-z0-9가-힣]+")
+
+
+def _song_key(artist: str, title: str) -> str:
+    """같은 곡의 버전/릴리즈를 한 키로 — 같은 곡이 여러 track_id로 있어 중복 노출되는 것 방지.
+
+    공백-하이픈-공백 접미사(' - From …')와 괄호 접미사('(English Ver.)')를 떼고 비단어 제거.
+    'Spider-Man'처럼 공백 없는 하이픈은 보존(다른 곡 오병합 방지).
+    """
+    t = title.lower()
+    t = _SUFFIX_DASH.sub("", t)
+    t = _SUFFIX_PAREN.sub("", t)
+    t = _NONWORD.sub("", t)
+    return f"{artist.strip().lower()}|{t}"
 
 
 def recommend_by_taste_mood(
@@ -114,4 +133,13 @@ def recommend_by_taste_mood(
             "tidal_track_id": r[7], "spotify_track_id": r[8],
         })
     out.sort(key=lambda d: d["score"], reverse=True)
-    return out[:n]
+    # 같은 곡(버전/릴리즈 중복)은 점수 높은 1개만 — 정렬 후 dedup
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for d in out:
+        k = _song_key(d["artist"], d["title"])
+        if k in seen:
+            continue
+        seen.add(k)
+        deduped.append(d)
+    return deduped[:n]
