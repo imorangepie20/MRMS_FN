@@ -330,8 +330,6 @@ export interface SituationFeatures {
   valence: number;
   energy: number;
   tempo_bpm: number;
-  acousticness: number;
-  instrumentalness: number;
 }
 export interface SituationResponse {
   interpretation: string;

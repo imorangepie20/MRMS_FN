@@ -28,7 +28,8 @@
 - [decisions/ADR-004-tidal-spectrum-equalizer.md](decisions/ADR-004-tidal-spectrum-equalizer.md): Tidal 전용 진짜 스펙트럼 비주얼 이퀄라이저 — audio element를 Web Audio AnalyserNode로 탭(SDK 우회 불필요)
 - [decisions/ADR-005-search-emp-expansion.md](decisions/ADR-005-search-emp-expansion.md): 검색 → EMP 확장 — Tidal+Spotify 라이브 검색을 우리 포맷으로 정규화·표시하며 동시에 EMP 적재(사용자 주도 import)
 - [decisions/ADR-006-wellness-recommendation.md](decisions/ADR-006-wellness-recommendation.md): Wellness 무드 추천(chicken soup clinic) — 기존 피처+임베딩 조합, 소프트 무드스코어+취향, 학습 없음(웰니스 프레이밍, 치료 금지)
-- [decisions/ADR-007-situation-llm-recommendation.md](decisions/ADR-007-situation-llm-recommendation.md): 상황 텍스트 → LLM(Gemini) 해석 → 추천(situation desk) — wellness 일반화(LLM이 피처 중심점+가중치 산출), `google-genai`·구조화 출력, 실패=502
+- [decisions/ADR-007-situation-llm-recommendation.md](decisions/ADR-007-situation-llm-recommendation.md): 상황 텍스트 → LLM(Gemini) 해석 → 추천(situation desk) — wellness 일반화(LLM이 피처 중심점+가중치 산출), `google-genai`·구조화 출력, 실패=502. ⚠️ 추천 엔진은 [ADR-008](decisions/ADR-008-taste-first-embedding-recsys.md)로 대체.
+- [decisions/ADR-008-taste-first-embedding-recsys.md](decisions/ADR-008-taste-first-embedding-recsys.md): 무드 추천 표현 전환 — 피처 센트로이드 → 취향-우선 임베딩(`recommend_by_taste_mood`). 자체 acousticness 피처 무의미(실데이터) → 폐기, 유저 취향 임베딩 최근접 풀 + v/e/t 재정렬. situation·wellness 공용. "몽땅 클래식" 해소
 
 ## 설계 / 계획 (superpowers)
 

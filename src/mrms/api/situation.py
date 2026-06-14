@@ -1,4 +1,4 @@
-"""상황 텍스트 → LLM 해석 → 추천 API. 웰니스 프레이밍(치료 표방 금지)."""
+"""상황 텍스트 → LLM 무드 해석 → 취향-우선 추천 API. 웰니스 프레이밍(치료 표방 금지)."""
 from __future__ import annotations
 
 import psycopg
@@ -6,12 +6,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from mrms.api.deps import db_conn, get_current_user_id
-from mrms.llm.situation import SituationLLMError, build_preset, interpret_situation
-from mrms.recsys.wellness import recommend_by_preset
+from mrms.llm.situation import SituationLLMError, interpret_situation
+from mrms.recsys.taste_mood import recommend_by_taste_mood
 
 router = APIRouter(prefix="/api/situation", tags=["situation"])
 
 _MAX_TEXT = 400
+
+
+def _clamp(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, float(v)))
 
 
 class SituationRequest(BaseModel):
@@ -31,18 +35,13 @@ def recommendations(
         interp = interpret_situation(text)
     except SituationLLMError as e:
         raise HTTPException(502, f"LLM 해석 실패: {e}")
-    preset = build_preset(interp)
-    tracks = recommend_by_preset(conn, user_id, preset, n=20)
-    features = {
-        "valence": preset["valence"][0],
-        "energy": preset["energy"][0],
-        "tempo_bpm": preset["tempo"][0],
-        "acousticness": preset["acousticness"][0],
-        "instrumentalness": preset["instrumentalness"][0],
-    }
+    valence = _clamp(interp.valence, 0.0, 1.0)
+    energy = _clamp(interp.energy, 0.0, 1.0)
+    tempo = _clamp(interp.tempo_bpm, 40.0, 200.0)
+    tracks = recommend_by_taste_mood(conn, user_id, valence, energy, tempo, n=20)
     return {
         "interpretation": interp.interpretation,
         "mood_label": interp.mood_label,
-        "features": features,
+        "features": {"valence": valence, "energy": energy, "tempo_bpm": tempo},
         "tracks": tracks,
     }
