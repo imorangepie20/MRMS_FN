@@ -7,7 +7,6 @@ import type { EmpSection, EmpSectionItem } from "@/lib/types";
 
 import { SectionRow } from "./SectionRow";
 import { TrackSectionRow } from "./TrackSectionRow";
-import { TrackListSection } from "./TrackListSection";
 import { ItemTracksModal } from "./ItemTracksModal";
 
 
@@ -171,9 +170,8 @@ export function EmpBrowse() {
 
           <div className="space-y-7">
             {group.sections.map((sec, i) =>
-              isSpotifyChartList(sec) ? (
-                <TrackListSection key={sec.id} section={sec} index={i} />
-              ) : isTrackSection(sec) ? (
+              isSpotifyChartList(sec) || isTrackSection(sec) ? (
+                // Spotify Top 50/Top Songs도 Melon Hot 100과 동일 렌더(가로 캐러셀)
                 <TrackSectionRow key={sec.id} section={sec} index={i} />
               ) : (
                 <SectionRow
