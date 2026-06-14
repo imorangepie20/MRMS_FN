@@ -18,6 +18,7 @@ from mrms.api.deps import db_conn, get_current_user_id
 from mrms.api.onboarding_api import router as onboarding_router
 from mrms.api.pgt import router as pgt_router
 from mrms.api.search import router as search_router
+from mrms.api.wellness import router as wellness_router
 from mrms.api.playback_resolve import router as playback_resolve_router
 from mrms.api.playlists import router as playlists_router
 from mrms.api.user_tracks import router as user_tracks_router
@@ -58,6 +59,7 @@ app.include_router(admin_emp_router)
 app.include_router(emp_browse_router)
 app.include_router(pgt_router)
 app.include_router(search_router)
+app.include_router(wellness_router)
 
 
 @app.get("/api/health")
