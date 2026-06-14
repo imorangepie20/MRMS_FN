@@ -1,29 +1,25 @@
 """FastAPI app — MRMS 데이터를 HTTP로 노출."""
 from __future__ import annotations
 
+import psycopg
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-import psycopg
-
 from mrms.api.admin_emp import router as admin_emp_router
-from mrms.api.emp_browse import router as emp_browse_router
 from mrms.api.albums import router as albums_router
 from mrms.api.artwork import router as artwork_router
 from mrms.api.auth_session import router as auth_session_router
 from mrms.api.auth_spotify import router as auth_spotify_router
-from mrms.api.auth_tidal import playback_router as tidal_playback_router, router as tidal_router
+from mrms.api.auth_tidal import playback_router as tidal_playback_router
+from mrms.api.auth_tidal import router as tidal_router
 from mrms.api.auth_youtube import router as auth_youtube_router
 from mrms.api.deps import db_conn, get_current_user_id
+from mrms.api.emp_browse import router as emp_browse_router
+from mrms.api.import_url import router as import_url_router
 from mrms.api.onboarding_api import router as onboarding_router
 from mrms.api.pgt import router as pgt_router
-from mrms.api.search import router as search_router
-from mrms.api.import_url import router as import_url_router
-from mrms.api.wellness import router as wellness_router
-from mrms.api.situation import router as situation_router
 from mrms.api.playback_resolve import router as playback_resolve_router
 from mrms.api.playlists import router as playlists_router
-from mrms.api.user_tracks import router as user_tracks_router
 from mrms.api.schemas import (
     MrtLatestResponse,
     Persona,
@@ -33,10 +29,14 @@ from mrms.api.schemas import (
     RecommendedTrack,
     UserInfo,
 )
+from mrms.api.search import router as search_router
+from mrms.api.shared import router as shared_router
+from mrms.api.situation import router as situation_router
+from mrms.api.user_tracks import router as user_tracks_router
+from mrms.api.wellness import router as wellness_router
 from mrms.db.user_embedding import fetch_latest_playlists
 from mrms.db.user_track import resolve_primary_platform
 from mrms.recsys.mrt import derive_recommended_albums, derive_recommended_tracks
-
 
 app = FastAPI(title="MRMS API", version="0.1.0")
 app.add_middleware(
@@ -55,6 +55,7 @@ app.include_router(auth_youtube_router)
 app.include_router(onboarding_router)
 app.include_router(user_tracks_router)
 app.include_router(playlists_router)
+app.include_router(shared_router)
 app.include_router(albums_router)
 app.include_router(artwork_router)
 app.include_router(admin_emp_router)
