@@ -66,6 +66,16 @@
 - `interpretation`은 한국어 한 줄, 따뜻하지만 과장 없이.
 - **안전 프레이밍(웰니스/정서 조절, 임상 "치료(therapy)" 표방 금지)**. 음악과 무관하거나 유해/부적절한 입력은 중립값(모든 center 0.5·tempo 110·weight 균등)으로 디플렉트하고 그 사실을 `interpretation`에 자연스럽게 반영.
 
+### 장르 쏠림(클래식) 완화 — 실데이터 근거
+
+wellness calm/sleep이 클래식에 쏠려 보인 원인은 그 중심점의 **acousticness·instrumentalness가 높아** 카탈로그의 클래식/오케스트라/뉴에이지 영역에 떨어지기 때문(점수 방식 무관). 단, 실측 top-30 아티스트 다양성은 이미 충분(calm 29/30, sleep 26/30 고유) → 곡 중복이 아니라 **장르** 인상의 문제. 결정적 레버는 **instrumentalness**: 중심을 0.1로 낮추고 weight를 주면 결과가 보컬 곡으로 전환됨(검증: Joe Cocker/Etta James/The Stranglers 등, 클래식 0곡, instrumentalness 0.00~0.17).
+
+따라서 프롬프트 규칙:
+- **기본값은 '보컬 위주'** — 대부분의 일상·사회·활동 상황은 instrumentalness 중심을 낮게(~0.10~0.20) + 유의미한 weight로 둬서 보컬 팝/락/소울 영역에 머물게 한다.
+- **명백히 기악/배경/집중·공부/수면/명상**일 때만 instrumentalness·acousticness의 center·weight를 올린다.
+- acousticness를 습관적으로 높이지 말 것("조용함" ≠ "어쿠스틱").
+- 장르 컬럼 부재(`subgenres` 전부 빈 값, `kpopMood` 0) → 다양성은 **중심점 배치**로 제어한다. 결과가 한 장르로 쏠리면 후속으로 **아티스트 단위 cap**(결과 dedup)을 추가할 수 있으나, 현 데이터상 아티스트 다양성은 충분해 초기 미도입.
+
 ### 검증 / 폴백
 
 `build_preset`에서:
