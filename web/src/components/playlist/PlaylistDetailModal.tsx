@@ -11,6 +11,7 @@ import {
 import { ModalTrackList } from "@/components/track/ModalTrackList";
 import { TrackModalMasthead } from "@/components/track/TrackModalMasthead";
 import { fetchPlaylistTracks, type PlaylistMeta } from "@/lib/api/playlists";
+import { SharePlaylistButton } from "@/components/playlist/SharePlaylistButton";
 import type { TrackInfo } from "@/lib/types";
 
 
@@ -63,6 +64,14 @@ export function PlaylistDetailModal({ open, onOpenChange, playlistId }: Props) {
             tracks={tracks}
           />
         </DialogHeader>
+        {playlist && (
+          <div className="px-1 pb-3">
+            <SharePlaylistButton
+              playlistId={playlist.id}
+              initialShareId={playlist.share_id ?? null}
+            />
+          </div>
+        )}
         <div className="overflow-y-auto -mx-6 px-6">
           {loading && (
             <div className="py-8 text-center font-mono text-[11px] tracking-editorial uppercase text-(--mrms-ink-mute)">
