@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 
-from mrms.recsys.wellness import MOOD_PRESETS, CATALOG_MV, mood_fit, recommend_wellness
+from mrms.recsys.wellness import MOOD_PRESETS, CATALOG_MV, mood_fit, recommend_by_preset, recommend_wellness
 from mrms.db.ids import stable_id
 from mrms.db.user_track import get_or_create_user
 
@@ -107,3 +107,27 @@ def test_recommend_excludes_owned_and_disliked(db_conn, cleanup):
 def test_recommend_bad_mood_raises(db_conn):
     with pytest.raises(ValueError):
         recommend_wellness(db_conn, "dummy-user", "nope", n=5)
+
+
+# 보컬 위주 임의 preset (LLM 산출 형태): {축:(center, sigma, weight)}
+VOCAL_PRESET = {
+    "valence": (0.55, 0.18, 1.0),
+    "energy": (0.55, 0.18, 1.0),
+    "tempo": (115.0, 28.0, 0.5),
+    "acousticness": (0.30, 0.25, 0.4),
+    "instrumentalness": (0.10, 0.30, 1.0),
+}
+
+
+def test_recommend_by_preset_orders_by_fit(db_conn, cleanup):
+    user_id = get_or_create_user(db_conn, f"sit_{uuid.uuid4().hex[:8]}@t.local")
+    cleanup('DELETE FROM "User" WHERE id = %s', (user_id,))
+    near = _seed_track(db_conn, cleanup, valence=0.55, energy=0.55, tempo=115.0,
+                       acousticness=0.30, instrumentalness=0.10, title="VocalNear")
+    far = _seed_track(db_conn, cleanup, valence=0.05, energy=0.95, tempo=180.0,
+                      acousticness=0.95, instrumentalness=0.95, title="VocalFar")
+    recs = recommend_by_preset(db_conn, user_id, VOCAL_PRESET, n=500000)  # n 크게 — 시드 두 곡이 전 카탈로그 중 결과에 포함되도록
+    ids = [r["track_id"] for r in recs]
+    assert near in ids and far in ids
+    assert ids.index(near) < ids.index(far)
+    assert all("score" in r and "mood_fit" in r for r in recs)
