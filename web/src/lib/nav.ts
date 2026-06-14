@@ -40,6 +40,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { title: "Search", href: "/search", num: "D1", badge: "⌘K" },
       { title: "Wellness", href: "/wellness", num: "D4", full: "chicken soup clinic", badge: "·" },
+      { title: "Situation", href: "/situation", num: "D5", full: "situation desk", badge: "·" },
       { title: "Charts", href: "/charts", num: "D2", badge: "—" },
       { title: "Editor's picks", href: "/picks", num: "D3", badge: "·" },
     ],
