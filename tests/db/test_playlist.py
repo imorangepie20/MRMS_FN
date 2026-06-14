@@ -5,8 +5,10 @@ import pytest
 from mrms.db.playlist import (
     create_playlist,
     get_playlist,
+    get_playlist_by_share_id,
     get_playlist_tracks,
     list_user_playlists,
+    set_playlist_share,
 )
 from mrms.db.user_track import get_or_create_user
 
@@ -76,3 +78,50 @@ def test_get_playlist_returns_meta(db_conn: psycopg.Connection):
     assert pl["id"] == pid
     assert pl["name"] == "M"
     assert pl["user_id"] == user_id
+
+
+def test_set_playlist_share_creates_and_clears_token(db_conn: psycopg.Connection):
+    """on=True → 토큰 생성(재호출 시 유지), on=False → None. get_playlist에 반영."""
+    user_id = get_or_create_user(db_conn, "share-db@test.com")
+    db_conn.commit()
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT id FROM "Track" LIMIT 1')
+        track_ids = [r[0] for r in cur.fetchall()]
+    if not track_ids:
+        pytest.skip("Track 데이터 부족")
+
+    pid = create_playlist(
+        db_conn, user_id=user_id, name="ShareDB", description=None, track_ids=track_ids
+    )
+
+    token = set_playlist_share(db_conn, pid, True)
+    assert token
+    # idempotent — 재호출 시 기존 토큰 유지
+    assert set_playlist_share(db_conn, pid, True) == token
+    # get_playlist에 share_id 반영
+    assert get_playlist(db_conn, pid)["share_id"] == token
+    # 해제 → None
+    assert set_playlist_share(db_conn, pid, False) is None
+    assert get_playlist(db_conn, pid)["share_id"] is None
+
+
+def test_get_playlist_by_share_id(db_conn: psycopg.Connection):
+    """공유 토큰으로 메타(+owner_name) 조회. 없는 토큰은 None."""
+    user_id = get_or_create_user(db_conn, "share-lookup@test.com")
+    db_conn.commit()
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT id FROM "Track" LIMIT 1')
+        track_ids = [r[0] for r in cur.fetchall()]
+    if not track_ids:
+        pytest.skip("Track 데이터 부족")
+
+    pid = create_playlist(
+        db_conn, user_id=user_id, name="Lookup", description="d", track_ids=track_ids
+    )
+    token = set_playlist_share(db_conn, pid, True)
+
+    found = get_playlist_by_share_id(db_conn, token)
+    assert found["id"] == pid
+    assert found["name"] == "Lookup"
+    assert "owner_name" in found  # displayName 미설정이면 None 허용
+    assert get_playlist_by_share_id(db_conn, "nonexistent-token") is None

@@ -1,6 +1,7 @@
 """Playlist + PlaylistTrack DB 헬퍼."""
 from __future__ import annotations
 
+import secrets
 from datetime import datetime, timezone
 
 import psycopg
@@ -106,10 +107,10 @@ def get_playlist_tracks(
 def get_playlist(
     conn: psycopg.Connection, playlist_id: str
 ) -> dict | None:
-    """Playlist 메타."""
+    """Playlist 메타 (share_id 포함)."""
     with conn.cursor() as cur:
         cur.execute(
-            '''SELECT id, "userId", name, description, "createdAt"
+            '''SELECT id, "userId", name, description, "createdAt", "shareId"
                FROM "Playlist" WHERE id = %s''',
             (playlist_id,),
         )
@@ -122,4 +123,54 @@ def get_playlist(
         "name": row[2],
         "description": row[3],
         "created_at": row[4].isoformat() if row[4] else None,
+        "share_id": row[5],
+    }
+
+
+def set_playlist_share(
+    conn: psycopg.Connection, playlist_id: str, on: bool
+) -> str | None:
+    """공유 토글. on이면 shareId 생성(없을 때만)·반환, off면 NULL로 비우고 None 반환."""
+    with conn.cursor() as cur:
+        if not on:
+            cur.execute(
+                'UPDATE "Playlist" SET "shareId" = NULL WHERE id = %s', (playlist_id,)
+            )
+            conn.commit()
+            return None
+        cur.execute('SELECT "shareId" FROM "Playlist" WHERE id = %s', (playlist_id,))
+        row = cur.fetchone()
+        existing = row[0] if row else None
+        if existing:
+            return existing  # idempotent — 기존 토큰 유지
+        share_id = secrets.token_urlsafe(9)
+        cur.execute(
+            'UPDATE "Playlist" SET "shareId" = %s WHERE id = %s',
+            (share_id, playlist_id),
+        )
+    conn.commit()
+    return share_id
+
+
+def get_playlist_by_share_id(
+    conn: psycopg.Connection, share_id: str
+) -> dict | None:
+    """공유 토큰으로 플레이리스트 메타(+owner displayName). 없으면 None."""
+    with conn.cursor() as cur:
+        cur.execute(
+            '''SELECT p.id, p.name, p.description, p."createdAt", u."displayName"
+               FROM "Playlist" p
+               JOIN "User" u ON u.id = p."userId"
+               WHERE p."shareId" = %s''',
+            (share_id,),
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    return {
+        "id": row[0],
+        "name": row[1],
+        "description": row[2],
+        "created_at": row[3].isoformat() if row[3] else None,
+        "owner_name": row[4],
     }
