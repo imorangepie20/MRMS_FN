@@ -51,3 +51,79 @@ def _mood_fit_sql(preset: dict[str, tuple[float, float, float]]) -> str:
         col = _FEATURE_COL[axis]
         terms.append(f"{weight} * power(({col} - {center})/{sigma}, 2)")
     return "exp(-0.5 * (" + " + ".join(terms) + "))"
+
+
+def recommend_wellness(
+    conn: psycopg.Connection, user_id: str, mood: str, n: int = 20
+) -> list[dict[str, Any]]:
+    """무드 적합(소프트) × 취향(UserEmbedding cosine) 결합 top-n. 학습 없음.
+
+    UserEmbedding 있으면 score=W_MOOD·mood_fit+W_TASTE·taste_sim, 없으면 mood_fit만.
+    제외: UserTrack 보유 + UserBlocked disliked(track+album). 후보=임베딩∩피처 전 카탈로그.
+
+    SELECT column order:
+      0=t.id, 1=title, 2=artist, 3=albumId,
+      4=valence, 5=energy, 6=tempo,
+      7=mood_fit, 8=tidal_id, 9=spotify_id, 10=taste_sim
+    """
+    if mood not in MOOD_PRESETS:
+        raise ValueError(f"unknown mood: {mood}")
+    _ensure_vector_registered(conn)
+    fit_sql = _mood_fit_sql(MOOD_PRESETS[mood])
+    ue = fetch_user_embedding(conn, user_id, USER_MV)
+
+    exclude = '''
+      t.id NOT IN (SELECT "trackId" FROM "UserTrack" WHERE "userId" = %(uid)s)
+      AND t.id NOT IN (
+        SELECT "targetId" FROM "UserBlocked"
+          WHERE "userId" = %(uid)s AND "targetType" = 'track' AND reason = 'disliked'
+        UNION
+        SELECT tt.id FROM "Track" tt JOIN "UserBlocked" ub
+          ON ub."targetId" = tt."albumId" AND ub."targetType" = 'album'
+          WHERE ub."userId" = %(uid)s AND ub.reason = 'disliked'
+      )'''
+    # Columns 0-9 from select_cols, then taste_sim appended as column 10
+    select_cols = f'''
+        t.id, t.title, ar.name AS artist, t."albumId",
+        taf.valence, taf.energy, taf.tempo,
+        {fit_sql} AS mood_fit,
+        tp_t."platformTrackId" AS tidal_id,
+        tp_s."platformTrackId" AS spotify_id'''
+    joins = '''
+      FROM "TrackAudioFeatures" taf
+      JOIN "Track"  t  ON t.id = taf."trackId"
+      JOIN "Artist" ar ON ar.id = t."artistId"
+      JOIN "TrackEmbedding" e ON e."trackId" = t.id AND e."modelVersion" = %(catmv)s
+      LEFT JOIN "TrackPlatform" tp_t ON tp_t."trackId" = t.id AND tp_t.platform = 'tidal'
+      LEFT JOIN "TrackPlatform" tp_s ON tp_s."trackId" = t.id AND tp_s.platform = 'spotify' '''
+    params: dict[str, Any] = {"uid": user_id, "catmv": CATALOG_MV, "featmv": CATALOG_MV, "n": n}
+
+    if ue is not None:
+        params["uvec"] = np.asarray(ue["embedding"], dtype=np.float32)
+        sql = f'''SELECT {select_cols}, 1 - (e.embedding <=> %(uvec)s) AS taste_sim {joins}
+                  WHERE taf."modelVersion" = %(featmv)s AND {exclude}
+                  ORDER BY ({W_MOOD} * ({fit_sql}) + {W_TASTE} * (1 - (e.embedding <=> %(uvec)s))) DESC
+                  LIMIT %(n)s'''
+    else:
+        sql = f'''SELECT {select_cols}, NULL::double precision AS taste_sim {joins}
+                  WHERE taf."modelVersion" = %(featmv)s AND {exclude}
+                  ORDER BY ({fit_sql}) DESC
+                  LIMIT %(n)s'''
+
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+    out = []
+    for r in rows:
+        # Indices: 0=id,1=title,2=artist,3=albumId,4=valence,5=energy,6=tempo,
+        #          7=mood_fit, 8=tidal_id, 9=spotify_id, 10=taste_sim
+        mf = float(r[7])
+        ts = float(r[10]) if r[10] is not None else None
+        score = (W_MOOD * mf + W_TASTE * ts) if ts is not None else mf
+        out.append({
+            "track_id": r[0], "title": r[1], "artist": r[2], "album_id": r[3],
+            "valence": float(r[4]), "energy": float(r[5]), "tempo": float(r[6]),
+            "mood_fit": mf, "taste_sim": ts, "score": score,
+            "tidal_track_id": r[8], "spotify_track_id": r[9],
+        })
+    return out
