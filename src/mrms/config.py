@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     tidal_redirect_uri: str = ""
     tidal_scopes: str = ""
 
+    # ─── Gemini (situation desk LLM) ─────────────────
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+
     # ─── OAuth callback server ───────────────────────
     oauth_callback_host: str = "127.0.0.1"
     oauth_callback_port: int = 8080
