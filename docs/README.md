@@ -30,6 +30,7 @@
 - [decisions/ADR-006-wellness-recommendation.md](decisions/ADR-006-wellness-recommendation.md): Wellness 무드 추천(chicken soup clinic) — 기존 피처+임베딩 조합, 소프트 무드스코어+취향, 학습 없음(웰니스 프레이밍, 치료 금지)
 - [decisions/ADR-007-situation-llm-recommendation.md](decisions/ADR-007-situation-llm-recommendation.md): 상황 텍스트 → LLM(Gemini) 해석 → 추천(situation desk) — wellness 일반화(LLM이 피처 중심점+가중치 산출), `google-genai`·구조화 출력, 실패=502. ⚠️ 추천 엔진은 [ADR-008](decisions/ADR-008-taste-first-embedding-recsys.md)로 대체.
 - [decisions/ADR-008-taste-first-embedding-recsys.md](decisions/ADR-008-taste-first-embedding-recsys.md): 무드 추천 표현 전환 — 피처 센트로이드 → 취향-우선 임베딩(`recommend_by_taste_mood`). 자체 acousticness 피처 무의미(실데이터) → 폐기, 유저 취향 임베딩 최근접 풀 + v/e/t 재정렬. situation·wellness 공용. "몽땅 클래식" 해소
+- [decisions/ADR-009-share-url-import.md](decisions/ADR-009-share-url-import.md): 공유 URL 가져오기(paste & play) — Tidal/Spotify track·playlist·album 공유 링크 붙여넣어 트랙 fetch→EMP 적재→청취. 단독 페이지 `/import`, ADR-005 fetch/normalize/persist 재사용(신규=URL 파서+단일트랙 fetch+라우트)
 
 ## 설계 / 계획 (superpowers)
 
@@ -39,6 +40,7 @@
 - [superpowers/specs/2026-06-14-search-page-editorial-polish-design.md](superpowers/specs/2026-06-14-search-page-editorial-polish-design.md): 검색 페이지 editorial 폴리시(헤더·input·스켈레톤·empty/idle, shadcn 룩 전환 없음)
 - [superpowers/specs/2026-06-14-wellness-mood-recommendation-design.md](superpowers/specs/2026-06-14-wellness-mood-recommendation-design.md): Wellness 무드 추천 상세 설계(실데이터 검증·보강판 — inEmp 제거·소프트 무드스코어·취향 결합) ([ADR-006](decisions/ADR-006-wellness-recommendation.md))
 - [superpowers/specs/2026-06-14-situation-llm-recommendation-design.md](superpowers/specs/2026-06-14-situation-llm-recommendation-design.md): 상황 텍스트 → Gemini 해석 → 추천(situation desk) 상세 설계(wellness 엔진 일반화·구조화 출력·검증/폴백·실패 502) ([ADR-007](decisions/ADR-007-situation-llm-recommendation.md))
+- [superpowers/specs/2026-06-14-share-url-import-design.md](superpowers/specs/2026-06-14-share-url-import-design.md): 공유 URL 가져오기(paste & play) 상세 설계 — URL 파싱(track/playlist/album×2플랫폼)·단일트랙 fetch·EMP 적재, dev/prod 토큰·`37i9` 리스크 ([ADR-009](decisions/ADR-009-share-url-import.md))
 - [superpowers/plans/2026-06-14-situation-llm-recommendation.md](superpowers/plans/2026-06-14-situation-llm-recommendation.md): 위 설계의 구현 계획 (config→google-genai→엔진 일반화→llm/situation→api→프론트, TDD 8 태스크)
 - [superpowers/plans/2026-06-14-wellness-mood-recommendation.md](superpowers/plans/2026-06-14-wellness-mood-recommendation.md): 위 설계의 구현 계획 (recsys/wellness mood_fit+recommend, api, /wellness 페이지, TDD 6 태스크)
 - [superpowers/plans/2026-06-14-search-emp-expansion.md](superpowers/plans/2026-06-14-search-emp-expansion.md): 위 설계의 구현 계획 (백엔드-퍼스트 2단계 — search 모듈+normalize/merge/persist+2 라우트, /search 페이지, TDD 10 태스크)
