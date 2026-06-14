@@ -1,6 +1,8 @@
 """검색 → 표시 + EMP 적재. Tidal+Spotify 라이브, 미연동 플랫폼은 skip(부분 결과)."""
 from __future__ import annotations
 
+import logging
+
 import httpx
 import psycopg
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,6 +17,8 @@ from mrms.search.normalize import merge_tracks
 from mrms.search.persist import persist_search_tracks
 from mrms.search.spotify import search_spotify
 from mrms.search.tidal import search_tidal
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -55,12 +59,14 @@ async def search(
         ):
             try:
                 tok = await get_tok(user_id, conn)
-            except Exception:
+            except Exception as e:
+                log.warning("search: %s token unavailable: %r", platform, e)
                 skipped.append(platform)
                 continue
             try:
                 res = await run(tok)
-            except Exception:
+            except Exception as e:
+                log.warning("search: %s search failed: %r", platform, e)
                 skipped.append(platform)
                 continue
             agg["tracks"].extend(res["tracks"])

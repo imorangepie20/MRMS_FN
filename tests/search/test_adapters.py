@@ -46,3 +46,15 @@ async def test_search_tidal_albums_degrade_on_404():
         r = await search_tidal(http, "TOKEN", "newjeans", ["track", "album", "playlist"], "KR")
     assert len(r["tracks"]) == 1 and r["tracks"][0]["platform_track_id"] == "1"
     assert r["albums"] == [] and r["playlists"] == []  # degrade
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_search_spotify_raises_on_non_200():
+    # 401(토큰 무효) 등은 조용히 빈 결과로 삼키지 말고 raise → 라우트가 skip 처리.
+    respx.get("https://api.spotify.com/v1/search").mock(
+        return_value=Response(401, json={"error": {"status": 401, "message": "Invalid access token"}})
+    )
+    async with httpx.AsyncClient() as http:
+        with pytest.raises(RuntimeError):
+            await search_spotify(http, "BADTOKEN", "ditto", ["track"])
