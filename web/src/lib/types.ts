@@ -325,3 +325,17 @@ export interface WellnessResponse {
   mood: string;
   tracks: WellnessTrack[];
 }
+
+export interface SituationFeatures {
+  valence: number;
+  energy: number;
+  tempo_bpm: number;
+  acousticness: number;
+  instrumentalness: number;
+}
+export interface SituationResponse {
+  interpretation: string;
+  mood_label: string;
+  features: SituationFeatures;
+  tracks: WellnessTrack[];
+}
