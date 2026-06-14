@@ -47,7 +47,7 @@ Tidal·Spotify의 **track · playlist · album** 공유 링크. `?si=...` 등 **
 - `src/mrms/search/share_url.py` 신규: `parse_share_url(url: str) -> tuple[str, str, str] | None` → `(platform, item_type, item_id)`. 호스트(open.spotify.com / tidal.com)·경로(`/track|playlist|album/`, `tidal.com/browse/…`)로 판별, 쿼리·프래그먼트 제거. 미지원이면 None.
 - `src/mrms/search/expand.py`에 단일 트랙 fetch 추가: `_spotify_track(http, token, track_id)` (GET `https://api.spotify.com/v1/tracks/{id}`), `_tidal_track(http, token, track_id, country)` (Tidal 트랙 엔드포인트). 결과를 기존 `normalize_spotify_track`/`normalize_tidal_track`로 정규화.
 - `src/mrms/api/import_url.py` 신규: `POST /api/import/url {url}` → main.py 등록. 파싱 → 유저 토큰(없으면 안내 에러) → track/container 분기 fetch → EMP persist → `{platform, item_type, title, tracks}` 반환. 인증=`get_current_user_id`.
-- 토큰은 **유저 연동 토큰**(search expand와 동일 경로 `_spotify_tok`/`_tidal_tok`). dev-mode client-credentials 403 문제는 유저 토큰이라 무관.
+- **구현 결과(변경):** 카탈로그 조회는 인증 무관 → **앱 토큰(client_credentials, `search/app_token.py`) 우선 + 유저 토큰 폴백**. Spotify 플레이리스트는 Web API가 dev-mode/알고리즘에서 막혀 **공개 embed 스크래핑**(`fetch_spotify_embed`, `emp/spotify` 파서 재사용). 미연동 유저도 가져오기 가능, 연동은 재생에만. 토큰 둘 다 실패만 502.
 
 ## 프론트
 
@@ -60,7 +60,7 @@ Tidal·Spotify의 **track · playlist · album** 공유 링크. `?si=...` 등 **
 - 파싱 실패(미지원 호스트/타입) → 400 "지원하지 않는 URL".
 - 플랫폼 미연동(토큰 없음) → 친절 안내 "Spotify/Tidal을 연결하세요"(search의 미연동 패턴 재사용).
 - 비공개/삭제/없는 항목 → 플랫폼 API 404/403 → "가져올 수 없는 링크" 메시지.
-- **Spotify 알고리즘/에디토리얼 플레이리스트(`37i9…`)** — Web API 접근이 막혀 유저 토큰으로도 404일 수 있음 → 위 "가져올 수 없는 링크"로 처리. **구현 시 연동 계정으로 실제 동작 확인**(플래그).
+- **Spotify 알고리즘/에디토리얼 플레이리스트(`37i9…`)** — Web API는 막혔으나 **공개 embed로 해결**(실측: 'Daily Mix 2' 50곡). embed는 Spotify 위젯 구조 변경에 취약(후속 모니터링).
 
 ## 제약 / 리스크
 

@@ -10,7 +10,8 @@
 
 카페 등에서 **공유받은 Tidal/Spotify 링크**(track·playlist·album)를 붙여넣으면 트랙을 가져와 듣고 **EMP에 적재**하는 단독 페이지. 좋아요·플레이리스트 담기는 **기존 트랙 행 액션에 맡김**.
 
-- **기존 Search→EMP 확장(ADR-005) 재사용** — 신규 = URL 파서 + 단일트랙 fetch 2개 + 얇은 라우트. `fetch_container_tracks`/`normalize_*`/`persist_*`/유저 토큰(`_spotify_tok`/`_tidal_tok`)은 그대로.
+- **기존 Search→EMP 확장(ADR-005) 재사용** + 신규(URL 파서·단일트랙 fetch·라우트·embed fetch).
+- **카탈로그 조회는 인증 무관(재생만 연동 필요)** — 앱 토큰(client_credentials) 우선, 안 되면 유저 토큰 폴백. Spotify 플레이리스트는 Web API가 dev-mode/알고리즘에서 막혀 **공개 embed 스크래핑**(`emp/spotify` 재사용)으로 가져온다. Tidal·Spotify track/album은 앱 토큰으로 연동 없이 동작.
 - **지원**: track/playlist/album × Tidal/Spotify, `?si=` 등 쿼리 무시, `tidal.com/browse/…` 변형.
 - **목적지 = EMP 적재 + 표시**, 그 뒤는 사용자 액션(♥/✦/재생).
 - **단독 페이지** 채택(처음엔 검색 입력/모달 고려했으나 "카페에서 받아 쭉 듣기" 시나리오상 제대로 된 표면).
@@ -22,7 +23,7 @@
 ## 근거
 
 - fetch/normalize/persist/토큰 전부 존재 → 신규 코드 최소.
-- 유저 토큰 경로라 dev-mode client-credentials 403 무관.
+- 앱 토큰(인증 불필요)으로 대부분 조회 + Spotify 플레이리스트는 embed로 우회 → 미연동 유저도 가져오기 가능.
 - track도 흔히 공유됨(예시 URL) → 컨테이너+단일트랙 모두 지원.
 
 ## 결과
@@ -30,8 +31,8 @@
 좋은 점: 외부 공유 콘텐츠를 즉시 청취+적재, 신규 표면 최소, EMP·추천에 흡수.
 
 트레이드오프:
-- 사용자 플랫폼 연동 필요(미연동→안내). dev/prod DB 분리로 로컬 라이브 검증 제약.
-- Spotify `37i9…` 알고리즘 플레이리스트는 Web API 미접근(404) 가능 → 친절 에러 + 구현 시 확인.
+- **재생만** 연동 필요(가져오기는 무관). embed 스크래핑은 Spotify 위젯 구조 변경에 취약(emp 차트 임포터와 동일 리스크).
+- `37i9…` 알고리즘 플레이리스트: Web API 막혔으나 **embed로 해결**(실측 — 'Daily Mix 2' 50곡).
 
 ## 후속 작업
 
