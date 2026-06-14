@@ -23,8 +23,9 @@ async def _spotify_album_tracks(http, token, album_id):
 
 
 async def _spotify_playlist_tracks(http, token, pid):
+    # Spotify는 limit>=100을 "Invalid limit"으로 거부 → 50(앨범 tracks 실측 최대).
     r = await http.get(f"{SPOTIFY}/playlists/{pid}/tracks",
-                       params={"limit": 100}, headers={"Authorization": f"Bearer {token}"})
+                       params={"limit": 50}, headers={"Authorization": f"Bearer {token}"})
     rows = (r.json().get("items") or []) if r.status_code == 200 else []
     return [n for n in (normalize_spotify_track((row or {}).get("track")) for row in rows) if n]
 

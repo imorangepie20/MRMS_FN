@@ -14,7 +14,9 @@ from mrms.search.normalize import (
 log = logging.getLogger(__name__)
 
 SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search"
-LIMIT = 20
+# ⚠️ 이 앱 크레덴셜은 /v1/search 에서 limit>=20 을 400 "Invalid limit" 으로 거부한다
+# (dev-mode 쿼터 추정 — 문서상 max 50이나 실측 ~10). 10은 정상.
+LIMIT = 10
 
 
 async def search_spotify(
