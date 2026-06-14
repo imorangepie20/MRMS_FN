@@ -306,3 +306,22 @@ export interface SearchResponse {
   playlists: SearchContainer[];
   skipped_platforms: string[];
 }
+
+export interface WellnessTrack {
+  track_id: string;
+  title: string;
+  artist: string;
+  album_id: string | null;
+  valence: number;
+  energy: number;
+  tempo: number;
+  mood_fit: number;
+  taste_sim: number | null;
+  score: number;
+  tidal_track_id: string | null;
+  spotify_track_id: string | null;
+}
+export interface WellnessResponse {
+  mood: string;
+  tracks: WellnessTrack[];
+}
