@@ -43,6 +43,7 @@ export const navGroups: NavGroup[] = [
       { title: "Situation", href: "/situation", num: "D5", full: "situation desk", badge: "·" },
       { title: "Charts", href: "/charts", num: "D2", badge: "—" },
       { title: "Editor's picks", href: "/picks", num: "D3", badge: "·" },
+      { title: "Import", href: "/import", num: "D6", full: "Eat The Shared", badge: "·" },
     ],
   },
   {
