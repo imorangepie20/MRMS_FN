@@ -44,7 +44,7 @@ wellness 무드 추천(ADR-006)으로 "기분 → 곡" 진입점이 생겼지만
 3. `api/situation.py` + main.py 등록.
 4. 프론트 `/situation` + `lib/api/situation.ts` + nav.
 5. 단위·통합 테스트.
-6. `requirements`에 `google-genai`, prod `GEMINI_API_KEY` 세팅.
+6. `pyproject.toml`에 `google-genai`, prod `GEMINI_API_KEY` 세팅.
 
 ## 관련 문서
 
