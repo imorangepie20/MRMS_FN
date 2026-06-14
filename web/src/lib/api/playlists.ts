@@ -8,6 +8,7 @@ export interface PlaylistMeta {
   description: string | null;
   created_at?: string | null;
   track_count?: number;
+  share_id?: string | null;
 }
 
 
