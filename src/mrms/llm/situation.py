@@ -1,4 +1,7 @@
-"""상황 자유텍스트 → Gemini 해석 → wellness preset. 웰니스 프레이밍(치료 표방 금지)."""
+"""상황 자유텍스트 → Gemini 해석 → 무드(valence/energy/tempo). 웰니스 프레이밍(치료 표방 금지).
+
+장르·악기는 취향-우선 엔진(recommend_by_taste_mood)이 담당하므로, LLM은 '무드 방향'만 산출한다.
+"""
 from __future__ import annotations
 
 from google import genai
@@ -9,85 +12,29 @@ from mrms.config import settings
 
 
 class SituationInterpretation(BaseModel):
-    """Gemini 구조화 출력 스키마 — 피처 중심점 + 축별 가중치 + 한 줄 해석."""
+    """Gemini 구조화 출력 — 무드 방향(valence/energy/tempo) + 한 줄 해석."""
 
     interpretation: str = Field(description="상황에 대한 한국어 한 줄 해석(사용자에게 보여줌)")
     mood_label: str = Field(description="짧은 무드 라벨 (예: '차분한 일요일 아침')")
-    valence: float = Field(description="정서 밝기/긍정 0~1")
-    energy: float = Field(description="에너지/강도 0~1")
+    valence: float = Field(description="정서 밝기 0~1 (어두움/슬픔 0 ~ 밝음/행복 1)")
+    energy: float = Field(description="에너지/강도 0~1 (잔잔함 0 ~ 격렬함 1)")
     tempo_bpm: float = Field(description="템포 BPM (느림 60~80, 보통 90~120, 빠름 130~160)")
-    acousticness: float = Field(description="어쿠스틱성 0~1")
-    instrumentalness: float = Field(description="기악성(보컬 적음) 0~1")
-    valence_weight: float = Field(description="이 상황에서 valence 중요도 0~1 (0=무시)")
-    energy_weight: float = Field(description="energy 중요도 0~1")
-    tempo_weight: float = Field(description="tempo 중요도 0~1")
-    acousticness_weight: float = Field(description="acousticness 중요도 0~1")
-    instrumentalness_weight: float = Field(description="instrumentalness 중요도 0~1")
-    prefer_instrumental: bool = Field(
-        description="명백히 기악/배경/집중·공부/수면/명상/클래식/어쿠스틱(언플러그드) 음악을 원하는 "
-        "상황이면 true. 보컬 곡이 어울리는 일반 상황(독서·카페·드라이브·운동·파티 등)은 false."
-    )
 
 
 class SituationLLMError(RuntimeError):
     """Gemini 호출/파싱 실패 — API에서 502로 매핑."""
 
 
-# 축별 가우시안 폭(σ) — wellness MOOD_PRESETS 상수 재사용. LLM은 σ를 만지지 않는다.
-_DEFAULT_SIGMA: dict[str, float] = {
-    "valence": 0.18, "energy": 0.18, "tempo": 28.0,
-    "acousticness": 0.25, "instrumentalness": 0.30,
-}
-
 _SITUATION_PROMPT = (
-    "너는 음악 무드 해석기다. 사용자가 적은 '상황'을 읽고, 그 장면에 어울리는 음악을 "
-    "valence(정서 밝기 0~1), energy(강도 0~1), tempo(BPM), acousticness(어쿠스틱성 0~1), "
-    "instrumentalness(기악성 0~1)의 중심값과, 각 축이 이 상황에서 얼마나 중요한지(weight 0~1)로 매핑한다.\n"
-    "규칙:\n"
-    "- 기본은 '보컬 위주'. 차분함·잔잔함·휴식·독서·아침·카페 같은 상황도 보컬 곡(싱어송라이터·소울·인디·"
-    "로파이·발라드)이 잘 어울린다. 차분함을 acousticness로 표현하지 말고 '낮은 energy + 중저 tempo'로 표현하라. "
-    "('조용함'·'잔잔함' ≠ '어쿠스틱/기악'.)\n"
-    "- prefer_instrumental: 사용자가 명백히 기악/배경/집중·공부/수면/명상/클래식/어쿠스틱(언플러그드)을 원하는 "
-    "상황에서만 true. 그 외 일반 상황(독서·카페·드라이브·운동·파티·산책 등)은 false.\n"
-    "- prefer_instrumental=false면 acousticness는 0.40 이하, instrumentalness는 0.20 이하로 둔다(보컬 곡 보장).\n"
-    "- 상황과 무관한 축은 weight를 낮게/0으로 둔다.\n"
+    "너는 음악 무드 해석기다. 사용자가 적은 '상황'을 읽고, 그 장면에 어울리는 음악의 분위기를 "
+    "valence(정서 밝기 0~1), energy(강도 0~1: 잔잔함 0 ~ 격렬함 1), "
+    "tempo(BPM: 느림 60~80, 보통 90~120, 빠름 130~160)로 추정한다.\n"
+    "- 장르나 악기는 신경 쓰지 마라(그건 사용자 취향이 정한다). 오직 분위기(valence/energy/tempo)만.\n"
     "- interpretation은 한국어 한 줄, 따뜻하지만 과장 없이. 효능·치료(therapy)를 주장하지 말 것(웰니스/정서 조절만).\n"
-    "- 음악과 무관하거나 유해·부적절한 입력은 모든 center를 0.5(tempo는 110)·weight를 균등, "
-    "prefer_instrumental=false로 두고, 그 사실을 interpretation에 자연스럽게 반영한다."
+    "- mood_label은 짧게.\n"
+    "- 음악과 무관하거나 유해·부적절한 입력은 중립(valence 0.5, energy 0.5, tempo 110)으로 두고, "
+    "그 사실을 interpretation에 자연스럽게 반영한다."
 )
-
-
-def _clamp(v: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, float(v)))
-
-
-def build_preset(interp: SituationInterpretation) -> dict[str, tuple[float, float, float]]:
-    """LLM 해석 → {축: (center, sigma, weight)}. center/weight 클램프, 전부-0 weight면 균등 폴백."""
-    centers = {
-        "valence": _clamp(interp.valence, 0.0, 1.0),
-        "energy": _clamp(interp.energy, 0.0, 1.0),
-        "tempo": _clamp(interp.tempo_bpm, 40.0, 200.0),
-        "acousticness": _clamp(interp.acousticness, 0.0, 1.0),
-        "instrumentalness": _clamp(interp.instrumentalness, 0.0, 1.0),
-    }
-    weights = {
-        "valence": _clamp(interp.valence_weight, 0.0, 1.0),
-        "energy": _clamp(interp.energy_weight, 0.0, 1.0),
-        "tempo": _clamp(interp.tempo_weight, 0.0, 1.0),
-        "acousticness": _clamp(interp.acousticness_weight, 0.0, 1.0),
-        "instrumentalness": _clamp(interp.instrumentalness_weight, 0.0, 1.0),
-    }
-    if sum(weights.values()) == 0.0:
-        weights = {k: 1.0 for k in weights}
-    if not interp.prefer_instrumental:
-        # 보컬 위주 강제(코드 백스톱) — acousticness/instrumentalness가 카탈로그의 클래식·기악
-        # 영역을 지배하지 못하도록 상한. 실측: ac center 0.7·weight 0.9면 전 곡이 클래식.
-        # 명시적 기악 요청(prefer_instrumental=true)에서만 상한을 푼다.
-        centers["acousticness"] = min(centers["acousticness"], 0.40)
-        weights["acousticness"] = min(weights["acousticness"], 0.30)
-        centers["instrumentalness"] = min(centers["instrumentalness"], 0.20)
-        weights["instrumentalness"] = min(weights["instrumentalness"], 0.40)
-    return {ax: (centers[ax], _DEFAULT_SIGMA[ax], weights[ax]) for ax in centers}
 
 
 def _client() -> genai.Client:

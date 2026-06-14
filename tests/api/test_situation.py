@@ -12,10 +12,7 @@ client = TestClient(app)
 def _fake_interp():
     return SituationInterpretation(
         interpretation="차분한 비 오는 아침", mood_label="rainy calm",
-        valence=0.4, energy=0.3, tempo_bpm=90.0, acousticness=0.5, instrumentalness=0.15,
-        valence_weight=1.0, energy_weight=1.0, tempo_weight=0.6,
-        acousticness_weight=0.4, instrumentalness_weight=1.0,
-        prefer_instrumental=False,
+        valence=0.4, energy=0.3, tempo_bpm=90.0,
     )
 
 
