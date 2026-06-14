@@ -66,12 +66,14 @@ def persist_container_tracks(conn, tracks, item_type, item_id):
     source_id = f"{item_type}:{item_id}"
     for t in tracks:
         try:
-            upsert_track_and_emp_source(
+            r = upsert_track_and_emp_source(
                 conn, isrc=t.get("isrc"), title=t["title"] or "", artist=t["artist"] or "",
                 album_title=t.get("album_title"), duration_ms=t.get("duration_ms"),
                 platform=t["platform"], platform_track_id=t["platform_track_id"],
                 source_type="search", source_id=source_id, source_name=None,
                 cover_url=t.get("album_cover"))
+            if r and r.get("track_id"):
+                t["track_id"] = r["track_id"]
         except Exception as e:
             conn.rollback()
             log.warning("expand persist failed (%s): %s", t.get("platform_track_id"), e)

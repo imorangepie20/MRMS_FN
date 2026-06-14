@@ -53,13 +53,18 @@ def test_import_track_happy(login, monkeypatch):
         return _ntrack("spotify", item_id)
 
     monkeypatch.setattr(iu, "fetch_track", fake_track)
-    monkeypatch.setattr(iu, "persist_container_tracks", lambda *a, **k: "track:abc")
+    def fake_persist(conn, tracks, item_type, item_id):
+        for t in tracks:
+            t["track_id"] = "t_" + t["platform_track_id"]
+        return f"{item_type}:{item_id}"
+    monkeypatch.setattr(iu, "persist_container_tracks", fake_persist)
     r = client.post("/api/import/url", json={"url": "https://open.spotify.com/track/abc?si=z"})
     assert r.status_code == 200
     data = r.json()
     assert data["item_type"] == "track"
     assert data["title"] == "Artist — Song"
     assert len(data["tracks"]) == 1 and data["tracks"][0]["spotify_track_id"] == "abc"
+    assert data["tracks"][0]["track_id"] == "t_abc"
     client.cookies.clear()
 
 
@@ -78,12 +83,17 @@ def test_import_playlist_happy(login, monkeypatch):
 
     monkeypatch.setattr(iu, "fetch_container_tracks", fake_container)
     monkeypatch.setattr(iu, "_container_title", fake_title)
-    monkeypatch.setattr(iu, "persist_container_tracks", lambda *a, **k: "playlist:pl")
+    def fake_persist(conn, tracks, item_type, item_id):
+        for t in tracks:
+            t["track_id"] = "t_" + t["platform_track_id"]
+        return f"{item_type}:{item_id}"
+    monkeypatch.setattr(iu, "persist_container_tracks", fake_persist)
     r = client.post("/api/import/url", json={"url": "https://open.spotify.com/playlist/pl?si=z"})
     assert r.status_code == 200
     data = r.json()
     assert data["item_type"] == "playlist" and data["title"] == "My Playlist"
     assert len(data["tracks"]) == 2
+    assert all(t["track_id"] is not None for t in data["tracks"])
     client.cookies.clear()
 
 

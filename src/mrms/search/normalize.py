@@ -123,7 +123,7 @@ def _usable_isrc(isrc) -> bool:
 def _to_flat(t: dict) -> dict:
     """단일 플랫폼 트랙 → flat 응답 트랙(track_id는 persist 후 채움)."""
     return {
-        "track_id": None,
+        "track_id": t.get("track_id"),
         "title": t["title"],
         "artist": t["artist"],
         "album_title": t.get("album_title"),
