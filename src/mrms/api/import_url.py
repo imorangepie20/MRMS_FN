@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.api.search import _spotify_tok, _tidal_tok
+from mrms.search.app_token import get_app_token
 from mrms.search.expand import (
     _container_title,
     fetch_container_tracks,
@@ -40,23 +41,39 @@ async def import_url(
         u = cur.fetchone()
     country = u[0] if u and u[0] else "US"
 
-    try:
-        tok = await (_spotify_tok if platform == "spotify" else _tidal_tok)(user_id, conn)
-    except Exception:
-        raise HTTPException(401, f"{platform} 연결이 필요합니다")
-
     title = None
+    normalized: list = []
     async with httpx.AsyncClient(timeout=15.0) as http:
-        if item_type == "track":
-            one = await fetch_track(http, platform, item_id, tok, country)
-            normalized = [one] if one else []
-        else:
-            normalized = await fetch_container_tracks(
-                http, platform, item_type, item_id, tok, country)
-            title = await _container_title(http, platform, item_type, item_id, tok, country)
+        # 카탈로그 조회는 사용자 인증과 무관 — 앱 토큰(client_credentials) 우선,
+        # 안 되면(예: Spotify playlist 403) 연동된 유저 토큰으로 폴백. 재생만 연동 필요.
+        tokens: list[str] = []
+        for getter in (
+            lambda: get_app_token(http, platform),
+            lambda: (_spotify_tok if platform == "spotify" else _tidal_tok)(user_id, conn),
+        ):
+            try:
+                tokens.append(await getter())
+            except Exception:
+                continue
+        if not tokens:
+            raise HTTPException(502, f"{platform} 토큰을 얻을 수 없습니다")
+
+        used = None
+        for tok in tokens:
+            if item_type == "track":
+                one = await fetch_track(http, platform, item_id, tok, country)
+                cand = [one] if one else []
+            else:
+                cand = await fetch_container_tracks(
+                    http, platform, item_type, item_id, tok, country)
+            if cand:
+                normalized, used = cand, tok
+                break
+        if normalized and item_type != "track":
+            title = await _container_title(http, platform, item_type, item_id, used, country)
 
     if not normalized:
-        raise HTTPException(404, "트랙을 가져올 수 없습니다 (비공개·삭제·미지원 링크)")
+        raise HTTPException(404, "트랙을 가져올 수 없습니다 (비공개·삭제·미지원·연동 필요)")
 
     persist_container_tracks(conn, normalized, item_type, item_id)
     tracks = merge_tracks(normalized)
