@@ -23,6 +23,10 @@ class SituationInterpretation(BaseModel):
     tempo_weight: float = Field(description="tempo 중요도 0~1")
     acousticness_weight: float = Field(description="acousticness 중요도 0~1")
     instrumentalness_weight: float = Field(description="instrumentalness 중요도 0~1")
+    prefer_instrumental: bool = Field(
+        description="명백히 기악/배경/집중·공부/수면/명상/클래식/어쿠스틱(언플러그드) 음악을 원하는 "
+        "상황이면 true. 보컬 곡이 어울리는 일반 상황(독서·카페·드라이브·운동·파티 등)은 false."
+    )
 
 
 class SituationLLMError(RuntimeError):
@@ -40,13 +44,16 @@ _SITUATION_PROMPT = (
     "valence(정서 밝기 0~1), energy(강도 0~1), tempo(BPM), acousticness(어쿠스틱성 0~1), "
     "instrumentalness(기악성 0~1)의 중심값과, 각 축이 이 상황에서 얼마나 중요한지(weight 0~1)로 매핑한다.\n"
     "규칙:\n"
-    "- 기본은 '보컬 위주'. 대부분의 일상·사회·활동 상황은 instrumentalness 중심을 낮게(0.10~0.20) "
-    "두되 weight는 유의미하게(보컬 곡이 나오도록). acousticness를 습관적으로 높이지 말 것('조용함'≠'어쿠스틱').\n"
-    "- 명백히 기악/배경/집중·공부/수면/명상 상황일 때만 instrumentalness·acousticness의 center·weight를 올린다.\n"
+    "- 기본은 '보컬 위주'. 차분함·잔잔함·휴식·독서·아침·카페 같은 상황도 보컬 곡(싱어송라이터·소울·인디·"
+    "로파이·발라드)이 잘 어울린다. 차분함을 acousticness로 표현하지 말고 '낮은 energy + 중저 tempo'로 표현하라. "
+    "('조용함'·'잔잔함' ≠ '어쿠스틱/기악'.)\n"
+    "- prefer_instrumental: 사용자가 명백히 기악/배경/집중·공부/수면/명상/클래식/어쿠스틱(언플러그드)을 원하는 "
+    "상황에서만 true. 그 외 일반 상황(독서·카페·드라이브·운동·파티·산책 등)은 false.\n"
+    "- prefer_instrumental=false면 acousticness는 0.40 이하, instrumentalness는 0.20 이하로 둔다(보컬 곡 보장).\n"
     "- 상황과 무관한 축은 weight를 낮게/0으로 둔다.\n"
     "- interpretation은 한국어 한 줄, 따뜻하지만 과장 없이. 효능·치료(therapy)를 주장하지 말 것(웰니스/정서 조절만).\n"
-    "- 음악과 무관하거나 유해·부적절한 입력은 모든 center를 0.5(tempo는 110)·weight를 균등하게 두고, "
-    "그 사실을 interpretation에 자연스럽게 반영한다."
+    "- 음악과 무관하거나 유해·부적절한 입력은 모든 center를 0.5(tempo는 110)·weight를 균등, "
+    "prefer_instrumental=false로 두고, 그 사실을 interpretation에 자연스럽게 반영한다."
 )
 
 
@@ -72,6 +79,14 @@ def build_preset(interp: SituationInterpretation) -> dict[str, tuple[float, floa
     }
     if sum(weights.values()) == 0.0:
         weights = {k: 1.0 for k in weights}
+    if not interp.prefer_instrumental:
+        # 보컬 위주 강제(코드 백스톱) — acousticness/instrumentalness가 카탈로그의 클래식·기악
+        # 영역을 지배하지 못하도록 상한. 실측: ac center 0.7·weight 0.9면 전 곡이 클래식.
+        # 명시적 기악 요청(prefer_instrumental=true)에서만 상한을 푼다.
+        centers["acousticness"] = min(centers["acousticness"], 0.40)
+        weights["acousticness"] = min(weights["acousticness"], 0.30)
+        centers["instrumentalness"] = min(centers["instrumentalness"], 0.20)
+        weights["instrumentalness"] = min(weights["instrumentalness"], 0.40)
     return {ax: (centers[ax], _DEFAULT_SIGMA[ax], weights[ax]) for ax in centers}
 
 
