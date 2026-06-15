@@ -85,11 +85,18 @@ async def _ytmusic_search(conn: psycopg.Connection, q: str) -> list[dict]:
     return out
 
 
-async def _data_api_fallback(http: httpx.AsyncClient, q: str) -> list[dict]:
-    """Data API v3 search.list(videoEmbeddable) → 트랙. 100유닛. 키 없으면 []."""
+async def _data_api_fallback(
+    conn: psycopg.Connection, http: httpx.AsyncClient, q: str
+) -> list[dict]:
+    """Data API v3 search.list(videoEmbeddable) → 트랙. 100유닛. 키 없으면 [].
+
+    HTTP 호출 = 쿼터 100유닛 소모이므로, 키가 있어 실제 호출하면 결과가 비거나
+    에러여도 예산 카운터를 증가시킨다(시도 기준 = 진짜 쿼터 상한 보장).
+    """
     key = os.environ.get("YOUTUBE_DATA_API_KEY")
     if not key:
         return []
+    _bump_fallback(conn)  # 실제 호출 직전 = 쿼터 소모 시도 기준 카운트
     r = await http.get(
         YOUTUBE_SEARCH_URL,
         params={
@@ -130,8 +137,7 @@ async def search_youtube(
     """ytmusicapi 주력 → 0건 + 예산 통과 시 Data API 폴백. v1 tracks만."""
     tracks = await _ytmusic_search(conn, q)
     if not tracks and _today_count(conn) < _fallback_cap(conn):
-        fb = await _data_api_fallback(http, q)
+        fb = await _data_api_fallback(conn, http, q)
         if fb:
-            _bump_fallback(conn)
             tracks = fb
     return {"tracks": tracks, "albums": [], "playlists": []}

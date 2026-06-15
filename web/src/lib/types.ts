@@ -291,6 +291,7 @@ export interface SearchTrack {
   isrc: string | null;
   tidal_track_id: string | null;
   spotify_track_id: string | null;
+  youtube_track_id: string | null;
 }
 export interface SearchContainer {
   type: "album" | "playlist";

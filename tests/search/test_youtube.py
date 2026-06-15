@@ -76,3 +76,19 @@ def test_search_youtube_skips_fallback_when_budget_exhausted(db_conn, cleanup, m
                 return await yt.search_youtube(db_conn, "obscure", http=http)
         res = _run(go())
     assert res["tracks"] == []  # 폴백 호출 안 됨 (respx 미설정이라 호출 시 에러날 것)
+
+
+@respx.mock
+def test_fallback_counts_attempt_even_when_data_api_empty(db_conn, cleanup, monkeypatch):
+    """Data API가 200·빈 items여도 호출했으면 카운터 증가(시도 기준 쿼터 상한)."""
+    monkeypatch.setenv("YOUTUBE_DATA_API_KEY", "KEY123")
+    cleanup('DELETE FROM "Setting" WHERE key LIKE %s', ("yt_search_fallback_count_%",))
+    respx.get("https://www.googleapis.com/youtube/v3/search").mock(
+        return_value=Response(200, json={"items": []}))
+    with patch.object(yt, "_ytmusic", return_value=_StubYT([])):
+        async def go():
+            async with httpx.AsyncClient() as http:
+                return await yt.search_youtube(db_conn, "obscure", http=http)
+        res = _run(go())
+    assert res["tracks"] == []
+    assert yt._today_count(db_conn) == 1  # 빈 결과여도 시도 1회 카운트
