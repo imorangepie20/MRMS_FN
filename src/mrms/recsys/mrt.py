@@ -1,6 +1,7 @@
 """MRT (Model Recommendation Tracks) — 페르소나별 pgvector 검색 + derive."""
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from typing import Any
 
@@ -16,7 +17,12 @@ from mrms.db.user_embedding import (
 )
 from mrms.recsys.persona import aggregate_user_vector, cluster_user_tracks
 
+log = logging.getLogger(__name__)
+
 MODEL_VERSION = f"{EMBEDDING_MODEL_VERSION}+persona-K3"
+from mrms.recsys.discover import (  # noqa: E402,I001 — after MODEL_VERSION (circular-import guard)
+    generate_user_discovery,
+)
 CATALOG_MODEL_VERSION = EMBEDDING_MODEL_VERSION
 DEFAULT_K = 3
 DEFAULT_TOP_N = 20
@@ -149,6 +155,14 @@ def generate_user_mrt(
             context={"personaIdx": idx, "kind": "persona",
                      "scores": [r["similarity"] for r in recs]},
         )
+
+    # EMP-밖 discovery (best-effort) — 실패해도 MRT 생성/커밋을 막지 않는다.
+    # rollback 금지(위 persona 쓰기를 같은 트랜잭션에서 잃음). discovery는 EMPSource에만 적재.
+    try:
+        generate_user_discovery(conn, user_id)
+    except Exception as e:  # noqa: BLE001 — best-effort
+        log.warning("discovery skipped for %s: %r", user_id, e)
+
     return len(track_ids)
 
 

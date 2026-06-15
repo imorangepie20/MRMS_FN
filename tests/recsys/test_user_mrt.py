@@ -1,10 +1,21 @@
 """generate_user_mrt + select_stale_mrt_users — 공유 MRT 생성/판정."""
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 from pgvector.psycopg import register_vector
 
-from mrms.db.ids import stable_id as _id
+import mrms.recsys.mrt as _mrt_mod
 from mrms.config import EMBEDDING_MODEL_VERSION
+from mrms.db.ids import stable_id as _id
+
+
+@pytest.fixture(autouse=True)
+def _stub_discovery():
+    """이 파일 모든 테스트에서 generate_user_mrt 내부 discovery를 no-op으로 — 실제 Gemini/
+    ytmusicapi 호출·discovery 잔여물 방지. best-effort 테스트는 자체 with patch로 override."""
+    with patch.object(_mrt_mod, "generate_user_discovery", lambda *a, **k: 0):
+        yield
 
 CATALOG = EMBEDDING_MODEL_VERSION
 MV = f"{EMBEDDING_MODEL_VERSION}+persona-K3"
@@ -41,7 +52,7 @@ def _seed_user_with_tracks(conn, n_tracks: int) -> str:
 
 
 def test_generate_user_mrt_creates_personas_and_history(db_conn, cleanup):
-    from mrms.recsys.mrt import generate_user_mrt, MODEL_VERSION
+    from mrms.recsys.mrt import MODEL_VERSION, generate_user_mrt
     uid = _seed_user_with_tracks(db_conn, n_tracks=6)
     n = generate_user_mrt(db_conn, uid, k=3)
     db_conn.commit()
@@ -79,3 +90,26 @@ def test_select_stale_mrt_users(db_conn, cleanup):
     cleanup('DELETE FROM "UserPersona" WHERE "userId"=%s', (uid,))
     cleanup('DELETE FROM "UserEmbedding" WHERE "userId"=%s', (uid,))
     cleanup('DELETE FROM "UserTrack" WHERE "userId"=%s', (uid,))
+
+
+def test_generate_user_mrt_calls_discovery_best_effort(db_conn, cleanup):
+    """discovery가 호출되고, discovery가 터져도 generate_user_mrt는 정상 반환."""
+    user_id = _seed_user_with_tracks(db_conn, 6)
+    cleanup('DELETE FROM "PlaylistHistory" WHERE "userId" = %s', (user_id,))
+    cleanup('DELETE FROM "UserPersona" WHERE "userId" = %s', (user_id,))
+    cleanup('DELETE FROM "UserEmbedding" WHERE "userId" = %s', (user_id,))
+    cleanup('DELETE FROM "UserTrack" WHERE "userId" = %s', (user_id,))
+
+    calls = {}
+
+    def _boom(conn, uid, **kw):
+        calls["called"] = uid
+        raise RuntimeError("discovery exploded")
+
+    # autouse 픽스처의 no-op을 이 블록에서만 _boom으로 override
+    with patch.object(_mrt_mod, "generate_user_discovery", _boom):
+        n = _mrt_mod.generate_user_mrt(db_conn, user_id, k=3)
+    db_conn.commit()  # generate_user_mrt는 커밋 안 함(호출자 책임) — 기존 테스트와 동일
+
+    assert n is not None and n > 0          # discovery 폭발에도 MRT 생성 성공
+    assert calls.get("called") == user_id   # discovery가 실제로 호출됨
