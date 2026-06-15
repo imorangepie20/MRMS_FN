@@ -16,6 +16,11 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  // og:image 등 메타데이터의 절대 URL 기준. 미설정 시 self-host에선 localhost로 생성돼
+  // 외부 크롤러(SNS/에디터)가 opengraph-image를 못 받아 미리보기 이미지가 안 뜬다.
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://mrms.approid.team",
+  ),
   title: "MRMS",
   description: "Music Recommendation, personally curated",
 };
