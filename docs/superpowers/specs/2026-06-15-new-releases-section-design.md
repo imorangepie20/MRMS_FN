@@ -76,7 +76,8 @@ MISS_SQL OR-clause에 `OR es.source_type = 'new_release'` 한 줄 추가(discove
 - Gemini 키 없음 → skip(0, 무회귀). grounding/파싱 실패 → 0. 해석 0건 → 0. per-track 실패 → rollback+continue.
 - 신곡 훅 실패가 MRT 생성을 막지 않음(best-effort, discovery와 동일 규약).
 - 빈 신곡 → 프론트 섹션 미표시.
-- discovery↔신곡 교차중복 → `_song_key` 제외로 방지.
+- discovery↔신곡 교차중복(적재 시) → `_song_key` 제외로 방지.
+- 메인 리스트↔신곡 섹션 중복(서빙 시): 신곡이 임베딩 후 persona 검색에 다시 떠도 `mrt_latest`가 `nr_meta` id를 `recommended_tracks`에서 제외 → 신곡은 전용 PT 04 섹션에만 노출.
 - grounding+schema 동시 제약 실측: 동시 가능하면 1단계, 아니면 2단계(설계 기본).
 
 ## 테스트 전략
