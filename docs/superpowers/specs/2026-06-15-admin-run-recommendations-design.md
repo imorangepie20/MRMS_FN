@@ -82,7 +82,7 @@ SELECT DISTINCT "userId" FROM "PlaylistHistory" WHERE "modelVersion" = %s
 - 진행률 SSE 스트리밍 — IngestionRun runs 목록으로 충분.
 - 별도 admin 페이지 — 기존 `/admin/emp` 카드로 흡수.
 - discovery 단독 실행 — generate_user_mrt의 일부(persona 후행). 단독 의미 없음.
-- 유저 드롭다운/검색 — email 직접 입력으로 충분(MVP).
+- ~~유저 드롭다운/검색 — email 직접 입력으로 충분(MVP).~~ → **후속 구현됨**: `GET /api/admin/emp/users`(email·displayName·track_count, 보유순) + RunMrtCard 드롭다운으로 교체(2026-06-16).
 - "전체"를 stale 기준으로 — discovery 전파엔 force-all이 맞음(핵심 결정).
 
 ## 후속 작업
