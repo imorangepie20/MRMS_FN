@@ -225,7 +225,11 @@ def generate_user_discovery(
 
     # 여기서부터 DB 쓰기 (내부 commit). 실패는 per-track rollback + continue.
     src = f"discovery:{user_id}"
-    delete_emp_sources_by_source_id(conn, src)  # 자체 commit (replace)
+    try:
+        delete_emp_sources_by_source_id(conn, src)  # 자체 commit (replace)
+    except Exception as e:  # noqa: BLE001 — best-effort: 예외 전파 금지(호출자 트랜잭션 보존)
+        log.warning("discovery delete failed for %s: %r", user_id, e)
+        return 0
     count = 0
     for t in fresh:
         try:
