@@ -41,9 +41,11 @@ def _client() -> SpotifyOAuthClient:
     return SpotifyOAuthClient(
         client_id=os.environ["SPOTIFY_CLIENT_ID"],
         client_secret=os.environ["SPOTIFY_CLIENT_SECRET"],
+        # 기본값은 prod HTTPS — env 누락 시 http://localhost로 튕겨 주소창 "위험"이
+        # 뜨던 폭탄 제거. 로컬 dev는 .env로 localhost 콜백을 명시 오버라이드.
         redirect_uri=os.environ.get(
             "SPOTIFY_REDIRECT_URI",
-            "http://localhost:8000/api/auth/spotify/callback",
+            "https://mrms.approid.team/api/auth/spotify/callback",
         ),
         scopes=SPOTIFY_SCOPES,
     )

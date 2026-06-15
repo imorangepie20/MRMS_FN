@@ -53,9 +53,10 @@ def _client() -> YouTubeOAuthClient:
     return YouTubeOAuthClient(
         client_id=_cred("YOUTUBE_CLIENT_ID", "GOOGLE_CLIENT_ID"),
         client_secret=_cred("YOUTUBE_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET"),
+        # 기본값 prod HTTPS — env 누락 시 localhost 폴백(주소창 "위험") 방지. dev는 .env 오버라이드.
         redirect_uri=os.environ.get(
             "YOUTUBE_REDIRECT_URI",
-            "http://localhost:8000/api/auth/youtube/callback",
+            "https://mrms.approid.team/api/auth/youtube/callback",
         ),
         scopes=YOUTUBE_SCOPES,
     )
