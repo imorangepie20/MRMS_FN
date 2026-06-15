@@ -116,6 +116,64 @@ def normalize_tidal_playlist(item) -> dict | None:
     }
 
 
+def _yt_thumbnail(thumbnails) -> str | None:
+    """ytmusicapi thumbnails → 가장 큰 width url. 없으면 None."""
+    if not isinstance(thumbnails, list):
+        return None
+    best_url, best_w = None, -1
+    for t in thumbnails:
+        if not isinstance(t, dict):
+            continue
+        url, w = t.get("url"), t.get("width") or 0
+        if isinstance(url, str) and url and w > best_w:
+            best_url, best_w = url, w
+    return best_url
+
+
+def _yt_duration_ms(item) -> int | None:
+    """duration_seconds(int) 우선, 없으면 'M:SS'/'H:MM:SS' 파싱. 실패 None."""
+    ds = item.get("duration_seconds")
+    if isinstance(ds, int):
+        return ds * 1000
+    d = item.get("duration")
+    if not isinstance(d, str):
+        return None
+    parts = d.strip().split(":")
+    if not parts or len(parts) > 3:
+        return None
+    try:
+        nums = [int(p) for p in parts]
+    except ValueError:
+        return None
+    sec = 0
+    for n in nums:
+        sec = sec * 60 + n
+    return sec * 1000
+
+
+def normalize_ytmusic_track(item) -> dict | None:
+    """ytmusicapi search 항목(song/video) → 우리 포맷. videoId 없으면 None."""
+    if not isinstance(item, dict):
+        return None
+    if item.get("resultType") not in ("song", "video"):
+        return None
+    vid = item.get("videoId")
+    if not vid:
+        return None  # 합성 ID 금지 — IFrame 재생 불가
+    artists = [a.get("name") for a in (item.get("artists") or []) if isinstance(a, dict)]
+    album = item.get("album")
+    return {
+        "platform": "youtube",
+        "platform_track_id": str(vid),
+        "title": item.get("title"),
+        "artist": ", ".join(n for n in artists if n) or "",
+        "album_title": album.get("name") if isinstance(album, dict) else None,
+        "album_cover": _yt_thumbnail(item.get("thumbnails")),
+        "duration_ms": _yt_duration_ms(item),
+        "isrc": None,
+    }
+
+
 def _usable_isrc(isrc) -> bool:
     return bool(isrc) and len(str(isrc)) == 12 and str(isrc).isalnum()
 
@@ -132,6 +190,7 @@ def _to_flat(t: dict) -> dict:
         "isrc": t.get("isrc"),
         "tidal_track_id": t["platform_track_id"] if t["platform"] == "tidal" else None,
         "spotify_track_id": t["platform_track_id"] if t["platform"] == "spotify" else None,
+        "youtube_track_id": t["platform_track_id"] if t["platform"] == "youtube" else None,
     }
 
 

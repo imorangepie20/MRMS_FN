@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from mrms.search.normalize import (
-    normalize_spotify_track,
+    merge_tracks,
     normalize_spotify_album,
     normalize_spotify_playlist,
+    normalize_spotify_track,
     normalize_tidal_track,
+    normalize_ytmusic_track,
 )
 
 
@@ -81,9 +83,6 @@ def test_normalize_tidal_track():
     assert t["isrc"] == "KRA401900002"
 
 
-from mrms.search.normalize import merge_tracks
-
-
 def test_merge_same_isrc_combines_platforms():
     sp = {"platform": "spotify", "platform_track_id": "sp1", "title": "Ditto",
           "artist": "NewJeans", "album_title": "OMG", "album_cover": "c1",
@@ -111,3 +110,62 @@ def test_merge_no_isrc_kept_separate():
     assert len(merged) == 2
     assert merged[0]["spotify_track_id"] == "sp1" and merged[0]["tidal_track_id"] is None
     assert merged[1]["tidal_track_id"] == "td1" and merged[1]["spotify_track_id"] is None
+
+
+def test_normalize_ytmusic_track_song():
+    item = {
+        "resultType": "song",
+        "videoId": "ZrOKjDZOtkA",
+        "title": "Man I Need",
+        "artists": [{"name": "Olivia Dean", "id": "x"}],
+        "album": {"name": "Man I Need", "id": "y"},
+        "duration": "3:04",
+        "duration_seconds": 184,
+        "thumbnails": [{"url": "small", "width": 60}, {"url": "big", "width": 544}],
+    }
+    n = normalize_ytmusic_track(item)
+    assert n == {
+        "platform": "youtube",
+        "platform_track_id": "ZrOKjDZOtkA",
+        "title": "Man I Need",
+        "artist": "Olivia Dean",
+        "album_title": "Man I Need",
+        "album_cover": "big",
+        "duration_ms": 184000,
+        "isrc": None,
+    }
+
+
+def test_normalize_ytmusic_video_no_album_uses_duration_string():
+    item = {
+        "resultType": "video",
+        "videoId": "vU05Eksc_iM",
+        "title": "Some Live",
+        "artists": [{"name": "Band"}],
+        "duration": "4:38",
+        "thumbnails": [{"url": "t", "width": 120}],
+    }
+    n = normalize_ytmusic_track(item)
+    assert n["platform_track_id"] == "vU05Eksc_iM"
+    assert n["album_title"] is None
+    assert n["duration_ms"] == 278000  # 4:38 → duration_seconds 없으면 'duration' 파싱
+    assert n["isrc"] is None
+
+
+def test_normalize_ytmusic_skips_non_track_and_missing_videoid():
+    assert normalize_ytmusic_track({"resultType": "album", "browseId": "b"}) is None
+    assert normalize_ytmusic_track({"resultType": "song", "title": "x"}) is None  # videoId 없음
+    assert normalize_ytmusic_track("nope") is None
+
+
+def test_merge_tracks_youtube_separate_row_with_youtube_id():
+    yt = {
+        "platform": "youtube", "platform_track_id": "VID1",
+        "title": "T", "artist": "A", "album_title": None,
+        "album_cover": None, "duration_ms": None, "isrc": None,
+    }
+    out = merge_tracks([yt])
+    assert len(out) == 1
+    assert out[0]["youtube_track_id"] == "VID1"
+    assert out[0]["tidal_track_id"] is None
+    assert out[0]["spotify_track_id"] is None
