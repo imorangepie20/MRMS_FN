@@ -241,7 +241,8 @@ def admin_run_mrt(
         if not email:
             raise HTTPException(400, "email required for target=user")
         with conn.cursor() as cur:
-            cur.execute('SELECT id FROM "User" WHERE email = %s', (email,))
+            # 저장된 email은 OAuth 제공자 표기 그대로(미정규화)라 대소문자 무시 매칭
+            cur.execute('SELECT id FROM "User" WHERE lower(email) = %s', (email,))
             row = cur.fetchone()
         if not row:
             raise HTTPException(404, "user not found")
