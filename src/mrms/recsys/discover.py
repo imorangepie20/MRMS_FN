@@ -13,6 +13,11 @@ from google.genai import types
 from pydantic import BaseModel
 
 from mrms.config import settings
+from mrms.db.emp import delete_emp_sources_by_source_id
+from mrms.db.settings import get_setting
+from mrms.emp.base import upsert_track_and_emp_source
+from mrms.search.normalize import normalize_ytmusic_track
+from mrms.search.youtube import AUTH_SETTING_KEY, _ytmusic
 
 log = logging.getLogger(__name__)
 
@@ -144,6 +149,98 @@ def gemini_related_tracks(
     if resp.parsed is None:
         raise DiscoveryLLMError("Gemini가 파싱 가능한 출력을 주지 않음")
     return resp.parsed.items
+
+
+def resolve_via_ytmusic(
+    conn: psycopg.Connection, suggestions: list[TrackSuggestion]
+) -> list[dict]:
+    """각 {artist,title} 제안 → ytmusicapi 검색 → 첫 유효 트랙(videoId)으로 해석.
+
+    해석 실패(존재하지 않음=환각)는 버린다. normalize_ytmusic_track shape 반환."""
+    auth_raw = get_setting(conn, AUTH_SETTING_KEY)
+    yt = _ytmusic(auth_raw)
+    out: list[dict] = []
+    for s in suggestions:
+        try:
+            raw = yt.search(f"{s.artist} {s.title}")
+        except Exception as e:  # noqa: BLE001 — ytmusicapi 비공식, graceful
+            log.warning("discovery ytmusic search failed (%s): %r", s.title, e)
+            continue
+        for item in raw or []:
+            nt = normalize_ytmusic_track(item)
+            if nt:
+                out.append(nt)
+                break
+    return out
+
+
+def _owned_song_keys(conn: psycopg.Connection, user_id: str) -> set[str]:
+    """유저 라이브러리 곡의 _song_key 집합 (discovery에서 보유곡 제외용)."""
+    from mrms.recsys.taste_mood import _song_key  # 함수-로컬: mrt↔discover 순환 import 회피
+
+    with conn.cursor() as cur:
+        cur.execute(
+            '''SELECT ar.name, t.title
+               FROM "UserTrack" ut
+               JOIN "Track" t   ON t.id = ut."trackId"
+               JOIN "Artist" ar ON ar.id = t."artistId"
+               WHERE ut."userId" = %s''',
+            (user_id,),
+        )
+        return {_song_key(r[0], r[1]) for r in cur.fetchall()}
+
+
+def generate_user_discovery(
+    conn: psycopg.Connection, user_id: str, *,
+    client: genai.Client | None = None, n: int = 20,
+) -> int:
+    """취향 시드 → Gemini → ytmusicapi 해석 → 보유곡 제외 → discovery EMPSource 재적재.
+
+    best-effort: 어떤 실패도 0 반환(예외 전파/rollback 금지 — 호출자 트랜잭션 보존).
+    내부 upsert/delete는 자체 commit. 반환=적재 트랙 수."""
+    from mrms.recsys.taste_mood import _song_key  # 함수-로컬: 순환 import 회피
+
+    try:
+        # prod 안전망: Gemini 키 없으면 조용히 skip (무회귀). 단 client가 명시 주입되면
+        # 테스트 fake client를 쓰는 것이므로 키가 없어도 진행한다.
+        if client is None and not settings.gemini_api_key:
+            return 0
+        seed = taste_seed(conn, user_id)
+        if not seed["artists"]:
+            return 0
+        suggestions = gemini_related_tracks(seed, n, client=client)
+        resolved = resolve_via_ytmusic(conn, suggestions)
+        if not resolved:
+            return 0
+        owned = _owned_song_keys(conn, user_id)
+        fresh = [t for t in resolved if _song_key(t["artist"], t["title"]) not in owned]
+        if not fresh:
+            return 0
+    except DiscoveryLLMError as e:
+        log.warning("discovery LLM failed for %s: %r", user_id, e)
+        return 0
+    except Exception as e:  # noqa: BLE001 — best-effort, MRT 생성 막지 않음
+        log.warning("discovery seed/resolve failed for %s: %r", user_id, e)
+        return 0
+
+    # 여기서부터 DB 쓰기 (내부 commit). 실패는 per-track rollback + continue.
+    src = f"discovery:{user_id}"
+    delete_emp_sources_by_source_id(conn, src)  # 자체 commit (replace)
+    count = 0
+    for t in fresh:
+        try:
+            upsert_track_and_emp_source(
+                conn, isrc=None, title=t["title"], artist=t["artist"],
+                album_title=t.get("album_title"), duration_ms=t.get("duration_ms"),
+                platform="youtube", platform_track_id=t["platform_track_id"],
+                source_type="discovery", source_id=src, source_name="Discovery",
+                cover_url=t.get("album_cover"),
+            )
+            count += 1
+        except Exception as e:  # noqa: BLE001 — 한 곡 실패가 나머지를 막지 않음
+            conn.rollback()
+            log.warning("discovery persist failed (%s): %r", t.get("title"), e)
+    return count
 
 
 def blend_recsys(

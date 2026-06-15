@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import uuid as _uuid
+from unittest.mock import patch
 
 import psycopg
 import pytest
 
+import mrms.recsys.discover as _disc_mod
 from mrms.db.emp import delete_emp_sources_by_source_id
 from mrms.db.user_track import get_or_create_user
 from mrms.recsys.discover import (
@@ -185,3 +187,69 @@ def test_gemini_related_tracks_wraps_exception():
     client = _FakeClient(RuntimeError("boom"))
     with pytest.raises(DiscoveryLLMError):
         gemini_related_tracks({"artists": ["X"], "genres": []}, 5, client=client)
+
+
+# ---------------------------------------------------------------------------
+# Orchestration — resolve_via_ytmusic + generate_user_discovery
+# ---------------------------------------------------------------------------
+
+class _StubYT:
+    def __init__(self, by_query):
+        self._by_query = by_query
+
+    def search(self, q):
+        return self._by_query.get(q, [])
+
+
+def _song_item(vid, title, artist):
+    return {
+        "resultType": "song", "videoId": vid, "title": title,
+        "artists": [{"name": artist}], "album": {"name": "A"},
+        "duration_seconds": 180, "thumbnails": [{"url": "c", "width": 300}],
+    }
+
+
+def test_generate_user_discovery_persists_and_excludes_owned(db_conn, cleanup):
+    user_id = get_or_create_user(db_conn, f"disc-{_uuid.uuid4().hex[:8]}@test.com")
+    # 라이브러리: Diana Krall 1곡 (시드 + 보유곡 제외 검증)
+    a = _mk_artist(db_conn, "Diana Krall", "jazz")
+    owned_tid = _mk_track(db_conn, a, "The Look of Love")
+    _add_usertrack(db_conn, user_id, owned_tid)
+    db_conn.commit()
+
+    # Gemini: 신곡 1개(Stacey Kent) + 보유곡과 같은 노래 1개(제외돼야)
+    parsed = TrackSuggestions(items=[
+        TrackSuggestion(artist="Stacey Kent", title="The Boy Next Door"),
+        TrackSuggestion(artist="Diana Krall", title="The Look of Love"),
+    ])
+    client = _FakeClient(_FakeResp(parsed))
+    stub = _StubYT({
+        "Stacey Kent The Boy Next Door": [_song_item("YTNEW1", "The Boy Next Door", "Stacey Kent")],
+        "Diana Krall The Look of Love": [_song_item("YTOWN", "The Look of Love", "Diana Krall")],
+    })
+    with patch.object(_disc_mod, "_ytmusic", return_value=stub):
+        count = _disc_mod.generate_user_discovery(db_conn, user_id, client=client, n=5)
+
+    assert count == 1  # 보유곡(The Look of Love)은 _song_key로 제외
+    rows = read_discovery(db_conn, user_id, limit=10)
+    assert [r["youtube_track_id"] for r in rows] == ["YTNEW1"]
+
+    # cleanup은 reversed 실행. 등록 역순(=실행 순):
+    # 1) UserTrack (마지막 등록 → 첫 실행)
+    # 2) discovery Track(s) — Stacey Kent 곡 (Track 삭제 시 TrackPlatform/EMPSource CASCADE)
+    # 3) Diana Krall owned Track
+    # 4) Diana Krall Artist (id=a)
+    # ※ Stacey Kent Artist는 DB에 기존 데이터가 있으므로 삭제하지 않는다.
+    #   upsert는 기존 Artist를 재사용하므로 우리 테스트가 만든 row가 아님.
+    cleanup('DELETE FROM "Artist" WHERE id = %s', (a,))                  # 4: 마지막 실행
+    cleanup('DELETE FROM "Track" WHERE "artistId" = %s', (a,))           # 3: Diana owned track
+    for r in rows:
+        cleanup('DELETE FROM "Track" WHERE id = %s', (r["track_id"],))   # 2: discovery track(s)
+    cleanup('DELETE FROM "UserTrack" WHERE "userId" = %s', (user_id,))  # 1: 첫 실행
+
+
+def test_generate_user_discovery_no_seed_returns_zero(db_conn, cleanup):
+    user_id = get_or_create_user(db_conn, f"noseed-{_uuid.uuid4().hex[:8]}@test.com")
+    client = _FakeClient(_FakeResp(TrackSuggestions(items=[])))
+    count = _disc_mod.generate_user_discovery(db_conn, user_id, client=client, n=5)
+    assert count == 0  # UserTrack 없음 → seed 빈약 → skip
