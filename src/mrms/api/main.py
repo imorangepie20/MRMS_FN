@@ -233,6 +233,19 @@ def mrt_latest(
     from mrms.recsys.discover import _owned_song_keys
     from mrms.recsys.taste_mood import _song_key
     owned_song_keys = _owned_song_keys(conn, user_id)
+    # 싫어요(disliked)/관심없어요(dismissed)도 곡 단위로 제외 — track_id 정확매칭만으론
+    # 같은 곡의 다른 버전(track_id)이 다시 추천된다(싫어요 누른 곡 재노출 버그).
+    blocked_song_keys: set[str] = set()
+    if blocked:
+        with conn.cursor() as cur:
+            cur.execute(
+                '''SELECT ar.name, t.title FROM "Track" t
+                   JOIN "Artist" ar ON ar.id = t."artistId"
+                   WHERE t.id = ANY(%s)''',
+                (list(blocked),),
+            )
+            blocked_song_keys = {_song_key(r[0], r[1]) for r in cur.fetchall()}
+    excluded_song_keys = owned_song_keys | blocked_song_keys
     nr_song_keys = {_song_key(d["artist"], d["title"]) for d in newrelease_rows}
 
     personas: list[Persona] = []
@@ -249,7 +262,7 @@ def mrt_latest(
             if not m:
                 continue
             sk = _song_key(m["artist"], m["title"])
-            if sk in owned_song_keys or sk in seen_p:
+            if sk in excluded_song_keys or sk in seen_p:
                 continue  # 보유곡(다른 track_id) + 같은 곡 중복 제거
             seen_p.add(sk)
             playlist.append(PersonaTrack(
@@ -331,7 +344,7 @@ def mrt_latest(
             continue
         sk = _song_key(u["artist"], u["title"])
         # 보유곡(다른 track_id) · 신보 전용섹션 곡 · 이미 추가한 곡 = 곡 단위로 제외
-        if sk in owned_song_keys or sk in nr_song_keys or sk in seen_keys:
+        if sk in excluded_song_keys or sk in nr_song_keys or sk in seen_keys:
             continue
         seen_keys.add(sk)
         score, persona_idx = taste_score.get(tid, (0.0, None))
@@ -357,7 +370,7 @@ def mrt_latest(
         if u is None:
             continue
         sk = _song_key(u["artist"], u["title"])
-        if sk in owned_song_keys or sk in seen_nr:
+        if sk in excluded_song_keys or sk in seen_nr:
             continue  # 보유곡(다른 track_id) + 신보 내 같은 곡 중복 제거
         seen_nr.add(sk)
         recommended_new_releases.append(RecommendedTrack(

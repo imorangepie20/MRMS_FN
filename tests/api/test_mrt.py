@@ -209,6 +209,35 @@ def test_mrt_latest_excludes_owned_song_diff_track_id(db_conn, login, cleanup):
     assert recs == [], "보유곡(다른 track_id)이 추천에 노출됨"
 
 
+def test_mrt_latest_excludes_disliked_song_diff_track_id(db_conn, login, cleanup):
+    """싫어요(disliked) 누른 곡은 다른 track_id 버전이어도 추천에서 영구 제외된다."""
+    from mrms.db.user_blocked import block_target
+
+    user_id, session_id = login()
+    a = _mk_artist(db_conn, "Disliked Artist")
+    disliked = _mk_track(db_conn, a, "Disliked Song")
+    other = _mk_track(db_conn, a, "Disliked Song")  # 같은 곡, 다른 track_id
+    block_target(db_conn, user_id, disliked, "track", "disliked")  # 싫어요
+    cleanup('DELETE FROM "Artist" WHERE id = %s', (a,))
+    cleanup('DELETE FROM "Track" WHERE "artistId" = %s', (a,))
+    cleanup('DELETE FROM "UserBlocked" WHERE "userId" = %s', (user_id,))
+
+    from mrms.db.user_embedding import insert_playlist_history
+    insert_playlist_history(
+        db_conn, user_id, [other], "+persona-K3",
+        context={"personaIdx": 0, "kind": "persona", "scores": [1.0]},
+    )
+    db_conn.commit()
+    cleanup('DELETE FROM "PlaylistHistory" WHERE "userId" = %s', (user_id,))
+
+    client.cookies.set("mrms_session", session_id)
+    resp = client.get("/api/mrt/latest")
+    client.cookies.clear()
+    assert resp.status_code == 200, resp.text
+    recs = [t for t in resp.json()["recommended_tracks"] if t["track_id"] in (disliked, other)]
+    assert recs == [], "싫어요 누른 곡(다른 track_id)이 추천에 다시 노출됨"
+
+
 def test_mrt_latest_includes_album_cover(db_conn, login, cleanup):
     """추천 트랙에 EMPSource.cover_url이 album_cover로 실린다(서빙 누락 회귀)."""
     user_id, session_id = login()
