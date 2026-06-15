@@ -17,12 +17,13 @@ function isTrackSection(sec: EmpSection): boolean {
 }
 
 
-/** 스포티파이 차트 플레이리스트(Top 50 시리즈 + Top Songs) — 세로 트랙 나열형으로. */
+/** 스포티파이 차트/에디토리얼 플레이리스트(Top 50 시리즈·Top Songs·Today's Top Hits)
+ *  — 컨테이너 카드 대신 트랙을 직접 가로 캐러셀(TrackSectionRow)로 노출. */
 function isSpotifyChartList(sec: EmpSection): boolean {
   return (
     sec.platform === "spotify" &&
     sec.items.length > 0 &&
-    /top\s*(50|songs)/i.test(sec.display_title ?? "")
+    /top\s*(50|songs|hits)/i.test(sec.display_title ?? "")
   );
 }
 
