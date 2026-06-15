@@ -79,6 +79,9 @@ export default async function Image({
               style={{
                 display: "flex",
                 flexWrap: "wrap",
+                // satori 기본 box-sizing=border-box — border 1px가 안쪽 폭을 458로 줄여
+                // 230×2 셀이 한 줄로 못 들어가 1열로 깨짐. content-box로 안쪽 460 유지(2×2).
+                boxSizing: "content-box",
                 width: 460,
                 height: 460,
                 marginRight: 56,
