@@ -119,51 +119,34 @@ def user(
 def _fetch_track_metadata(
     conn,
     track_ids: list[str],
-    primary_platform: str = "tidal",
 ) -> dict[str, dict]:
-    """{primary_platform}-가용 트랙의 메타 + tidal/spotify ID 반환.
+    """요청 트랙의 메타 + tidal/spotify/youtube ID. **플랫폼 가용성 필터 없음.**
 
-    primary_platform='tidal': INNER JOIN tidal, LEFT JOIN spotify
-    primary_platform='spotify': INNER JOIN spotify, LEFT JOIN tidal
-    primary_platform='youtube': INNER 필터 없음 — tidal/spotify 둘 다 LEFT JOIN.
-      youtube는 사전 매핑 ID 없이 재생 시점 resolve(검색)로 해결하므로
-      가용성 필터(INNER)를 걸지 않고 전체 트랙을 반환한다.
+    예전엔 primary_platform 기준 INNER JOIN으로 '재생 가능한 트랙만' 노출했으나,
+    youtube 재생 resolve가 보편화돼 모든 트랙이 재생 가능 → 필터를 제거했다(추천이
+    유저 플랫폼 때문에 0이 되던 버그 해소). tidal/spotify/youtube ID는 있으면 노출하고,
+    재생 플랫폼 선택은 프론트 player의 FALLBACK_ORDER가 담당. 합성 yt_ placeholder는 제외.
     """
     if not track_ids:
         return {}
-    if primary_platform == "youtube":
-        # 무료 baseline — 가용성 필터 없이 tidal/spotify ID는 있으면 노출만.
-        join_clause = (
-            'LEFT JOIN "TrackPlatform" tp_t '
-            '   ON tp_t."trackId" = t.id AND tp_t.platform = \'tidal\' '
-            'LEFT JOIN "TrackPlatform" tp_s '
-            '   ON tp_s."trackId" = t.id AND tp_s.platform = \'spotify\' '
-        )
-    elif primary_platform == "spotify":
-        join_clause = (
-            'INNER JOIN "TrackPlatform" tp_s '
-            '   ON tp_s."trackId" = t.id AND tp_s.platform = \'spotify\' '
-            'LEFT JOIN "TrackPlatform" tp_t '
-            '   ON tp_t."trackId" = t.id AND tp_t.platform = \'tidal\' '
-        )
-    else:
-        join_clause = (
-            'INNER JOIN "TrackPlatform" tp_t '
-            '   ON tp_t."trackId" = t.id AND tp_t.platform = \'tidal\' '
-            'LEFT JOIN "TrackPlatform" tp_s '
-            '   ON tp_s."trackId" = t.id AND tp_s.platform = \'spotify\' '
-        )
-    sql = (
-        'SELECT t.id, t.title, a.name, t."albumId", alb.title, '
-        '       tp_t."platformTrackId", tp_s."platformTrackId", t."durationMs" '
-        'FROM "Track" t '
-        'JOIN "Artist" a ON a.id = t."artistId" '
-        'LEFT JOIN "Album" alb ON alb.id = t."albumId" '
-        + join_clause +
-        'WHERE t.id = ANY(%s)'
-    )
     with conn.cursor() as cur:
-        cur.execute(sql, (track_ids,))
+        cur.execute(
+            '''SELECT t.id, t.title, a.name, t."albumId", alb.title,
+                      tp_t."platformTrackId", tp_s."platformTrackId",
+                      tp_y."platformTrackId", t."durationMs"
+               FROM "Track" t
+               JOIN "Artist" a ON a.id = t."artistId"
+               LEFT JOIN "Album" alb ON alb.id = t."albumId"
+               LEFT JOIN "TrackPlatform" tp_t
+                 ON tp_t."trackId" = t.id AND tp_t.platform = 'tidal'
+               LEFT JOIN "TrackPlatform" tp_s
+                 ON tp_s."trackId" = t.id AND tp_s.platform = 'spotify'
+               LEFT JOIN "TrackPlatform" tp_y
+                 ON tp_y."trackId" = t.id AND tp_y.platform = 'youtube'
+                 AND tp_y."platformTrackId" NOT LIKE 'yt\\_%%' ESCAPE '\\'
+               WHERE t.id = ANY(%s)''',
+            (track_ids,),
+        )
         rows = cur.fetchall()
     return {
         r[0]: {
@@ -173,7 +156,8 @@ def _fetch_track_metadata(
             "album_title": r[4],
             "tidal_track_id": r[5],
             "spotify_track_id": r[6],
-            "duration_ms": r[7],
+            "youtube_track_id": r[7],
+            "duration_ms": r[8],
         }
         for r in rows
     }
@@ -187,11 +171,9 @@ def mrt_latest(
     top_tracks_n: int = 50,
     top_albums_n: int = 15,
 ) -> MrtLatestResponse:
-    # user의 primary_platform — 저장값 대신 현재 연결된 플랫폼에서 계산
-    # (구독 연결/해제 자동 반영). 아무것도 연결 안 됐으면 기존 동작 보존 위해
-    # 'tidal' 폴백 (메타 조회의 INNER 필터 기준; 미연결 유저는 프론트가 재생 안 함).
-    primary_platform = resolve_primary_platform(conn, user_id) or "tidal"
-
+    # 추천은 연결 플랫폼과 무관하게 항상 노출 — 메타는 플랫폼 가용성 필터 없이 전체 반환
+    # (youtube 재생 resolve가 보편화돼 모든 트랙이 재생 가능). 재생 플랫폼 선택은 프론트
+    # player의 FALLBACK_ORDER(tidal→spotify→youtube)가 담당.
     playlists = fetch_latest_playlists(conn, user_id, limit=3)
     if not playlists:
         return MrtLatestResponse(
@@ -207,7 +189,7 @@ def mrt_latest(
     )
 
     all_track_ids = list({tid for p in playlists_sorted for tid in p["trackIds"]})
-    meta = _fetch_track_metadata(conn, all_track_ids, primary_platform=primary_platform)
+    meta = _fetch_track_metadata(conn, all_track_ids)
 
     # EMP-밖 discovery 캐시 읽기 (배치에서 적재됨). 메타는 여기가 제공(persona meta엔 없음).
     discovery_rows = read_discovery(conn, user_id, limit=top_tracks_n)
@@ -307,8 +289,7 @@ def mrt_latest(
                 "youtube_track_id": d["youtube_track_id"],
             }
         if tid in meta:
-            m = meta[tid]
-            return {**m, "youtube_track_id": None}
+            return meta[tid]  # 이제 meta가 youtube_track_id(있으면 실 videoId)도 포함
         return None
 
     # liked/pct 상태 — 블렌드된 트랙 전체에 대해 한 번에

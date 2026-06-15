@@ -101,7 +101,7 @@ def test_mrt_latest_returns_personas_and_derives(db_conn, set_session_cookie):
 
 
 def test_mrt_latest_includes_tidal_track_id_and_filters(db_conn, set_session_cookie):
-    """Tidal-only filter — Tidal 가용 트랙만 반환 + tidal_track_id 필드 포함."""
+    """플랫폼 게이트 제거 — non-Tidal 추천도 표시 + tidal 트랙엔 tidal_track_id 채움."""
     import numpy as np
     from mrms.db import user_embedding as ue
 
@@ -159,18 +159,14 @@ def test_mrt_latest_includes_tidal_track_id_and_filters(db_conn, set_session_coo
     assert r.status_code == 200
     body = r.json()
 
-    # 페르소나 0의 playlist에 non_tidal_id 제외됐는지
+    # 플랫폼 게이트 제거 — non-Tidal 트랙도 이제 표시됨
     persona_0 = next(p for p in body["personas"] if p["persona_idx"] == 0)
     playlist_ids = [t["track_id"] for t in persona_0["playlist"]]
-    assert non_tidal_id not in playlist_ids, "non-Tidal 트랙이 필터링 안 됐음"
+    assert non_tidal_id in playlist_ids, "게이트 제거 후 non-Tidal 추천도 표시돼야 함"
 
-    # tidal_track_id 필드 채워져 있음
-    assert all(t["tidal_track_id"] is not None for t in persona_0["playlist"])
-    assert any(t["tidal_track_id"] == tidal_platform_ids[0] for t in persona_0["playlist"])
-
-    # 추천 트랙도 모두 tidal_track_id 채워졌는지
-    if body["recommended_tracks"]:
-        assert all(t["tidal_track_id"] for t in body["recommended_tracks"])
+    # tidal 가용 트랙엔 tidal_track_id가 채워짐 (non-tidal은 None 허용)
+    tt = next(t for t in persona_0["playlist"] if t["track_id"] == tidal_ids[0])
+    assert tt["tidal_track_id"] == tidal_platform_ids[0]
 
 
 def test_user_endpoint_includes_primary_platform(db_conn, set_session_cookie):
@@ -256,7 +252,7 @@ def test_mrt_latest_includes_spotify_track_id(db_conn, set_session_cookie):
 
 
 def test_mrt_latest_spotify_user_gets_spotify_tracks(db_conn, set_session_cookie):
-    """primaryPlatform='spotify'인 사용자는 Spotify-가용 트랙을 받음 (Tidal-only 트랙은 제외)."""
+    """플랫폼 게이트 제거 — spotify 유저도 tidal-only 추천까지 전부 표시 + spotify_track_id 채움."""
     import numpy as np
     from mrms.db import user_embedding as ue
 
@@ -315,19 +311,20 @@ def test_mrt_latest_spotify_user_gets_spotify_tracks(db_conn, set_session_cookie
     body = r.json()
     persona_0 = body["personas"][0]
     playlist_ids = [t["track_id"] for t in persona_0["playlist"]]
-    # Spotify 트랙은 포함됨
+    # Spotify 트랙 포함
     assert any(tid in playlist_ids for tid in spotify_track_ids)
-    # Tidal-only 트랙은 제외됨 (Spotify user니까)
-    assert not any(tid in playlist_ids for tid in tidal_only_ids)
-    # spotify_track_id 채워짐
-    assert all(t.get("spotify_track_id") for t in persona_0["playlist"])
+    # 게이트 제거 — Tidal-only 트랙도 이제 표시됨
+    assert any(tid in playlist_ids for tid in tidal_only_ids), "게이트 제거 후 tidal-only도 표시"
+    # spotify 가용 트랙엔 spotify_track_id 채워짐 (tidal-only는 None 허용)
+    sp = next(t for t in persona_0["playlist"] if t["track_id"] in spotify_track_ids)
+    assert sp.get("spotify_track_id")
 
 
-def test_fetch_track_metadata_youtube_no_inner_filter(db_conn):
-    """youtube primary는 INNER 필터 없이 tidal/spotify 없는 트랙도 반환.
+def test_fetch_track_metadata_no_platform_filter(db_conn):
+    """_fetch_track_metadata는 플랫폼 가용성 필터 없이 요청 트랙 전체를 반환한다.
 
-    회귀 가드: 같은 트랙 셋에 대해 tidal/spotify primary는 INNER 필터로
-    가용 트랙만 반환 (youtube는 전체).
+    회귀 가드: primary_platform INNER 필터 제거 후, tidal/spotify 없는 트랙도
+    메타에 포함돼야 추천이 플랫폼 때문에 0이 되지 않는다. youtube_track_id 필드 노출.
     """
     from mrms.api.main import _fetch_track_metadata
 
@@ -356,19 +353,11 @@ def test_fetch_track_metadata_youtube_no_inner_filter(db_conn):
     tidal_id = tidal_row[0]
     track_ids = [bare_id, tidal_id]
 
-    # youtube: INNER 필터 없음 → 두 트랙 모두 반환
-    yt_meta = _fetch_track_metadata(db_conn, track_ids, primary_platform="youtube")
-    assert bare_id in yt_meta, "youtube primary가 platform 없는 트랙을 필터링함"
-    assert tidal_id in yt_meta
-    # tidal_track_id/spotify_track_id는 None일 수 있음 (LEFT JOIN)
-    assert yt_meta[bare_id]["tidal_track_id"] is None
-    assert yt_meta[bare_id]["spotify_track_id"] is None
-
-    # 회귀: tidal primary는 INNER 필터 → bare_id 제외
-    tidal_meta = _fetch_track_metadata(db_conn, track_ids, primary_platform="tidal")
-    assert bare_id not in tidal_meta, "tidal primary INNER 필터 회귀"
-    assert tidal_id in tidal_meta
-
-    # 회귀: spotify primary도 INNER 필터 → bare_id 제외
-    sp_meta = _fetch_track_metadata(db_conn, track_ids, primary_platform="spotify")
-    assert bare_id not in sp_meta, "spotify primary INNER 필터 회귀"
+    # 필터 없음 → 두 트랙 모두 반환 (tidal/spotify 없는 bare_id 포함)
+    meta = _fetch_track_metadata(db_conn, track_ids)
+    assert bare_id in meta, "플랫폼 없는 트랙이 필터링됨(게이트 미제거)"
+    assert tidal_id in meta
+    # tidal/spotify ID는 없으면 None (LEFT JOIN), youtube_track_id 필드는 존재
+    assert meta[bare_id]["tidal_track_id"] is None
+    assert meta[bare_id]["spotify_track_id"] is None
+    assert "youtube_track_id" in meta[bare_id]
