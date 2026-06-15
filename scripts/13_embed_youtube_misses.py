@@ -35,7 +35,9 @@ MISS_SQL = """
     JOIN "TrackPlatform" tp ON tp."trackId" = t.id AND tp.platform = 'youtube'
     JOIN "Artist" ar ON ar.id = t."artistId"
     WHERE tp."platformTrackId" NOT LIKE 'yt\\_%%'
-      AND EXISTS (SELECT 1 FROM "UserTrack" ut WHERE ut."trackId" = t.id)
+      AND (EXISTS (SELECT 1 FROM "UserTrack" ut WHERE ut."trackId" = t.id)
+           OR EXISTS (SELECT 1 FROM "EMPSource" es
+                      WHERE es."trackId" = t.id AND es.source_type = 'discovery'))
       AND NOT EXISTS (SELECT 1 FROM "TrackEmbedding" e WHERE e."trackId" = t.id)
     LIMIT %s
 """
