@@ -1,4 +1,6 @@
 """Playlist DB helpers."""
+import uuid as _uuid
+
 import psycopg
 import pytest
 
@@ -10,7 +12,7 @@ from mrms.db.playlist import (
     list_user_playlists,
     set_playlist_share,
 )
-from mrms.db.user_track import get_or_create_user
+from mrms.db.user_track import get_or_create_user, upsert_user_track
 
 
 def test_create_playlist_inserts_rows(db_conn: psycopg.Connection):
@@ -125,3 +127,58 @@ def test_get_playlist_by_share_id(db_conn: psycopg.Connection):
     assert found["name"] == "Lookup"
     assert "owner_name" in found  # displayName 미설정이면 None 허용
     assert get_playlist_by_share_id(db_conn, "nonexistent-token") is None
+
+
+def test_create_playlist_marks_tracks_curated(db_conn: psycopg.Connection, cleanup):
+    """담은 곡을 UserTrack(source='curated')로 편입 → MRT 제외(ADR-002 '이동=UserTrack')."""
+    user_id = get_or_create_user(db_conn, f"plcur-{_uuid.uuid4().hex[:8]}@test.com")
+    db_conn.commit()
+    cleanup('DELETE FROM "UserTrack" WHERE "userId" = %s', (user_id,))
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT id FROM "Track" LIMIT 2')
+        track_ids = [r[0] for r in cur.fetchall()]
+    if len(track_ids) < 1:
+        pytest.skip("Track 데이터 부족")
+
+    pid = create_playlist(
+        db_conn, user_id=user_id, name="Cur PL", description=None, track_ids=track_ids
+    )
+    cleanup('DELETE FROM "Playlist" WHERE id = %s', (pid,))
+    cleanup('DELETE FROM "PlaylistTrack" WHERE "playlistId" = %s', (pid,))
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'SELECT "trackId", source FROM "UserTrack" WHERE "userId"=%s AND "trackId"=ANY(%s)',
+            (user_id, track_ids),
+        )
+        rows = {r[0]: r[1] for r in cur.fetchall()}
+    assert set(rows) == set(track_ids)  # 담은 곡 전부 UserTrack 편입
+    # source='curated' — PGT imported('playlist%') 미충돌
+    assert all(s == "curated" for s in rows.values())
+
+
+def test_create_playlist_keeps_liked_source(db_conn: psycopg.Connection, cleanup):
+    """이미 liked인 곡을 플레이리스트에 담아도 source는 'liked' 유지(강등 안 함)."""
+    user_id = get_or_create_user(db_conn, f"pllik-{_uuid.uuid4().hex[:8]}@test.com")
+    db_conn.commit()
+    cleanup('DELETE FROM "UserTrack" WHERE "userId" = %s', (user_id,))
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT id FROM "Track" LIMIT 1')
+        track_ids = [r[0] for r in cur.fetchall()]
+    if not track_ids:
+        pytest.skip("Track 데이터 부족")
+    tid = track_ids[0]
+    upsert_user_track(db_conn, user_id, tid, is_core=False, source="liked", platform="mrms")
+    db_conn.commit()
+
+    pid = create_playlist(
+        db_conn, user_id=user_id, name="Liked PL", description=None, track_ids=[tid]
+    )
+    cleanup('DELETE FROM "Playlist" WHERE id = %s', (pid,))
+    cleanup('DELETE FROM "PlaylistTrack" WHERE "playlistId" = %s', (pid,))
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'SELECT source FROM "UserTrack" WHERE "userId"=%s AND "trackId"=%s', (user_id, tid)
+        )
+        assert cur.fetchone()[0] == "liked"

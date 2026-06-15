@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import psycopg
 
 from mrms.db.ids import stable_id as _id
+from mrms.db.user_track import upsert_user_track
 
 
 def create_playlist(
@@ -32,6 +33,13 @@ def create_playlist(
                    ON CONFLICT ("playlistId", "trackId") DO NOTHING''',
                 (playlist_id, track_id, pos),
             )
+    # 담은 곡을 라이브러리로 편입 → MRT에서 제외(ADR-002 '이동=UserTrack') + 취향 신호.
+    # source='curated': PGT imported('playlist%')와 안 겹쳐 '내 플레이리스트'와 중복 노출 방지.
+    # upsert conflict 규칙상 기존 'liked' 등은 강등하지 않음(EXCLUDED='liked'만 덮어씀).
+    for track_id in track_ids:
+        upsert_user_track(
+            conn, user_id, track_id, is_core=False, source="curated", platform="mrms"
+        )
     conn.commit()
     return playlist_id
 
