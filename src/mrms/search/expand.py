@@ -7,7 +7,12 @@ from __future__ import annotations
 import logging
 
 from mrms.emp.base import upsert_track_and_emp_source
-from mrms.emp.spotify import _entity_cover, _normalize_track, parse_next_data
+from mrms.emp.spotify import (
+    USER_AGENT,
+    _entity_cover,
+    _normalize_track,
+    parse_next_data,
+)
 from mrms.search.normalize import normalize_spotify_track, normalize_tidal_track
 
 log = logging.getLogger(__name__)
@@ -24,12 +29,54 @@ async def _spotify_album_tracks(http, token, album_id):
     return [n for n in (normalize_spotify_track(i) for i in items) if n]
 
 
+async def _spotify_playlist_tracks_via_embed(http, pid):
+    """open.spotify.com/embed 위젯 스크래핑 — Web API가 막힌 에디토리얼/알고리즘 플리용
+    (EMP 임포터와 동일 경로). embed엔 album_title/isrc/cover가 없어 그 필드는 None."""
+    try:
+        er = await http.get(
+            f"{SPOTIFY_EMBED}/playlist/{pid}",
+            headers={
+                "User-Agent": USER_AGENT,
+                "Referer": "https://open.spotify.com/",
+                "Accept": "text/html,application/xhtml+xml",
+            },
+        )
+    except Exception as e:  # noqa: BLE001 — best-effort 폴백
+        log.warning("spotify embed playlist %s failed: %r", pid, e)
+        return []
+    entity = parse_next_data(er.text) if er.status_code == 200 else None
+    if not entity:
+        return []
+    out = []
+    for node in entity.get("trackList") or []:
+        n = _normalize_track(node)
+        if n:
+            out.append({
+                "platform": "spotify",
+                "platform_track_id": n["platform_track_id"],
+                "title": n["title"],
+                "artist": n["artist"],
+                "album_title": None,
+                "album_cover": _entity_cover(entity),
+                "duration_ms": n.get("duration_ms"),
+                "isrc": None,
+            })
+    return out
+
+
 async def _spotify_playlist_tracks(http, token, pid):
     # Spotify는 limit>=100을 "Invalid limit"으로 거부 → 50(앨범 tracks 실측 최대).
     r = await http.get(f"{SPOTIFY}/playlists/{pid}/tracks",
                        params={"limit": 50}, headers={"Authorization": f"Bearer {token}"})
-    rows = (r.json().get("items") or []) if r.status_code == 200 else []
-    return [n for n in (normalize_spotify_track((row or {}).get("track")) for row in rows) if n]
+    if r.status_code == 200:
+        rows = r.json().get("items") or []
+        tracks = [n for n in (normalize_spotify_track((row or {}).get("track"))
+                  for row in rows) if n]
+        if tracks:
+            return tracks
+    # Spotify-소유 에디토리얼/알고리즘 플리는 Web API tracks가 404(2024.11 제한) → embed 폴백.
+    log.warning("spotify playlist %s api status=%s → embed fallback", pid, r.status_code)
+    return await _spotify_playlist_tracks_via_embed(http, pid)
 
 
 async def _tidal_album_tracks(http, token, album_id, country):
