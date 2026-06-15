@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Heart, Play, Sparkles } from "lucide-react";
 
 import { AlbumArt } from "@/components/mrms/AlbumArt";
+import { SharePlaylistButton } from "@/components/playlist/SharePlaylistButton";
 import { loadAndPlay } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
 import {
@@ -591,6 +592,15 @@ function PlaylistsTab({
               {selected.pl.name}
             </span>
           </div>
+          {selected.kind === "user" && (
+            <div className="mb-4">
+              <SharePlaylistButton
+                key={selected.pl.id}
+                playlistId={selected.pl.id}
+                initialShareId={selected.pl.share_id ?? null}
+              />
+            </div>
+          )}
           <TrackList tracks={tracks} loading={tracksLoading} />
         </div>
       )}

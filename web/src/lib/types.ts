@@ -269,6 +269,7 @@ export interface UserPlaylistSummary {
   description: string | null;
   created_at: string | null;
   track_count: number;
+  share_id?: string | null;
 }
 
 export interface PgtSections {

@@ -42,7 +42,7 @@ def list_user_playlists(
     """User의 playlists 목록 (트랙 카운트 포함)."""
     with conn.cursor() as cur:
         cur.execute(
-            '''SELECT p.id, p.name, p.description, p."createdAt",
+            '''SELECT p.id, p.name, p.description, p."createdAt", p."shareId",
                       COUNT(pt."trackId") AS track_count
                FROM "Playlist" p
                LEFT JOIN "PlaylistTrack" pt ON pt."playlistId" = p.id
@@ -58,7 +58,8 @@ def list_user_playlists(
             "name": r[1],
             "description": r[2],
             "created_at": r[3].isoformat() if r[3] else None,
-            "track_count": r[4],
+            "share_id": r[4],
+            "track_count": r[5],
         }
         for r in rows
     ]
