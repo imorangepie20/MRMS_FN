@@ -169,7 +169,7 @@ export function MrtDashboard({ user, mrt }: Props) {
           </button>
         </div>
       </div>
-      <div className="hidden md:grid grid-cols-[18px_56px_1fr_140px_80px_60px_80px] gap-3 px-0 py-1.5 border-b border-[var(--mrms-ink)] font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
+      <div className="hidden md:grid grid-cols-[18px_56px_1fr_140px_80px_60px_120px] gap-3 px-0 py-1.5 border-b border-[var(--mrms-ink)] font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
         <span />
         <span />
         <span>Title</span>
@@ -316,7 +316,7 @@ export function MrtDashboard({ user, mrt }: Props) {
           title="New releases, for you"
           meta={`${mrt.recommended_new_releases?.length ?? 0} tracks`}
         />
-        <div className="hidden md:grid grid-cols-[18px_56px_1fr_140px_80px_60px_80px] gap-3 px-0 py-1.5 border-b border-[var(--mrms-ink)] font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
+        <div className="hidden md:grid grid-cols-[18px_56px_1fr_140px_80px_60px_120px] gap-3 px-0 py-1.5 border-b border-[var(--mrms-ink)] font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
           <span />
           <span />
           <span>Title</span>
@@ -488,7 +488,7 @@ function TrackRow({
   };
 
   return (
-    <div className="group grid grid-cols-[18px_48px_1fr_60px] md:grid-cols-[18px_56px_1fr_140px_80px_60px_80px] gap-2 md:gap-3 py-2.5 border-b border-[var(--mrms-rule)] items-center hover:bg-[var(--mrms-paper)] transition-colors">
+    <div className="group grid grid-cols-[18px_48px_1fr_auto] md:grid-cols-[18px_56px_1fr_140px_80px_60px_120px] gap-2 md:gap-3 py-2.5 border-b border-[var(--mrms-rule)] items-center hover:bg-[var(--mrms-paper)] transition-colors">
       <button
         onClick={onToggle}
         className={`size-3.5 border-[1.5px] border-[var(--mrms-ink)] relative cursor-pointer p-0 ${
