@@ -325,7 +325,8 @@ def mrt_latest(
 
     recommended_tracks = []
     for tid in blended_ids:
-        if tid in hidden:
+        # 신보(new_release)는 전용 섹션에만 — 임베딩 후 persona 검색에 다시 떠도 메인 중복 노출 방지
+        if tid in hidden or tid in nr_meta:
             continue
         u = _unified(tid)
         if u is None:
