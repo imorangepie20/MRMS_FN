@@ -118,6 +118,7 @@ def test_delete_emp_sources_by_source_id(db_conn: psycopg.Connection, cleanup):
 
     user_id = get_or_create_user(db_conn, f"del-{_uuid.uuid4().hex[:8]}@test.com")
     src = f"discovery:{user_id}"
+    cleanup('DELETE FROM "EMPSource" WHERE source_id = %s', (src,))
     r = upsert_track_and_emp_source(
         db_conn, isrc=None, title="ToDelete", artist="X", album_title=None,
         duration_ms=None, platform="youtube", platform_track_id="YTDEL1",
