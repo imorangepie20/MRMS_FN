@@ -178,7 +178,7 @@ def _regenerate_all_mrt() -> None:
                 (MODEL_VERSION,),
             )
             uids = [r[0] for r in cur.fetchall()]
-        regenerated = failed = 0
+        regenerated = failed = skipped = 0
         for uid in uids:
             try:
                 if generate_user_mrt(conn, uid) is not None:
@@ -186,18 +186,31 @@ def _regenerate_all_mrt() -> None:
                     prune_playlist_history(conn, uid)  # 자체 commit
                     clear_dismissed(conn, uid)  # 자체 commit
                     regenerated += 1
+                else:
+                    safe_rollback(conn)  # 트랙 부족(None) — 부분 쓰기 폐기, 다음 유저로
+                    skipped += 1
             except Exception:
                 safe_rollback(conn)
                 failed += 1
         status = "success" if failed == 0 else "partial"
-        append_stage(conn, run_id, {
-            "stage": "manual_mrt", "status": status,
-            "duration_ms": int((time.monotonic() - t0) * 1000),
-            "stdout": f"total={len(uids)} regenerated={regenerated} failed={failed}",
-            "stderr": "", "error": None if failed == 0 else f"{failed} user(s) failed",
-        })
-        finish_run(conn, run_id, status)
-        conn.commit()
+        try:
+            append_stage(conn, run_id, {
+                "stage": "manual_mrt", "status": status,
+                "duration_ms": int((time.monotonic() - t0) * 1000),
+                "stdout": (
+                    f"total={len(uids)} regenerated={regenerated}"
+                    f" skipped={skipped} failed={failed}"
+                ),
+                "stderr": "", "error": None if failed == 0 else f"{failed} user(s) failed",
+            })
+            finish_run(conn, run_id, status)
+            conn.commit()
+        except Exception:
+            safe_rollback(conn)
+            try:
+                finish_run(conn, run_id, "failed")  # 좀비 run 방지
+            except Exception:
+                pass
     finally:
         conn.close()
 

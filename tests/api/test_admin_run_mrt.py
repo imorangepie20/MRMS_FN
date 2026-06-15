@@ -56,6 +56,25 @@ def test_run_mrt_user_insufficient_tracks(login, monkeypatch, db_conn, cleanup):
         client.cookies.clear()
 
 
+def test_run_mrt_user_generate_raises_500(login, monkeypatch, db_conn, cleanup):
+    _login_admin(login, monkeypatch)
+    target_email = f"target-{_uuid.uuid4().hex[:8]}@example.com"
+    get_or_create_user(db_conn, target_email)
+    db_conn.commit()
+    cleanup('DELETE FROM "User" WHERE email = %s', (target_email,))
+
+    def _boom(c, u, **k):
+        raise RuntimeError("persona clustering exploded")
+
+    monkeypatch.setattr("mrms.recsys.mrt.generate_user_mrt", _boom)
+    try:
+        r = client.post("/api/admin/emp/run-mrt", json={"target": "user", "email": target_email})
+        assert r.status_code == 500, r.text
+        assert "regenerate failed" in r.json()["detail"]
+    finally:
+        client.cookies.clear()
+
+
 def test_run_mrt_user_not_found(login, monkeypatch):
     _login_admin(login, monkeypatch)
     try:
