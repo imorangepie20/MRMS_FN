@@ -68,3 +68,28 @@ export async function triggerEmpImport(platform: string = "all"): Promise<void> 
     "trigger",
   );
 }
+
+export interface RunMrtResult {
+  mode: "user" | "all";
+  regenerated?: boolean;
+  tracks_used?: number;
+  discovery_count?: number;
+  reason?: string;
+  queued?: number;
+}
+
+export async function runMrt(
+  target: "all" | "user",
+  email?: string,
+): Promise<RunMrtResult> {
+  const r = await apiFetch(
+    "/api/admin/emp/run-mrt",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target, email }),
+    },
+    "run mrt",
+  );
+  return r.json();
+}

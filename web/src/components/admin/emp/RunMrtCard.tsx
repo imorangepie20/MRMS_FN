@@ -1,0 +1,93 @@
+"use client";
+
+import { useState } from "react";
+
+import { runMrt } from "@/lib/api/admin-emp";
+import { useUser } from "@/lib/hooks/use-user";
+
+
+interface Props {
+  /** 전체 큐잉 후 Runs 목록 새로고침 (선택) */
+  onAllQueued?: () => void;
+}
+
+
+export function RunMrtCard({ onAllQueued }: Props) {
+  const { user } = useUser();
+  const [target, setTarget] = useState<"user" | "all">("user");
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const effectiveEmail = email || user?.email || "";
+
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const r = await runMrt(target, target === "user" ? effectiveEmail : undefined);
+      if (r.mode === "all") {
+        setResult(`${r.queued}명 큐잉됨 — 아래 Runs에서 확인`);
+        onAllQueued?.();
+      } else if (r.regenerated) {
+        setResult(`재생성 완료 — 사용 트랙 ${r.tracks_used}, discovery ${r.discovery_count}`);
+      } else {
+        setResult(`건너뜀 — ${r.reason}`);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mb-6 border border-(--mrms-rule) p-4">
+      <div className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) mb-3">
+        추천 실행 (MRT + discovery)
+      </div>
+      <div className="flex items-center gap-4 mb-3 text-[13px] text-(--mrms-ink)">
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="radio"
+            checked={target === "user"}
+            onChange={() => setTarget("user")}
+          />
+          특정 유저
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="radio"
+            checked={target === "all"}
+            onChange={() => setTarget("all")}
+          />
+          전체
+        </label>
+      </div>
+      {target === "user" && (
+        <input
+          type="email"
+          value={effectiveEmail}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="user email"
+          className="w-full mb-3 bg-(--mrms-paper) border border-(--mrms-ink) px-2 py-1.5 font-mono text-[12px] text-(--mrms-ink)"
+        />
+      )}
+      <button
+        onClick={run}
+        disabled={busy || (target === "user" && !effectiveEmail)}
+        className="bg-(--mrms-ink) text-(--mrms-paper) px-3 py-1.5 font-mono text-[11px] tracking-editorial uppercase border-0 cursor-pointer hover:bg-(--mrms-rust) disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {busy ? "실행 중…" : "추천 실행"}
+      </button>
+      {result && (
+        <div className="mt-3 font-mono text-[11px] text-(--mrms-ink-soft)">{result}</div>
+      )}
+      {error && (
+        <div className="mt-3 font-mono text-[11px] text-(--mrms-rust)">{error}</div>
+      )}
+    </div>
+  );
+}

@@ -14,6 +14,7 @@ import {
 import { fetchEmpSections } from "@/lib/api/emp";
 import type { EmpSection, EmpSettings, EmpStats, IngestionRun } from "@/lib/types";
 
+import { RunMrtCard } from "./emp/RunMrtCard";
 import { RunRow } from "./emp/RunRow";
 import { SectionsTree } from "./emp/SectionsTree";
 import { SettingsCard } from "./emp/SettingsCard";
@@ -149,6 +150,8 @@ export function EmpDashboard() {
       </section>
 
       <SettingsCard settings={settings} onSaved={refresh} />
+
+      <RunMrtCard onAllQueued={() => loadRuns(0)} />
 
       {sections && sections.length > 0 && (
         <SectionsTree sections={sections} />
