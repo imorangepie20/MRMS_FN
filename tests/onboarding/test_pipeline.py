@@ -4,8 +4,17 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import mrms.recsys.mrt as _mrt_mod
 from mrms.onboarding.pipeline import run_onboarding
 from mrms.onboarding.status import OnboardingStatus
+
+
+@pytest.fixture(autouse=True)
+def _stub_discovery():
+    """온보딩 테스트에서 generate_user_mrt 내부 discovery를 no-op으로 — 실제 Gemini/
+    ytmusicapi 호출·discovery 잔여물 방지(.env에 GEMINI_API_KEY 있음)."""
+    with patch.object(_mrt_mod, "generate_user_discovery", lambda *a, **k: 0):
+        yield
 
 
 @pytest.mark.asyncio
