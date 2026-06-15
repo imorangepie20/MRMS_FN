@@ -4,10 +4,19 @@ from __future__ import annotations
 import uuid as _uuid
 
 import psycopg
+import pytest
 
 from mrms.db.emp import delete_emp_sources_by_source_id
 from mrms.db.user_track import get_or_create_user
-from mrms.recsys.discover import blend_recsys, read_discovery, taste_seed
+from mrms.recsys.discover import (
+    DiscoveryLLMError,
+    TrackSuggestion,
+    TrackSuggestions,
+    blend_recsys,
+    gemini_related_tracks,
+    read_discovery,
+    taste_seed,
+)
 
 
 def test_blend_interleaves_taste_and_discovery_5050():
@@ -130,3 +139,49 @@ def test_delete_emp_sources_by_source_id(db_conn: psycopg.Connection, cleanup):
     deleted = delete_emp_sources_by_source_id(db_conn, src)
     assert deleted >= 1
     assert read_discovery(db_conn, user_id, limit=10) == []
+
+
+# ---------------------------------------------------------------------------
+# Gemini layer — fake client (no DB / network needed)
+# ---------------------------------------------------------------------------
+
+class _FakeModels:
+    def __init__(self, result):
+        self._result = result
+
+    def generate_content(self, **kwargs):
+        if isinstance(self._result, Exception):
+            raise self._result
+        return self._result
+
+
+class _FakeResp:
+    def __init__(self, parsed):
+        self.parsed = parsed
+
+
+class _FakeClient:
+    def __init__(self, result):
+        self.models = _FakeModels(result)
+
+
+def test_gemini_related_tracks_returns_items():
+    parsed = TrackSuggestions(items=[
+        TrackSuggestion(artist="Stacey Kent", title="The Boy Next Door"),
+        TrackSuggestion(artist="Melody Gardot", title="Baby I'm a Fool"),
+    ])
+    client = _FakeClient(_FakeResp(parsed))
+    out = gemini_related_tracks({"artists": ["Diana Krall"], "genres": ["jazz"]}, 2, client=client)
+    assert [s.artist for s in out] == ["Stacey Kent", "Melody Gardot"]
+
+
+def test_gemini_related_tracks_raises_on_none_parsed():
+    client = _FakeClient(_FakeResp(None))
+    with pytest.raises(DiscoveryLLMError):
+        gemini_related_tracks({"artists": ["X"], "genres": []}, 5, client=client)
+
+
+def test_gemini_related_tracks_wraps_exception():
+    client = _FakeClient(RuntimeError("boom"))
+    with pytest.raises(DiscoveryLLMError):
+        gemini_related_tracks({"artists": ["X"], "genres": []}, 5, client=client)
