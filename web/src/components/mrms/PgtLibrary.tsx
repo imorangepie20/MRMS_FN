@@ -494,6 +494,17 @@ function PlaylistsTab({
     }
   };
 
+  const playAll = async () => {
+    if (!tracks.length) return;
+    const q = tracks.map(toQueueTrack);
+    usePlayerStore.setState({ queue: q, currentIdx: 0, position: 0 });
+    try {
+      await loadAndPlay(q[0]);
+    } catch (e) {
+      usePlayerStore.setState({ errorMsg: (e as Error).message });
+    }
+  };
+
   return (
     <div>
       <SectionHeader
@@ -581,16 +592,23 @@ function PlaylistsTab({
       {/* Expanded track list */}
       {selected && (
         <div>
-          <div className="flex items-baseline gap-3 pb-2 mb-4 border-b border-[var(--mrms-ink)]">
+          <div className="flex items-center gap-3 pb-2 mb-4 border-b border-[var(--mrms-ink)]">
             <button
               onClick={() => { setSelected(null); setTracks([]); }}
               className="bg-transparent border-0 p-0 cursor-pointer font-mono text-[10px] tracking-editorial uppercase text-[var(--mrms-ink-mute)] hover:text-[var(--mrms-rust)]"
             >
               ← back
             </button>
-            <span className="font-display font-semibold text-[18px] leading-tight truncate">
+            <span className="flex-1 min-w-0 font-display font-semibold text-[18px] leading-tight truncate">
               {selected.pl.name}
             </span>
+            <button
+              onClick={playAll}
+              disabled={!tracks.length}
+              className="shrink-0 inline-flex items-center gap-1.5 bg-[var(--mrms-ink)] text-[var(--mrms-paper)] px-3 py-1.5 font-mono text-[11px] tracking-editorial uppercase border-0 cursor-pointer hover:bg-[var(--mrms-rust)] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Play className="h-3.5 w-3.5" /> All Play
+            </button>
           </div>
           {selected.kind === "user" && (
             <div className="mb-4">
