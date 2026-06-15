@@ -93,3 +93,14 @@ export async function runMrt(
   );
   return r.json();
 }
+
+export interface AdminUser {
+  email: string;
+  display_name: string | null;
+  track_count: number;
+}
+
+export async function fetchAdminUsers(): Promise<AdminUser[]> {
+  const r = await apiFetch("/api/admin/emp/users", {}, "admin users");
+  return (await r.json()).users;
+}

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { runMrt } from "@/lib/api/admin-emp";
+import { fetchAdminUsers, runMrt, type AdminUser } from "@/lib/api/admin-emp";
 import { useUser } from "@/lib/hooks/use-user";
 
 
@@ -15,12 +15,26 @@ interface Props {
 export function RunMrtCard({ onAllQueued }: Props) {
   const { user } = useUser();
   const [target, setTarget] = useState<"user" | "all">("user");
-  const [email, setEmail] = useState("");
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [selectedEmail, setSelectedEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const effectiveEmail = email || user?.email || "";
+  // 대상 선택용 사용자 목록 로드 (track_count 내림차순 — 라이브러리 보유 우선).
+  useEffect(() => {
+    fetchAdminUsers()
+      .then(setUsers)
+      .catch((e) => setError((e as Error).message));
+  }, []);
+
+  // 기본 선택 = 관리자 본인(목록에 있으면), 없으면 첫 사용자. 수동 선택(selectedEmail)이 우선.
+  // 상태 동기화 대신 렌더에서 파생 (effect 내 setState 회피).
+  const defaultEmail =
+    user?.email && users.some((u) => u.email === user.email)
+      ? user.email
+      : users[0]?.email ?? "";
+  const effectiveEmail = selectedEmail || defaultEmail;
 
   const run = async () => {
     setBusy(true);
@@ -67,13 +81,19 @@ export function RunMrtCard({ onAllQueued }: Props) {
         </label>
       </div>
       {target === "user" && (
-        <input
-          type="email"
+        <select
           value={effectiveEmail}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="user email"
+          onChange={(e) => setSelectedEmail(e.target.value)}
           className="w-full mb-3 bg-(--mrms-paper) border border-(--mrms-ink) px-2 py-1.5 font-mono text-[12px] text-(--mrms-ink)"
-        />
+        >
+          {users.length === 0 && <option value="">— 사용자 없음 —</option>}
+          {users.map((u) => (
+            <option key={u.email} value={u.email}>
+              {u.email}
+              {u.display_name ? ` (${u.display_name})` : ""} · {u.track_count}곡
+            </option>
+          ))}
+        </select>
       )}
       <button
         onClick={run}
