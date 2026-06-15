@@ -23,6 +23,9 @@ MODEL_VERSION = f"{EMBEDDING_MODEL_VERSION}+persona-K3"
 from mrms.recsys.discover import (  # noqa: E402,I001 — after MODEL_VERSION (circular-import guard)
     generate_user_discovery,
 )
+from mrms.recsys.newrelease import (  # noqa: E402,I001 — after MODEL_VERSION (circular-import guard)
+    generate_user_newrelease,
+)
 CATALOG_MODEL_VERSION = EMBEDDING_MODEL_VERSION
 DEFAULT_K = 3
 DEFAULT_TOP_N = 20
@@ -162,6 +165,12 @@ def generate_user_mrt(
         generate_user_discovery(conn, user_id)
     except Exception as e:  # noqa: BLE001 — best-effort
         log.warning("discovery skipped for %s: %r", user_id, e)
+
+    # 취향 맞춤 신보 (best-effort) — discovery와 동일 규약. EMPSource(new_release)에만 적재.
+    try:
+        generate_user_newrelease(conn, user_id)
+    except Exception as e:  # noqa: BLE001 — best-effort
+        log.warning("new_release skipped for %s: %r", user_id, e)
 
     return len(track_ids)
 
