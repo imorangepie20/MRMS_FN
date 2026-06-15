@@ -11,10 +11,15 @@ def _key(artist: str, album: str) -> str:
 def get_cached(
     conn: psycopg.Connection, artist: str, album: str
 ) -> tuple[bool, str | None]:
-    """캐시 조회. (hit, url) — hit=True면 hit (url은 None일 수 있음 negative cache)."""
+    """캐시 조회. (hit, url) — hit=True면 hit (url은 None일 수 있음 negative cache).
+
+    positive(url 있음)는 영구. negative(url None)는 7일 후 만료 → miss로 취급해 재시도
+    (iTunes 일시 장애·rate limit이 영구 빈칸으로 굳는 것 방지)."""
     with conn.cursor() as cur:
         cur.execute(
-            'SELECT url FROM "ArtworkCache" WHERE key = %s',
+            '''SELECT url FROM "ArtworkCache"
+               WHERE key = %s
+                 AND (url IS NOT NULL OR "fetchedAt" > NOW() - INTERVAL '7 days')''',
             (_key(artist, album),),
         )
         row = cur.fetchone()

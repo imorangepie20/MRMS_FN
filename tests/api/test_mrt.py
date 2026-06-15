@@ -207,3 +207,35 @@ def test_mrt_latest_excludes_owned_song_diff_track_id(db_conn, login, cleanup):
     assert resp.status_code == 200, resp.text
     recs = [t for t in resp.json()["recommended_tracks"] if t["track_id"] in (owned, other)]
     assert recs == [], "보유곡(다른 track_id)이 추천에 노출됨"
+
+
+def test_mrt_latest_includes_album_cover(db_conn, login, cleanup):
+    """추천 트랙에 EMPSource.cover_url이 album_cover로 실린다(서빙 누락 회귀)."""
+    user_id, session_id = login()
+    r = upsert_track_and_emp_source(
+        db_conn, isrc=None, title="Cover Track", artist="Cover Artist",
+        album_title="Cover Album", duration_ms=200000, platform="youtube",
+        platform_track_id="YTCOVER1", source_type="station",
+        source_id="station:cover", source_name="Station",
+        cover_url="https://example.com/cover600.jpg",
+    )
+    ctid = r["track_id"]
+    cleanup('DELETE FROM "EMPSource" WHERE source_id = %s', ("station:cover",))
+    cleanup('DELETE FROM "TrackPlatform" WHERE "trackId" = %s', (ctid,))
+    cleanup('DELETE FROM "Track" WHERE id = %s', (ctid,))
+
+    from mrms.db.user_embedding import insert_playlist_history
+    insert_playlist_history(
+        db_conn, user_id, [ctid], "+persona-K3",
+        context={"personaIdx": 0, "kind": "persona", "scores": [1.0]},
+    )
+    db_conn.commit()
+    cleanup('DELETE FROM "PlaylistHistory" WHERE "userId" = %s', (user_id,))
+
+    client.cookies.set("mrms_session", session_id)
+    resp = client.get("/api/mrt/latest")
+    client.cookies.clear()
+    assert resp.status_code == 200, resp.text
+    recs = [t for t in resp.json()["recommended_tracks"] if t["track_id"] == ctid]
+    assert len(recs) == 1
+    assert recs[0]["album_cover"] == "https://example.com/cover600.jpg"

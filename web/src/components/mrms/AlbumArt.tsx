@@ -25,6 +25,9 @@ function initial(s: string): string {
 export function AlbumArt({ artist, album, initialUrl, className = "" }: Props) {
   const [url, setUrl] = useState<string | null>(initialUrl ?? null);
   const [resolved, setResolved] = useState<boolean>(!!initialUrl);
+  // 이미지 로드 실패(만료/404) → 글자 placeholder. 컴포넌트는 track/album_id로
+  // keyed라 다음 트랙엔 remount되어 자동 리셋(재fetch 루프 없음).
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (url || !album) {
@@ -42,7 +45,7 @@ export function AlbumArt({ artist, album, initialUrl, className = "" }: Props) {
     };
   }, [artist, album, url]);
 
-  const showFallback = resolved && !url;
+  const showFallback = (resolved && !url) || failed;
   const letter = initial(album ?? artist ?? "");
 
   return (
@@ -50,12 +53,13 @@ export function AlbumArt({ artist, album, initialUrl, className = "" }: Props) {
       className={`bg-[var(--mrms-paper)] border border-[var(--mrms-rule)] relative overflow-hidden flex items-center justify-center ${className}`}
       style={{ containerType: "size" }}
     >
-      {url && (
+      {url && !failed && (
         <img
           src={url}
           alt=""
           className="size-full object-cover"
           loading="lazy"
+          onError={() => setFailed(true)}
         />
       )}
       {showFallback && (

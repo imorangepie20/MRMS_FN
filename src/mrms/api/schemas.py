@@ -47,6 +47,7 @@ class RecommendedTrack(BaseModel):
     tidal_track_id: str | None = None
     spotify_track_id: str | None = None
     youtube_track_id: str | None = None
+    album_cover: str | None = None
     liked: bool = False
     pct: bool = False
 
@@ -56,6 +57,7 @@ class RecommendedAlbum(BaseModel):
     title: str
     artist: str
     track_count: int
+    cover_url: str | None = None
 
 
 class RecommendedPlaylist(BaseModel):

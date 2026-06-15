@@ -133,7 +133,7 @@ def _fetch_track_metadata(
         cur.execute(
             '''SELECT t.id, t.title, a.name, t."albumId", alb.title,
                       tp_t."platformTrackId", tp_s."platformTrackId",
-                      tp_y."platformTrackId", t."durationMs"
+                      tp_y."platformTrackId", t."durationMs", ec.cover_url
                FROM "Track" t
                JOIN "Artist" a ON a.id = t."artistId"
                LEFT JOIN "Album" alb ON alb.id = t."albumId"
@@ -144,6 +144,10 @@ def _fetch_track_metadata(
                LEFT JOIN "TrackPlatform" tp_y
                  ON tp_y."trackId" = t.id AND tp_y.platform = 'youtube'
                  AND tp_y."platformTrackId" NOT LIKE 'yt\\_%%' ESCAPE '\\'
+               LEFT JOIN LATERAL (
+                 SELECT cover_url FROM "EMPSource"
+                 WHERE "trackId" = t.id AND cover_url IS NOT NULL LIMIT 1
+               ) ec ON TRUE
                WHERE t.id = ANY(%s)''',
             (track_ids,),
         )
@@ -158,6 +162,7 @@ def _fetch_track_metadata(
             "spotify_track_id": r[6],
             "youtube_track_id": r[7],
             "duration_ms": r[8],
+            "album_cover": r[9],
         }
         for r in rows
     }
@@ -290,7 +295,7 @@ def mrt_latest(
                 "title": d["title"], "artist": d["artist"], "album_id": d["album_id"],
                 "album_title": d["album_title"], "duration_ms": d["duration_ms"],
                 "tidal_track_id": d["tidal_track_id"], "spotify_track_id": d["spotify_track_id"],
-                "youtube_track_id": d["youtube_track_id"],
+                "youtube_track_id": d["youtube_track_id"], "album_cover": d["album_cover"],
             }
         if tid in nr_meta:
             d = nr_meta[tid]
@@ -298,10 +303,10 @@ def mrt_latest(
                 "title": d["title"], "artist": d["artist"], "album_id": d["album_id"],
                 "album_title": d["album_title"], "duration_ms": d["duration_ms"],
                 "tidal_track_id": d["tidal_track_id"], "spotify_track_id": d["spotify_track_id"],
-                "youtube_track_id": d["youtube_track_id"],
+                "youtube_track_id": d["youtube_track_id"], "album_cover": d["album_cover"],
             }
         if tid in meta:
-            return meta[tid]  # 이제 meta가 youtube_track_id(있으면 실 videoId)도 포함
+            return meta[tid]  # meta에 youtube_track_id·album_cover 포함
         return None
 
     # liked/pct 상태 — 블렌드된 트랙 전체에 대해 한 번에
@@ -337,7 +342,7 @@ def mrt_latest(
             album_title=u["album_title"], duration_ms=u["duration_ms"],
             score=score, persona_idx=persona_idx,
             tidal_track_id=u["tidal_track_id"], spotify_track_id=u["spotify_track_id"],
-            youtube_track_id=u["youtube_track_id"],
+            youtube_track_id=u["youtube_track_id"], album_cover=u.get("album_cover"),
             liked=liked, pct=pct,
         ))
 
@@ -361,32 +366,38 @@ def mrt_latest(
             album_title=u["album_title"], duration_ms=u["duration_ms"],
             score=0.0, persona_idx=None,
             tidal_track_id=u["tidal_track_id"], spotify_track_id=u["spotify_track_id"],
-            youtube_track_id=u["youtube_track_id"],
+            youtube_track_id=u["youtube_track_id"], album_cover=u.get("album_cover"),
             liked=False, pct=False,
         ))
 
     # owned·차단 트랙은 album 집계에도 기여하지 않도록 track_to_album에서 제외
     track_to_album = {tid: m["album_id"] for tid, m in meta.items() if tid not in hidden}
     rec_albums_raw = derive_recommended_albums(playlists_with_scores, track_to_album, top_n=top_albums_n)
-    # album_id → (title, artist) 조회
-    album_titles: dict[str, tuple[str, str]] = {}
+    # album_id → (title, artist, cover_url) 조회. Album 테이블엔 커버 컬럼이 없어,
+    # 그 앨범 소속 트랙 중 EMPSource.cover_url 있는 것 하나를 대표 커버로 끌어온다.
+    album_meta: dict[str, tuple[str, str, str | None]] = {}
     album_ids = [r["album_id"] for r in rec_albums_raw]
     if album_ids:
         with conn.cursor() as cur:
             cur.execute(
-                '''SELECT alb.id, alb.title, a.name
+                '''SELECT alb.id, alb.title, a.name,
+                          (SELECT es.cover_url FROM "Track" t2
+                             JOIN "EMPSource" es ON es."trackId" = t2.id
+                           WHERE t2."albumId" = alb.id AND es.cover_url IS NOT NULL
+                           LIMIT 1) AS cover_url
                    FROM "Album" alb JOIN "Artist" a ON a.id = alb."artistId"
                    WHERE alb.id = ANY(%s)''',
                 (album_ids,),
             )
             for row in cur.fetchall():
-                album_titles[row[0]] = (row[1], row[2])
+                album_meta[row[0]] = (row[1], row[2], row[3])
     recommended_albums = [
         RecommendedAlbum(
             album_id=r["album_id"],
-            title=album_titles.get(r["album_id"], ("?", "?"))[0],
-            artist=album_titles.get(r["album_id"], ("?", "?"))[1],
+            title=album_meta.get(r["album_id"], ("?", "?", None))[0],
+            artist=album_meta.get(r["album_id"], ("?", "?", None))[1],
             track_count=r["track_count"],
+            cover_url=album_meta.get(r["album_id"], ("?", "?", None))[2],
         )
         for r in rec_albums_raw
     ]
