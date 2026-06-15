@@ -1234,6 +1234,16 @@ git commit -m "feat(discovery): youtube_misses 게이트에 discovery 곡 포함
 
 `/mrt`의 `recommended_tracks`는 이미 `RecommendedTrack`(youtube_track_id optional 보유, types.ts:41)을 렌더·재생(`toQueueTrack`)하므로 **discovery 트랙 자동 표시·재생**(연결 플랫폼으로 resolve 교차). 프론트 코드 변경 없음. (선택) discovery 뱃지 = 후속.
 
+## 구현 중 수정 사항 (실제 코드 = 소스 오브 트루스)
+
+구현·리뷰 단계에서 implementer/리뷰어가 잡아 고친, 위 계획 코드와의 차이 (머지된 코드가 정답):
+
+1. **`blend_recsys` (Task 1):** 위 계획은 `turn += 1`을 루프 끝에서 **무조건** 증가시키는데, 이는 dedup 케이스에서 잘못된 순서(`["t1","t2","d1"]`)를 낸다. 실제 구현은 `turn += 1`을 **각 emit 성공 시(if tid not in seen 블록 안)** 증가시켜 `["t1","d1","t2"]`를 낸다. (테스트가 계약.)
+2. **Task 4 테스트 `_ytmusic` 패치 타깃:** discover.py가 `from mrms.search.youtube import _ytmusic`로 **자기 네임스페이스에 바인딩**하므로, 테스트는 `mrms.search.youtube._ytmusic`가 아니라 **`mrms.recsys.discover._ytmusic`**를 패치해야 `resolve_via_ytmusic`에 반영된다(아니면 실제 네트워크 호출).
+3. **`generate_user_discovery`의 delete 가드 (Task 4):** `delete_emp_sources_by_source_id`가 try 밖이면 예외가 전파돼 best-effort 계약이 깨진다 → delete도 try/except로 감싸 0 반환(commit `11be74d`).
+4. **Task 4 테스트 cleanup:** discovery가 만드는 아티스트(예: 'Stacey Kent')가 dev DB에 이미 있으면 공유 아티스트라 삭제하면 안 됨 → 그 아티스트 cleanup 제거, discovery Track만 id로 정리.
+5. **온보딩 테스트도 discovery 스텁 필요 (Task 5 보강, 최종 리뷰 적발):** `tests/onboarding/test_pipeline.py`도 `run_onboarding→generate_user_mrt→discovery 훅`을 타므로 autouse `_stub_discovery` no-op 픽스처를 추가해 라이브 Gemini 호출·잔여물 차단(commit `871630d`).
+
 ## 수동 검증 (전체 완료 후, dev/prod)
 
 1. 취향 있는 유저로 MRT 재생성(또는 regenerate_mrt 사이클) → `discovery:{user_id}` EMPSource 적재 확인(`SELECT count(*) FROM "EMPSource" WHERE source_id='discovery:{uid}'`).
