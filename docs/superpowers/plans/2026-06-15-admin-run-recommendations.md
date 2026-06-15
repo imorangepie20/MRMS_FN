@@ -175,7 +175,7 @@ def _regenerate_all_mrt() -> None:
                 (MODEL_VERSION,),
             )
             uids = [r[0] for r in cur.fetchall()]
-        regenerated = failed = 0
+        regenerated = failed = skipped = 0
         for uid in uids:
             try:
                 if generate_user_mrt(conn, uid) is not None:
@@ -183,20 +183,31 @@ def _regenerate_all_mrt() -> None:
                     prune_playlist_history(conn, uid)  # 자체 commit
                     clear_dismissed(conn, uid)         # 자체 commit
                     regenerated += 1
+                else:
+                    safe_rollback(conn)  # 트랙 부족(None) — 부분 쓰기 폐기, 다음 유저로
+                    skipped += 1
             except Exception:
                 safe_rollback(conn)
                 failed += 1
         status = "success" if failed == 0 else "partial"
         # stage dict 키는 runner.py 규약(_run_regenerate_mrt)과 동일: stage/status/
         # duration_ms/stdout/stderr/error. RunRow.tsx가 duration_ms·error를 렌더.
-        append_stage(conn, run_id, {
-            "stage": "manual_mrt", "status": status,
-            "duration_ms": int((time.monotonic() - t0) * 1000),
-            "stdout": f"total={len(uids)} regenerated={regenerated} failed={failed}",
-            "stderr": "", "error": None if failed == 0 else f"{failed} user(s) failed",
-        })
-        finish_run(conn, run_id, status)
-        conn.commit()
+        # finalize는 try/except로 감싸 append_stage/finish_run 실패 시에도 좀비 run 방지.
+        try:
+            append_stage(conn, run_id, {
+                "stage": "manual_mrt", "status": status,
+                "duration_ms": int((time.monotonic() - t0) * 1000),
+                "stdout": f"total={len(uids)} regenerated={regenerated} skipped={skipped} failed={failed}",
+                "stderr": "", "error": None if failed == 0 else f"{failed} user(s) failed",
+            })
+            finish_run(conn, run_id, status)
+            conn.commit()
+        except Exception:
+            safe_rollback(conn)
+            try:
+                finish_run(conn, run_id, "failed")  # 좀비 run 방지
+            except Exception:
+                pass
     finally:
         conn.close()
 
@@ -227,7 +238,8 @@ def admin_run_mrt(
         if not email:
             raise HTTPException(400, "email required for target=user")
         with conn.cursor() as cur:
-            cur.execute('SELECT id FROM "User" WHERE email = %s', (email,))
+            # 저장된 email은 OAuth 제공자 표기 그대로(미정규화)라 대소문자 무시 매칭
+            cur.execute('SELECT id FROM "User" WHERE lower(email) = %s', (email,))
             row = cur.fetchone()
         if not row:
             raise HTTPException(404, "user not found")
@@ -265,7 +277,7 @@ def admin_run_mrt(
 - [ ] **Step 4: 테스트 통과 확인**
 
 Run: `.venv/bin/pytest tests/api/test_admin_run_mrt.py -v`
-Expected: PASS (6개).
+Expected: PASS (7개 — 위 6개 + `target=user` generate 예외→500 테스트 `test_run_mrt_user_generate_raises_500`).
 
 - [ ] **Step 5: lint + Commit**
 
