@@ -1,7 +1,13 @@
 """EMP-밖 discovery — blend/seed/read/gemini/resolve/generate."""
 from __future__ import annotations
 
-from mrms.recsys.discover import blend_recsys
+import uuid as _uuid
+
+import psycopg
+
+from mrms.db.emp import delete_emp_sources_by_source_id
+from mrms.db.user_track import get_or_create_user
+from mrms.recsys.discover import blend_recsys, read_discovery, taste_seed
 
 
 def test_blend_interleaves_taste_and_discovery_5050():
@@ -26,3 +32,100 @@ def test_blend_empty_discovery_returns_taste_only_capped():
 
 def test_blend_empty_taste_returns_discovery_only():
     assert blend_recsys([], ["d1", "d2"], 5) == ["d1", "d2"]
+
+
+def _mk_artist(conn, name, genre=None):
+    aid = "ar_" + _uuid.uuid4().hex[:12]
+    with conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "Artist" (id, name, "nameNormalized", "mainGenre") VALUES (%s,%s,%s,%s)',
+            (aid, name, name.lower(), genre),
+        )
+    return aid
+
+
+def _mk_track(conn, artist_id, title):
+    # 실제 Track NOT NULL 컬럼 전부 채운다 (test_user_mrt.py 셋업과 동일):
+    # isrc(UNIQUE NOT NULL), titleNormalized·durationMs(NOT NULL).
+    tid = "tr_" + _uuid.uuid4().hex[:12]
+    with conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "Track" (id, isrc, title, "titleNormalized", "durationMs", "artistId") '
+            'VALUES (%s,%s,%s,%s,%s,%s)',
+            (tid, "TST" + tid[-9:], title, title.lower(), 0, artist_id),
+        )
+    return tid
+
+
+def _add_usertrack(conn, user_id, track_id):
+    # UserTrack NOT NULL 컬럼: isCore, platform.
+    with conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "UserTrack" (id, "userId", "trackId", "isCore", source, platform) '
+            'VALUES (%s,%s,%s,FALSE,%s,%s) ON CONFLICT DO NOTHING',
+            ("ut_" + _uuid.uuid4().hex[:12], user_id, track_id, "liked", "youtube"),
+        )
+
+
+def test_taste_seed_top_artists_and_genres(db_conn: psycopg.Connection, cleanup):
+    user_id = get_or_create_user(db_conn, f"seed-{_uuid.uuid4().hex[:8]}@test.com")
+    a1 = _mk_artist(db_conn, "Diana Krall", "jazz")
+    a2 = _mk_artist(db_conn, "IU", "kpop")
+    # cleanup은 reversed 실행 → 자식(UserTrack→Track→Artist)이 먼저 지워지도록 부모부터 등록.
+    # (Track.artistId→Artist는 RESTRICT라 Artist를 먼저 지우면 FK 실패.)
+    cleanup('DELETE FROM "Artist" WHERE id = ANY(%s)', ([a1, a2],))
+    cleanup('DELETE FROM "Track" WHERE "artistId" = ANY(%s)', ([a1, a2],))
+    cleanup('DELETE FROM "UserTrack" WHERE "userId" = %s', (user_id,))
+    # Diana Krall 2곡, IU 1곡 → Diana 먼저
+    for t in ["The Look of Love", "Peel Me a Grape"]:
+        _add_usertrack(db_conn, user_id, _mk_track(db_conn, a1, t))
+    _add_usertrack(db_conn, user_id, _mk_track(db_conn, a2, "Through the Night"))
+    db_conn.commit()
+
+    seed = taste_seed(db_conn, user_id, n_artists=5, n_genres=5)
+    assert seed["artists"][0] == "Diana Krall"
+    assert "IU" in seed["artists"]
+    assert set(seed["genres"]) == {"jazz", "kpop"}
+
+
+def test_read_discovery_returns_metadata_for_source_id(db_conn: psycopg.Connection, cleanup):
+    from mrms.emp.base import upsert_track_and_emp_source
+
+    user_id = get_or_create_user(db_conn, f"read-{_uuid.uuid4().hex[:8]}@test.com")
+    src = f"discovery:{user_id}"
+    cleanup('DELETE FROM "EMPSource" WHERE source_id = %s', (src,))
+    r = upsert_track_and_emp_source(
+        db_conn, isrc=None, title="Discovery Song", artist="New Artist",
+        album_title="Disc Album", duration_ms=200000, platform="youtube",
+        platform_track_id="YTREAD1", source_type="discovery", source_id=src,
+        source_name="Discovery", cover_url="http://c",
+    )
+    tid = r["track_id"]
+    cleanup('DELETE FROM "TrackPlatform" WHERE "trackId" = %s', (tid,))
+    cleanup('DELETE FROM "Track" WHERE id = %s', (tid,))
+
+    rows = read_discovery(db_conn, user_id, limit=10)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["track_id"] == tid
+    assert row["title"] == "Discovery Song"
+    assert row["youtube_track_id"] == "YTREAD1"
+    assert row["album_cover"] == "http://c"
+
+
+def test_delete_emp_sources_by_source_id(db_conn: psycopg.Connection, cleanup):
+    from mrms.emp.base import upsert_track_and_emp_source
+
+    user_id = get_or_create_user(db_conn, f"del-{_uuid.uuid4().hex[:8]}@test.com")
+    src = f"discovery:{user_id}"
+    r = upsert_track_and_emp_source(
+        db_conn, isrc=None, title="ToDelete", artist="X", album_title=None,
+        duration_ms=None, platform="youtube", platform_track_id="YTDEL1",
+        source_type="discovery", source_id=src, source_name="Discovery",
+    )
+    cleanup('DELETE FROM "TrackPlatform" WHERE "trackId" = %s', (r["track_id"],))
+    cleanup('DELETE FROM "Track" WHERE id = %s', (r["track_id"],))
+
+    deleted = delete_emp_sources_by_source_id(db_conn, src)
+    assert deleted >= 1
+    assert read_discovery(db_conn, user_id, limit=10) == []

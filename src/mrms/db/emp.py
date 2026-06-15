@@ -220,3 +220,14 @@ def delete_runs_older_than(conn: psycopg.Connection, keep: int) -> int:
         deleted = cur.rowcount
     conn.commit()
     return deleted
+
+
+def delete_emp_sources_by_source_id(conn: psycopg.Connection, source_id: str) -> int:
+    """source_id의 EMPSource 행 전부 삭제 + commit. 삭제 수 반환.
+
+    discovery 재생성 시 replace 용. AFTER DELETE 트리거가 Track.inEmp 재계산."""
+    with conn.cursor() as cur:
+        cur.execute('DELETE FROM "EMPSource" WHERE source_id = %s', (source_id,))
+        n = cur.rowcount
+    conn.commit()
+    return n
