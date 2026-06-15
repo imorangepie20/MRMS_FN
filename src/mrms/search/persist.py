@@ -19,7 +19,11 @@ def persist_search_tracks(
     source_id = f"search:{q}"
     for t in flat_tracks:
         track_id = None
-        for platform, key in (("tidal", "tidal_track_id"), ("spotify", "spotify_track_id")):
+        for platform, key in (
+            ("tidal", "tidal_track_id"),
+            ("spotify", "spotify_track_id"),
+            ("youtube", "youtube_track_id"),
+        ):
             ptid = t.get(key)
             if not ptid:
                 continue

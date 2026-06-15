@@ -8,15 +8,16 @@ import psycopg
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from mrms.search.expand import fetch_container_tracks, persist_container_tracks
-
 from mrms.api.auth_spotify import get_token as _spotify_token
 from mrms.api.auth_tidal import _get_access_token as _tidal_token
 from mrms.api.deps import db_conn, get_current_user_id
+from mrms.db.user_track import get_oauth
+from mrms.search.expand import fetch_container_tracks, persist_container_tracks
 from mrms.search.normalize import merge_tracks
 from mrms.search.persist import persist_search_tracks
 from mrms.search.spotify import search_spotify
 from mrms.search.tidal import search_tidal
+from mrms.search.youtube import search_youtube
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +73,15 @@ async def search(
             agg["tracks"].extend(res["tracks"])
             agg["albums"].extend(res["albums"])
             agg["playlists"].extend(res["playlists"])
+
+        # YouTube Music — 연결한 유저만. ytmusicapi(쿼터 0) 주력 + 예산가드 폴백.
+        if get_oauth(conn, user_id, "youtube"):
+            try:
+                yt_res = await search_youtube(conn, q, http=http)
+                agg["tracks"].extend(yt_res["tracks"])
+            except Exception as e:
+                log.warning("search: youtube search failed: %r", e)
+                skipped.append("youtube")
 
     tracks = merge_tracks(agg["tracks"])
     persist_search_tracks(conn, tracks, q)
