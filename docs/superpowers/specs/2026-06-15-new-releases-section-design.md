@@ -69,7 +69,7 @@ MISS_SQL OR-clause에 `OR es.source_type = 'new_release'` 한 줄 추가(discove
 ## 프론트
 
 - `web/src/lib/types.ts:MrtLatestResponse`에 `recommended_new_releases: RecommendedTrack[]` 추가(백엔드와 1:1).
-- `web/src/components/mrms/MrtDashboard.tsx`: discovery 섹션 패턴 그대로, `SectionHeader(num='PT 04', title='취향 맞춤 신보', ...)` + 기존 로컬 `TrackRow` 재사용 렌더 블록. 빈 배열이면 섹션 숨김(다른 섹션과 동일 관례).
+- `web/src/components/mrms/MrtDashboard.tsx`: discovery는 별도 섹션이 아니라 `recommended_tracks`에 블렌드돼 있으므로 "discovery 섹션"은 없다 — **PT 02 트랙 섹션 블록을 본떠** `SectionHeader(num='PT 04', title='New releases, for you', meta=N tracks)` + 기존 로컬 `TrackRow` 재사용 렌더 블록을 추가(앨범 PT 03 뒤에 배치해 번호 자연스럽게). 빈 배열이면 본문에 "— no new releases —"(PT 02와 동일 관례).
 
 ## 에러 / 엣지
 
