@@ -37,7 +37,8 @@ MISS_SQL = """
     WHERE tp."platformTrackId" NOT LIKE 'yt\\_%%'
       AND (EXISTS (SELECT 1 FROM "UserTrack" ut WHERE ut."trackId" = t.id)
            OR EXISTS (SELECT 1 FROM "EMPSource" es
-                      WHERE es."trackId" = t.id AND es.source_type = 'discovery'))
+                      WHERE es."trackId" = t.id
+                        AND es.source_type IN ('discovery', 'new_release')))
       AND NOT EXISTS (SELECT 1 FROM "TrackEmbedding" e WHERE e."trackId" = t.id)
     LIMIT %s
 """
