@@ -46,6 +46,7 @@ class RecommendedTrack(BaseModel):
     persona_idx: int | None = None
     tidal_track_id: str | None = None
     spotify_track_id: str | None = None
+    youtube_track_id: str | None = None
     liked: bool = False
     pct: bool = False
 

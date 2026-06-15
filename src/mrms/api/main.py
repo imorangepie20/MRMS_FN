@@ -36,6 +36,7 @@ from mrms.api.user_tracks import router as user_tracks_router
 from mrms.api.wellness import router as wellness_router
 from mrms.db.user_embedding import fetch_latest_playlists
 from mrms.db.user_track import resolve_primary_platform
+from mrms.recsys.discover import blend_recsys, read_discovery
 from mrms.recsys.mrt import derive_recommended_albums, derive_recommended_tracks
 
 app = FastAPI(title="MRMS API", version="0.1.0")
@@ -207,19 +208,24 @@ def mrt_latest(
     all_track_ids = list({tid for p in playlists_sorted for tid in p["trackIds"]})
     meta = _fetch_track_metadata(conn, all_track_ids, primary_platform=primary_platform)
 
-    # MRT→PGT '이동': 이미 PGT(UserTrack)에 담은 트랙은 추천에서 제외(이력 보존, display 필터)
+    # EMP-밖 discovery 캐시 읽기 (배치에서 적재됨). 메타는 여기가 제공(persona meta엔 없음).
+    discovery_rows = read_discovery(conn, user_id, limit=top_tracks_n)
+    disc_meta = {d["track_id"]: d for d in discovery_rows}
+
+    # hidden(owned|blocked)을 persona + discovery union으로 계산
+    union_ids = list(set(all_track_ids) | set(disc_meta))
     owned: set[str] = set()
-    if all_track_ids:
+    if union_ids:
         with conn.cursor() as cur:
             cur.execute(
                 'SELECT "trackId" FROM "UserTrack" WHERE "userId"=%s AND "trackId"=ANY(%s)',
-                (user_id, all_track_ids),
+                (user_id, union_ids),
             )
             owned = {r[0] for r in cur.fetchall()}
 
     # 싫어요(disliked)/관심없어요(dismissed) 반응한 트랙·앨범도 표시에서 제외
     from mrms.db.user_blocked import blocked_track_ids
-    blocked = blocked_track_ids(conn, user_id, ["disliked", "dismissed"]) if all_track_ids else set()
+    blocked = blocked_track_ids(conn, user_id, ["disliked", "dismissed"]) if union_ids else set()
     hidden = owned | blocked
 
     # UserPersona의 trackCount 매핑
@@ -268,38 +274,60 @@ def mrt_latest(
         for p in playlists_sorted
     ]
     rec_tracks_raw = derive_recommended_tracks(playlists_with_scores, top_n=top_tracks_n)
+    taste_score = {r["track_id"]: (float(r["score"]), r.get("persona_idx")) for r in rec_tracks_raw}
 
-    # liked + pct 상태 한 번에 fetch (N+1 회피)
-    rec_track_ids = [r["track_id"] for r in rec_tracks_raw if r["track_id"] in meta]
+    # 50/50 교차 블렌드 (track_id dedup) — taste(EMP) + discovery(EMP 밖)
+    blended_ids = blend_recsys(
+        [r["track_id"] for r in rec_tracks_raw],
+        [d["track_id"] for d in discovery_rows],
+        top_tracks_n,
+    )
+
+    # 통합 메타: persona meta(youtube 없음) 또는 discovery meta(youtube 있음)
+    def _unified(tid: str) -> dict | None:
+        if tid in disc_meta:
+            d = disc_meta[tid]
+            return {
+                "title": d["title"], "artist": d["artist"], "album_id": d["album_id"],
+                "album_title": d["album_title"], "duration_ms": d["duration_ms"],
+                "tidal_track_id": d["tidal_track_id"], "spotify_track_id": d["spotify_track_id"],
+                "youtube_track_id": d["youtube_track_id"],
+            }
+        if tid in meta:
+            m = meta[tid]
+            return {**m, "youtube_track_id": None}
+        return None
+
+    # liked/pct 상태 — 블렌드된 트랙 전체에 대해 한 번에
     user_track_state: dict[str, tuple[bool, bool]] = {}
-    if rec_track_ids:
+    if blended_ids:
         with conn.cursor() as cur:
             cur.execute(
                 '''SELECT "trackId", source, "isCore" FROM "UserTrack"
                    WHERE "userId" = %s AND "trackId" = ANY(%s)''',
-                (user_id, rec_track_ids),
+                (user_id, blended_ids),
             )
             for row in cur.fetchall():
                 user_track_state[row[0]] = (row[1] == "liked", bool(row[2]))
 
-    recommended_tracks = [
-        RecommendedTrack(
-            track_id=r["track_id"],
-            title=meta[r["track_id"]]["title"],
-            artist=meta[r["track_id"]]["artist"],
-            album_id=meta[r["track_id"]]["album_id"],
-            album_title=meta[r["track_id"]]["album_title"],
-            duration_ms=meta[r["track_id"]]["duration_ms"],
-            score=float(r["score"]),
-            persona_idx=r.get("persona_idx"),
-            tidal_track_id=meta[r["track_id"]]["tidal_track_id"],
-            spotify_track_id=meta[r["track_id"]]["spotify_track_id"],
-            liked=user_track_state.get(r["track_id"], (False, False))[0],
-            pct=user_track_state.get(r["track_id"], (False, False))[1],
-        )
-        for r in rec_tracks_raw
-        if r["track_id"] in meta and r["track_id"] not in hidden  # Tidal 가용 + PGT 미보유·미차단
-    ]
+    recommended_tracks = []
+    for tid in blended_ids:
+        if tid in hidden:
+            continue
+        u = _unified(tid)
+        if u is None:
+            continue
+        score, persona_idx = taste_score.get(tid, (0.0, None))
+        liked, pct = user_track_state.get(tid, (False, False))
+        recommended_tracks.append(RecommendedTrack(
+            track_id=tid,
+            title=u["title"], artist=u["artist"], album_id=u["album_id"],
+            album_title=u["album_title"], duration_ms=u["duration_ms"],
+            score=score, persona_idx=persona_idx,
+            tidal_track_id=u["tidal_track_id"], spotify_track_id=u["spotify_track_id"],
+            youtube_track_id=u["youtube_track_id"],
+            liked=liked, pct=pct,
+        ))
 
     # owned·차단 트랙은 album 집계에도 기여하지 않도록 track_to_album에서 제외
     track_to_album = {tid: m["album_id"] for tid, m in meta.items() if tid not in hidden}
