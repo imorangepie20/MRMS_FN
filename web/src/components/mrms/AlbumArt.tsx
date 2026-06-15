@@ -25,9 +25,21 @@ function initial(s: string): string {
 export function AlbumArt({ artist, album, initialUrl, className = "" }: Props) {
   const [url, setUrl] = useState<string | null>(initialUrl ?? null);
   const [resolved, setResolved] = useState<boolean>(!!initialUrl);
-  // 이미지 로드 실패(만료/404) → 글자 placeholder. 컴포넌트는 track/album_id로
-  // keyed라 다음 트랙엔 remount되어 자동 리셋(재fetch 루프 없음).
+  // 이미지 로드 실패(만료/404) → 글자 placeholder.
   const [failed, setFailed] = useState(false);
+
+  // 곡이 바뀌면(artist/album/initialUrl 변경) 내부 상태를 새 곡 기준으로 리셋한다.
+  // 플레이어처럼 컴포넌트가 remount 안 되고 유지되는 자리에서도 이미지가 갱신되도록
+  // (React '이전 렌더 정보 저장' 패턴 — effect 아닌 렌더 중 setState). 그 뒤 아래
+  // effect가 url=null이고 album이 있으면 새 곡 커버를 fetch한다.
+  const trackKey = `${artist}|${album ?? ""}|${initialUrl ?? ""}`;
+  const [prevKey, setPrevKey] = useState(trackKey);
+  if (trackKey !== prevKey) {
+    setPrevKey(trackKey);
+    setUrl(initialUrl ?? null);
+    setResolved(!!initialUrl);
+    setFailed(false);
+  }
 
   useEffect(() => {
     if (url || !album) {
