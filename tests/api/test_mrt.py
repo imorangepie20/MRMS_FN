@@ -1,12 +1,44 @@
 """mrt_latest endpoint 테스트."""
 from __future__ import annotations
 
+import uuid as _uuid
+
 from fastapi.testclient import TestClient
 
 from mrms.api.main import app
 from mrms.emp.base import upsert_track_and_emp_source
 
 client = TestClient(app)
+
+
+def _mk_artist(conn, name):
+    aid = "ar_" + _uuid.uuid4().hex[:12]
+    with conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "Artist" (id, name, "nameNormalized", "mainGenre") VALUES (%s,%s,%s,%s)',
+            (aid, name, name.lower(), None),
+        )
+    return aid
+
+
+def _mk_track(conn, artist_id, title):
+    tid = "tr_" + _uuid.uuid4().hex[:12]
+    with conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "Track" (id, isrc, title, "titleNormalized", "durationMs", "artistId") '
+            'VALUES (%s,%s,%s,%s,%s,%s)',
+            (tid, "TST" + tid[-9:], title, title.lower(), 0, artist_id),
+        )
+    return tid
+
+
+def _add_usertrack(conn, user_id, track_id):
+    with conn.cursor() as cur:
+        cur.execute(
+            'INSERT INTO "UserTrack" (id, "userId", "trackId", "isCore", source, platform) '
+            'VALUES (%s,%s,%s,FALSE,%s,%s) ON CONFLICT DO NOTHING',
+            ("ut_" + _uuid.uuid4().hex[:12], user_id, track_id, "liked", "youtube"),
+        )
 
 
 def test_mrt_latest_blends_discovery_tracks(db_conn, login, cleanup):
@@ -123,3 +155,55 @@ def test_mrt_latest_shows_persona_recs_without_tidal(db_conn, login, cleanup):
     assert len(recs) == 1, "tidal 없는 persona 추천이 필터링돼 사라짐(게이트 미제거)"
     assert recs[0]["youtube_track_id"] == "YTPERSONA1"
     assert recs[0]["tidal_track_id"] is None
+
+
+def test_mrt_latest_dedups_same_song_diff_track_id(db_conn, login, cleanup):
+    """같은 곡(artist+title 동일, track_id 다름)이 추천에 중복 노출되지 않는다(_song_key)."""
+    user_id, session_id = login()
+    a = _mk_artist(db_conn, "Dup Artist")
+    t1 = _mk_track(db_conn, a, "Dup Song")
+    t2 = _mk_track(db_conn, a, "Dup Song")  # 같은 곡, 다른 track_id
+    cleanup('DELETE FROM "Artist" WHERE id = %s', (a,))
+    cleanup('DELETE FROM "Track" WHERE "artistId" = %s', (a,))
+
+    from mrms.db.user_embedding import insert_playlist_history
+    insert_playlist_history(
+        db_conn, user_id, [t1, t2], "+persona-K3",
+        context={"personaIdx": 0, "kind": "persona", "scores": [1.0, 0.9]},
+    )
+    db_conn.commit()
+    cleanup('DELETE FROM "PlaylistHistory" WHERE "userId" = %s', (user_id,))
+
+    client.cookies.set("mrms_session", session_id)
+    resp = client.get("/api/mrt/latest")
+    client.cookies.clear()
+    assert resp.status_code == 200, resp.text
+    recs = [t for t in resp.json()["recommended_tracks"] if t["track_id"] in (t1, t2)]
+    assert len(recs) == 1, f"같은 곡이 {len(recs)}번 노출 — 중복 제거 실패"
+
+
+def test_mrt_latest_excludes_owned_song_diff_track_id(db_conn, login, cleanup):
+    """내가 가진 곡은 다른 track_id 버전이어도 추천에서 제외된다(_owned_song_keys)."""
+    user_id, session_id = login()
+    a = _mk_artist(db_conn, "Owned Artist")
+    owned = _mk_track(db_conn, a, "Owned Song")
+    other = _mk_track(db_conn, a, "Owned Song")  # 같은 곡, 다른 track_id
+    _add_usertrack(db_conn, user_id, owned)  # 보유
+    cleanup('DELETE FROM "Artist" WHERE id = %s', (a,))
+    cleanup('DELETE FROM "Track" WHERE "artistId" = %s', (a,))
+    cleanup('DELETE FROM "UserTrack" WHERE "userId" = %s', (user_id,))
+
+    from mrms.db.user_embedding import insert_playlist_history
+    insert_playlist_history(
+        db_conn, user_id, [other], "+persona-K3",
+        context={"personaIdx": 0, "kind": "persona", "scores": [1.0]},
+    )
+    db_conn.commit()
+    cleanup('DELETE FROM "PlaylistHistory" WHERE "userId" = %s', (user_id,))
+
+    client.cookies.set("mrms_session", session_id)
+    resp = client.get("/api/mrt/latest")
+    client.cookies.clear()
+    assert resp.status_code == 200, resp.text
+    recs = [t for t in resp.json()["recommended_tracks"] if t["track_id"] in (owned, other)]
+    assert recs == [], "보유곡(다른 track_id)이 추천에 노출됨"

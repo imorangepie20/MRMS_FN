@@ -223,18 +223,30 @@ def mrt_latest(
         )
         track_count_by_idx = {r[0]: r[1] for r in cur.fetchall()}
 
+    # 곡 단위(_song_key) 중복/보유 제외 — 같은 곡이 여러 track_id(tidal/spotify=ISRC,
+    # youtube/vibe=무ISRC)로 존재해, track_id 정확매칭만으론 중복곡·보유곡이 새어 나간다.
+    from mrms.recsys.discover import _owned_song_keys
+    from mrms.recsys.taste_mood import _song_key
+    owned_song_keys = _owned_song_keys(conn, user_id)
+    nr_song_keys = {_song_key(d["artist"], d["title"]) for d in newrelease_rows}
+
     personas: list[Persona] = []
     for p in playlists_sorted:
         ctx = p.get("context") or {}
         persona_idx = int(ctx.get("personaIdx", 0))
         scores = ctx.get("scores", [])
         playlist: list[PersonaTrack] = []
+        seen_p: set[str] = set()
         for tid, sc in zip(p["trackIds"][:top_n], scores[:top_n]):
             if tid in hidden:
                 continue  # PGT 보유 트랙 + 부정 반응 트랙 → MRT에서 제외
             m = meta.get(tid)
             if not m:
-                continue  # Tidal 미가용 → skip
+                continue
+            sk = _song_key(m["artist"], m["title"])
+            if sk in owned_song_keys or sk in seen_p:
+                continue  # 보유곡(다른 track_id) + 같은 곡 중복 제거
+            seen_p.add(sk)
             playlist.append(PersonaTrack(
                 track_id=tid,
                 title=m["title"],
@@ -305,13 +317,18 @@ def mrt_latest(
                 user_track_state[row[0]] = (row[1] == "liked", bool(row[2]))
 
     recommended_tracks = []
+    seen_keys: set[str] = set()
     for tid in blended_ids:
-        # 신보(new_release)는 전용 섹션에만 — 임베딩 후 persona 검색에 다시 떠도 메인 중복 노출 방지
-        if tid in hidden or tid in nr_meta:
+        if tid in hidden:
             continue
         u = _unified(tid)
         if u is None:
             continue
+        sk = _song_key(u["artist"], u["title"])
+        # 보유곡(다른 track_id) · 신보 전용섹션 곡 · 이미 추가한 곡 = 곡 단위로 제외
+        if sk in owned_song_keys or sk in nr_song_keys or sk in seen_keys:
+            continue
+        seen_keys.add(sk)
         score, persona_idx = taste_score.get(tid, (0.0, None))
         liked, pct = user_track_state.get(tid, (False, False))
         recommended_tracks.append(RecommendedTrack(
@@ -327,12 +344,17 @@ def mrt_latest(
     # 취향 맞춤 신보 — 별도 섹션(blend 안 함, importedAt 순). 미보유라 score/liked/pct 기본값.
     newrelease_ids = [d["track_id"] for d in newrelease_rows]
     recommended_new_releases = []
+    seen_nr: set[str] = set()
     for tid in newrelease_ids:
         if tid in hidden:
             continue
         u = _unified(tid)
         if u is None:
             continue
+        sk = _song_key(u["artist"], u["title"])
+        if sk in owned_song_keys or sk in seen_nr:
+            continue  # 보유곡(다른 track_id) + 신보 내 같은 곡 중복 제거
+        seen_nr.add(sk)
         recommended_new_releases.append(RecommendedTrack(
             track_id=tid,
             title=u["title"], artist=u["artist"], album_id=u["album_id"],
