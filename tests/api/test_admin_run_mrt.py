@@ -121,3 +121,34 @@ def test_run_mrt_requires_admin(login, monkeypatch):
         assert r.status_code == 403
     finally:
         client.cookies.clear()
+
+
+def test_admin_users_lists_with_track_count(login, monkeypatch, db_conn, cleanup):
+    """추천 실행 대상 선택용 사용자 목록 — email/display_name/track_count 포함."""
+    admin_email = _login_admin(login, monkeypatch)
+    target_email = f"u-{_uuid.uuid4().hex[:8]}@example.com"
+    get_or_create_user(db_conn, target_email)
+    db_conn.commit()
+    cleanup('DELETE FROM "User" WHERE email = %s', (target_email,))
+    try:
+        r = client.get("/api/admin/emp/users")
+        assert r.status_code == 200, r.text
+        users = r.json()["users"]
+        emails = [u["email"] for u in users]
+        assert target_email in emails  # 새 유저가 목록에 있음
+        assert admin_email in emails    # admin 본인도
+        u = next(x for x in users if x["email"] == target_email)
+        assert "display_name" in u and isinstance(u["track_count"], int)
+    finally:
+        client.cookies.clear()
+
+
+def test_admin_users_requires_admin(login, monkeypatch):
+    _, session_id = login(f"notadmin-{_uuid.uuid4().hex[:8]}@example.com")
+    monkeypatch.setenv("ADMIN_EMAIL", "someone-else@example.com")
+    client.cookies.set("mrms_session", session_id)
+    try:
+        r = client.get("/api/admin/emp/users")
+        assert r.status_code == 403
+    finally:
+        client.cookies.clear()

@@ -50,6 +50,29 @@ def admin_stats(
     return stats
 
 
+@router.get("/users")
+def admin_users(
+    user_id: str = Depends(get_current_user_id),
+    conn: psycopg.Connection = Depends(db_conn),
+):
+    """추천 실행 대상 선택용 사용자 목록 (track_count 내림차순 — 라이브러리 보유 우선)."""
+    _require_admin(conn, user_id)
+    with conn.cursor() as cur:
+        cur.execute(
+            '''SELECT u.email, u."displayName", count(ut."trackId") AS track_count
+               FROM "User" u
+               LEFT JOIN "UserTrack" ut ON ut."userId" = u.id
+               GROUP BY u.id, u.email, u."displayName", u."createdAt"
+               ORDER BY track_count DESC, u."createdAt"'''
+        )
+        rows = cur.fetchall()
+    return {
+        "users": [
+            {"email": r[0], "display_name": r[1], "track_count": r[2]} for r in rows
+        ]
+    }
+
+
 @router.get("/runs")
 def admin_runs(
     limit: int = 20,
