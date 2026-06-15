@@ -4,16 +4,16 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote, unquote
 
 import httpx
 import psycopg
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.auth.spotify import SpotifyOAuthClient, SpotifyOAuthError
 from mrms.db.user_track import get_oauth, get_or_create_user, upsert_oauth
-
 
 router = APIRouter(prefix="/api/auth/spotify", tags=["auth"])
 
@@ -31,6 +31,7 @@ SPOTIFY_SCOPES = [
 SESSION_COOKIE_NAME = "mrms_session"
 SESSION_MAX_AGE = 30 * 24 * 60 * 60  # 30 days
 OAUTH_STATE_COOKIE = "mrms_oauth_state"
+OAUTH_NEXT_COOKIE = "mrms_oauth_next"
 OAUTH_STATE_MAX_AGE = 600  # 10 min
 
 SPOTIFY_API_BASE = "https://api.spotify.com/v1"
@@ -48,9 +49,22 @@ def _client() -> SpotifyOAuthClient:
     )
 
 
+def _safe_next(next_url: str | None) -> str | None:
+    """오픈 리다이렉트 방지 — 사이트 내부 상대 경로(/...)만 허용, //는 거부."""
+    if next_url and next_url.startswith("/") and not next_url.startswith("//"):
+        return next_url
+    return None
+
+
 @router.get("/authorize")
-def authorize() -> RedirectResponse:
-    """state 생성 + Spotify authorize URL로 302 redirect."""
+def authorize(
+    next_url: str | None = Query(default=None, alias="next"),
+) -> RedirectResponse:
+    """state 생성 + Spotify authorize URL로 302 redirect.
+
+    next=인증 후 돌아올 사이트 내부 경로(예: /p/{token}). 공유 페이지에서 연결 시
+    신규·기존 회원 모두 원래 페이지로 복귀시킨다.
+    """
     state = uuid.uuid4().hex
     url = _client().build_authorize_url(state)
     resp = RedirectResponse(url=url, status_code=307)
@@ -62,6 +76,17 @@ def authorize() -> RedirectResponse:
         max_age=OAUTH_STATE_MAX_AGE,
         secure=False,
     )
+    safe_next = _safe_next(next_url)
+    if safe_next:
+        # URL-encode — '/'가 들어가면 Set-Cookie가 값을 따옴표로 감싸므로 인코딩해 저장.
+        resp.set_cookie(
+            key=OAUTH_NEXT_COOKIE,
+            value=quote(safe_next, safe=""),
+            httponly=True,
+            samesite="lax",
+            max_age=OAUTH_STATE_MAX_AGE,
+            secure=False,
+        )
     return resp
 
 
@@ -169,7 +194,10 @@ async def callback(
         has_mrt = cur.fetchone()[0] > 0
     conn.commit()
 
-    target = "/mrt" if has_mrt else "/onboarding"
+    # next 쿠키가 있으면 그 페이지로 복귀(공유 페이지 등), 없으면 기존 기본 목적지.
+    next_cookie = request.cookies.get(OAUTH_NEXT_COOKIE)
+    next_target = _safe_next(unquote(next_cookie)) if next_cookie else None
+    target = next_target or ("/mrt" if has_mrt else "/onboarding")
     resp = RedirectResponse(url=target, status_code=307)
     resp.set_cookie(
         key=SESSION_COOKIE_NAME,
@@ -180,6 +208,7 @@ async def callback(
         secure=False,
     )
     resp.delete_cookie(OAUTH_STATE_COOKIE)
+    resp.delete_cookie(OAUTH_NEXT_COOKIE)
     return resp
 
 

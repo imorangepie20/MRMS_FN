@@ -19,10 +19,12 @@ import type {
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** true면 성공 후 /mrt로 이동하지 않고 현재 페이지를 새로고침(공유 페이지 등에서 재생 이어가기). */
+  stayOnPage?: boolean;
 }
 
 
-export function TidalConnectModal({ open, onOpenChange }: Props) {
+export function TidalConnectModal({ open, onOpenChange, stayOnPage }: Props) {
   const router = useRouter();
   const [init, setInit] = useState<DeviceCodeInit | null>(null);
   const [status, setStatus] = useState<string>("init");
@@ -68,10 +70,15 @@ export function TidalConnectModal({ open, onOpenChange }: Props) {
       });
       const result: DeviceCodePollStatus = await r.json();
       if (result.status === "success") {
-        const target = result.has_mrt ? "/mrt" : "/onboarding";
         onOpenChange(false);
-        router.push(target);
-        router.refresh();
+        if (stayOnPage) {
+          // 현재 페이지(예: /p/{token}) 새로고침 → useUser가 새 세션 반영 → 재생 가능
+          window.location.reload();
+        } else {
+          const target = result.has_mrt ? "/mrt" : "/onboarding";
+          router.push(target);
+          router.refresh();
+        }
       } else if (result.status === "expired") {
         setError("코드 만료 — 재시도 해주세요");
         setInit(null);
@@ -83,7 +90,7 @@ export function TidalConnectModal({ open, onOpenChange }: Props) {
     } finally {
       setPolling(false);
     }
-  }, [init, polling, onOpenChange, router]);
+  }, [init, polling, onOpenChange, router, stayOnPage]);
 
   // visibilitychange — 탭 재활성화 시 1회 poll
   useEffect(() => {
