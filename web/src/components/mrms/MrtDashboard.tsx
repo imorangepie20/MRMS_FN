@@ -503,7 +503,7 @@ function TrackRow({
   };
 
   return (
-    <div className={`group grid grid-cols-[18px_48px_1fr_auto] md:grid-cols-[18px_56px_1fr_140px_80px_60px_120px] gap-2 md:gap-3 py-2.5 border-b border-[var(--mrms-rule)] items-center hover:bg-[var(--mrms-paper)] transition-colors ${removed ? "opacity-45" : ""}`}>
+    <div className={`group grid grid-cols-[18px_48px_1fr_auto] md:grid-cols-[18px_56px_1fr_140px_80px_60px_120px] gap-2 md:gap-3 py-2.5 border-b border-[var(--mrms-rule)] items-center transition-colors ${removed ? "opacity-45" : "hover:bg-[var(--mrms-paper)]"}`}>
       <button
         onClick={onToggle}
         disabled={!!removed}
