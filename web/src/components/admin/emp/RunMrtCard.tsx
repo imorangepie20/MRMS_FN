@@ -30,10 +30,11 @@ export function RunMrtCard({ onAllQueued }: Props) {
 
   // 기본 선택 = 관리자 본인(목록에 있으면), 없으면 첫 사용자. 수동 선택(selectedEmail)이 우선.
   // 상태 동기화 대신 렌더에서 파생 (effect 내 setState 회피).
+  // 목록이 비면(로드 실패/콜드스타트) 관리자 본인 email로 폴백 → 버튼이 잠기지 않음.
   const defaultEmail =
     user?.email && users.some((u) => u.email === user.email)
       ? user.email
-      : users[0]?.email ?? "";
+      : users[0]?.email ?? user?.email ?? "";
   const effectiveEmail = selectedEmail || defaultEmail;
 
   const run = async () => {
@@ -86,7 +87,10 @@ export function RunMrtCard({ onAllQueued }: Props) {
           onChange={(e) => setSelectedEmail(e.target.value)}
           className="w-full mb-3 bg-(--mrms-paper) border border-(--mrms-ink) px-2 py-1.5 font-mono text-[12px] text-(--mrms-ink)"
         >
-          {users.length === 0 && <option value="">— 사용자 없음 —</option>}
+          {!effectiveEmail && <option value="">— 사용자 없음 —</option>}
+          {effectiveEmail && !users.some((u) => u.email === effectiveEmail) && (
+            <option value={effectiveEmail}>{effectiveEmail}</option>
+          )}
           {users.map((u) => (
             <option key={u.email} value={u.email}>
               {u.email}

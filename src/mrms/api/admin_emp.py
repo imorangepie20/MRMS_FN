@@ -63,7 +63,7 @@ def admin_users(
                FROM "User" u
                LEFT JOIN "UserTrack" ut ON ut."userId" = u.id
                GROUP BY u.id, u.email, u."displayName", u."createdAt"
-               ORDER BY track_count DESC, u."createdAt"'''
+               ORDER BY track_count DESC, u."createdAt" ASC'''
         )
         rows = cur.fetchall()
     return {
