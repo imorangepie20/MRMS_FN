@@ -90,6 +90,7 @@ export interface MrtLatestResponse {
   recommended_tracks: RecommendedTrack[];
   recommended_albums: RecommendedAlbum[];
   recommended_playlists?: RecommendedPlaylist[];
+  recommended_new_releases?: RecommendedTrack[];
 }
 
 export interface TidalTokenResponse {

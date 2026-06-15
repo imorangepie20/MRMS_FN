@@ -309,6 +309,47 @@ export function MrtDashboard({ user, mrt }: Props) {
 
       </div>
 
+      {/* === NEW RELEASES (취향 맞춤 신보) === */}
+      <div className="mt-10">
+        <SectionHeader
+          num="PT 04"
+          title="New releases, for you"
+          meta={`${mrt.recommended_new_releases?.length ?? 0} tracks`}
+        />
+        <div className="hidden md:grid grid-cols-[18px_56px_1fr_140px_80px_60px_80px] gap-3 px-0 py-1.5 border-b border-[var(--mrms-ink)] font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
+          <span />
+          <span />
+          <span>Title</span>
+          <span>Persona</span>
+          <span>Match</span>
+          <span className="text-right">Time</span>
+          <span />
+        </div>
+        <div className="md:hidden border-b border-[var(--mrms-ink)] py-1.5 font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
+          New
+        </div>
+
+        {(mrt.recommended_new_releases ?? []).map((t) => (
+          <TrackRow
+            key={t.track_id}
+            track={t}
+            personaLabel={
+              t.persona_idx != null
+                ? personaLabelByIdx.get(t.persona_idx) ?? null
+                : null
+            }
+            checked={selectedTracks.has(t.track_id)}
+            onToggle={() => toggle(t.track_id)}
+          />
+        ))}
+
+        {(mrt.recommended_new_releases?.length ?? 0) === 0 && (
+          <div className="py-12 text-center font-mono text-[11px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
+            — no new releases —
+          </div>
+        )}
+      </div>
+
       <CreatePlaylistModal
         open={createOpen}
         onOpenChange={setCreateOpen}
