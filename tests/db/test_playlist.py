@@ -182,3 +182,33 @@ def test_create_playlist_keeps_liked_source(db_conn: psycopg.Connection, cleanup
             'SELECT source FROM "UserTrack" WHERE "userId"=%s AND "trackId"=%s', (user_id, tid)
         )
         assert cur.fetchone()[0] == "liked"
+
+
+def test_get_playlist_tracks_includes_album_cover(db_conn, cleanup):
+    """get_playlist_tracks가 EMPSource.cover_url을 album_cover로 채운다(공유 페이지/OG용)."""
+    from mrms.emp.base import upsert_track_and_emp_source
+
+    user_id = get_or_create_user(db_conn, f"plcov-{_uuid.uuid4().hex[:8]}@test.com")
+    r = upsert_track_and_emp_source(
+        db_conn, isrc=None, title="Cov Song", artist="Cov Artist",
+        album_title="Cov Album", duration_ms=180000, platform="youtube",
+        platform_track_id="YTPLCOV", source_type="station",
+        source_id="station:plcov", source_name="Station",
+        cover_url="https://example.com/plcov600.jpg",
+    )
+    tid = r["track_id"]
+    db_conn.commit()
+    cleanup('DELETE FROM "EMPSource" WHERE source_id = %s', ("station:plcov",))
+    cleanup('DELETE FROM "TrackPlatform" WHERE "trackId" = %s', (tid,))
+    cleanup('DELETE FROM "Track" WHERE id = %s', (tid,))
+    cleanup('DELETE FROM "UserTrack" WHERE "userId" = %s', (user_id,))
+
+    pid = create_playlist(
+        db_conn, user_id=user_id, name="Cov PL", description=None, track_ids=[tid]
+    )
+    cleanup('DELETE FROM "Playlist" WHERE id = %s', (pid,))
+    cleanup('DELETE FROM "PlaylistTrack" WHERE "playlistId" = %s', (pid,))
+
+    tracks = get_playlist_tracks(db_conn, pid)
+    assert len(tracks) == 1
+    assert tracks[0]["album_cover"] == "https://example.com/plcov600.jpg"

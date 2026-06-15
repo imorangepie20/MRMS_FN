@@ -76,14 +76,15 @@ def list_user_playlists(
 def get_playlist_tracks(
     conn: psycopg.Connection, playlist_id: str
 ) -> list[dict]:
-    """Playlist 안 트랙 (position 순). album_cover는 None (Album에 coverUrl 컬럼 없음)."""
+    """Playlist 안 트랙 (position 순). album_cover는 EMPSource.cover_url(있으면)."""
     with conn.cursor() as cur:
         cur.execute(
             '''SELECT t.id, t.title, a.name AS artist,
                       al.id AS album_id, al.title AS album_title,
                       tp_tidal."platformTrackId" AS tidal_track_id,
                       tp_spotify."platformTrackId" AS spotify_track_id,
-                      t."durationMs" AS duration_ms
+                      t."durationMs" AS duration_ms,
+                      ec.cover_url AS album_cover
                FROM "PlaylistTrack" pt
                JOIN "Track" t ON t.id = pt."trackId"
                JOIN "Artist" a ON a.id = t."artistId"
@@ -92,6 +93,10 @@ def get_playlist_tracks(
                  ON tp_tidal."trackId" = t.id AND tp_tidal.platform = 'tidal'
                LEFT JOIN "TrackPlatform" tp_spotify
                  ON tp_spotify."trackId" = t.id AND tp_spotify.platform = 'spotify'
+               LEFT JOIN LATERAL (
+                 SELECT cover_url FROM "EMPSource"
+                 WHERE "trackId" = t.id AND cover_url IS NOT NULL LIMIT 1
+               ) ec ON TRUE
                WHERE pt."playlistId" = %s
                ORDER BY pt.position''',
             (playlist_id,),
@@ -104,7 +109,7 @@ def get_playlist_tracks(
             "artist": r[2],
             "album_id": r[3],
             "album_title": r[4],
-            "album_cover": None,  # Album에 coverUrl 없음
+            "album_cover": r[8],
             "tidal_track_id": r[5],
             "spotify_track_id": r[6],
             "duration_ms": r[7],
