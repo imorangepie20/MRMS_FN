@@ -38,6 +38,7 @@ from mrms.db.user_embedding import fetch_latest_playlists
 from mrms.db.user_track import resolve_primary_platform
 from mrms.recsys.discover import blend_recsys, read_discovery
 from mrms.recsys.mrt import derive_recommended_albums, derive_recommended_tracks
+from mrms.recsys.newrelease import read_newrelease
 
 app = FastAPI(title="MRMS API", version="0.1.0")
 app.add_middleware(
@@ -212,8 +213,12 @@ def mrt_latest(
     discovery_rows = read_discovery(conn, user_id, limit=top_tracks_n)
     disc_meta = {d["track_id"]: d for d in discovery_rows}
 
-    # hidden(owned|blocked)을 persona + discovery union으로 계산
-    union_ids = list(set(all_track_ids) | set(disc_meta))
+    # 취향 맞춤 신보 캐시 읽기 (별도 섹션용 — 메인 블렌드엔 안 섞음).
+    newrelease_rows = read_newrelease(conn, user_id, limit=top_tracks_n)
+    nr_meta = {d["track_id"]: d for d in newrelease_rows}
+
+    # hidden(owned|blocked)을 persona + discovery + 신보 union으로 계산
+    union_ids = list(set(all_track_ids) | set(disc_meta) | set(nr_meta))
     owned: set[str] = set()
     if union_ids:
         with conn.cursor() as cur:
@@ -293,6 +298,14 @@ def mrt_latest(
                 "tidal_track_id": d["tidal_track_id"], "spotify_track_id": d["spotify_track_id"],
                 "youtube_track_id": d["youtube_track_id"],
             }
+        if tid in nr_meta:
+            d = nr_meta[tid]
+            return {
+                "title": d["title"], "artist": d["artist"], "album_id": d["album_id"],
+                "album_title": d["album_title"], "duration_ms": d["duration_ms"],
+                "tidal_track_id": d["tidal_track_id"], "spotify_track_id": d["spotify_track_id"],
+                "youtube_track_id": d["youtube_track_id"],
+            }
         if tid in meta:
             m = meta[tid]
             return {**m, "youtube_track_id": None}
@@ -327,6 +340,25 @@ def mrt_latest(
             tidal_track_id=u["tidal_track_id"], spotify_track_id=u["spotify_track_id"],
             youtube_track_id=u["youtube_track_id"],
             liked=liked, pct=pct,
+        ))
+
+    # 취향 맞춤 신보 — 별도 섹션(blend 안 함, importedAt 순). 미보유라 score/liked/pct 기본값.
+    newrelease_ids = [d["track_id"] for d in newrelease_rows]
+    recommended_new_releases = []
+    for tid in newrelease_ids:
+        if tid in hidden:
+            continue
+        u = _unified(tid)
+        if u is None:
+            continue
+        recommended_new_releases.append(RecommendedTrack(
+            track_id=tid,
+            title=u["title"], artist=u["artist"], album_id=u["album_id"],
+            album_title=u["album_title"], duration_ms=u["duration_ms"],
+            score=0.0, persona_idx=None,
+            tidal_track_id=u["tidal_track_id"], spotify_track_id=u["spotify_track_id"],
+            youtube_track_id=u["youtube_track_id"],
+            liked=False, pct=False,
         ))
 
     # owned·차단 트랙은 album 집계에도 기여하지 않도록 track_to_album에서 제외
@@ -376,4 +408,5 @@ def mrt_latest(
         recommended_tracks=recommended_tracks,
         recommended_albums=recommended_albums,
         recommended_playlists=recommended_playlists,
+        recommended_new_releases=recommended_new_releases,
     )

@@ -75,3 +75,4 @@ class MrtLatestResponse(BaseModel):
     recommended_tracks: list[RecommendedTrack]
     recommended_albums: list[RecommendedAlbum]
     recommended_playlists: list[RecommendedPlaylist] = []
+    recommended_new_releases: list[RecommendedTrack] = []
