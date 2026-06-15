@@ -48,11 +48,27 @@ def toggle_like(
                     (user_id, track_id),
                 )
             else:
+                # 플레이리스트에 담긴 곡이면 라이브러리에서 완전 삭제하지 않고 'curated'로
+                # 강등 → MRT 숨김 유지(플레이리스트=MRT 제외 보장). 아니면 기존대로 삭제.
                 cur.execute(
-                    '''DELETE FROM "UserTrack"
-                       WHERE "userId" = %s AND "trackId" = %s''',
+                    '''SELECT 1 FROM "PlaylistTrack" pt
+                       JOIN "Playlist" p ON p.id = pt."playlistId"
+                       WHERE p."userId" = %s AND pt."trackId" = %s
+                       LIMIT 1''',
                     (user_id, track_id),
                 )
+                if cur.fetchone():
+                    cur.execute(
+                        '''UPDATE "UserTrack" SET source = 'curated'
+                           WHERE "userId" = %s AND "trackId" = %s''',
+                        (user_id, track_id),
+                    )
+                else:
+                    cur.execute(
+                        '''DELETE FROM "UserTrack"
+                           WHERE "userId" = %s AND "trackId" = %s''',
+                        (user_id, track_id),
+                    )
             conn.commit()
             return {"liked": False}
         else:

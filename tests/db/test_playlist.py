@@ -137,7 +137,7 @@ def test_create_playlist_marks_tracks_curated(db_conn: psycopg.Connection, clean
     with db_conn.cursor() as cur:
         cur.execute('SELECT id FROM "Track" LIMIT 2')
         track_ids = [r[0] for r in cur.fetchall()]
-    if len(track_ids) < 1:
+    if not track_ids:
         pytest.skip("Track 데이터 부족")
 
     pid = create_playlist(
