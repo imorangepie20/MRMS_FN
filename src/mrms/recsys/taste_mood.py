@@ -187,5 +187,8 @@ def recommend_by_taste_mood(
     # 상위 관련 window에서 mood_fit 가중 랜덤 샘플 + 아티스트 캡 → 매 호출 다른 조합.
     if len(deduped) <= n:
         return deduped
-    window = deduped[: max(n, n * window_mult)]
-    return _diverse_sample(window, n, artist_cap=artist_cap, rng=rng or random.Random())
+    window = deduped[: n * window_mult]
+    picked = _diverse_sample(window, n, artist_cap=artist_cap, rng=rng or random.Random())
+    # 세트는 매 호출 달라지되, 한 결과 안에선 무드 적합도 높은 순으로 표시(상단=베스트핏).
+    picked.sort(key=lambda d: d["score"], reverse=True)
+    return picked
