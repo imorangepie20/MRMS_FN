@@ -56,15 +56,18 @@ def taste_vector(conn: psycopg.Connection, user_id: str) -> np.ndarray | None:
 
 
 _SUFFIX_DASH = re.compile(r"\s+-\s.*$")      # " - From ...", " - Single Version"
-_SUFFIX_PAREN = re.compile(r"\s*[(\[].*$")   # "(English Ver.)", "[Remastered]"
+# 접미사 괄호만 제거 — 앞에 단어가 있을 때만(lookbehind). 제목이 괄호로 '시작'하면
+# ('(I Can't Get No) …') 전체가 ''로 붕괴해 서로 다른 곡이 오병합되던 버그 방지.
+_SUFFIX_PAREN = re.compile(r"(?<=\w)\s*[(\[].*$")  # "x (English Ver.)", "x [Remastered]"
 _NONWORD = re.compile(r"[^a-z0-9가-힣]+")
 
 
 def _song_key(artist: str, title: str) -> str:
     """같은 곡의 버전/릴리즈를 한 키로 — 같은 곡이 여러 track_id로 있어 중복 노출되는 것 방지.
 
-    공백-하이픈-공백 접미사(' - From …')와 괄호 접미사('(English Ver.)')를 떼고 비단어 제거.
-    'Spider-Man'처럼 공백 없는 하이픈은 보존(다른 곡 오병합 방지).
+    공백-하이픈-공백 접미사(' - From …')와 '접미사' 괄호('x (English Ver.)')를 떼고 비단어 제거.
+    하이픈은 비단어로 제거돼 'Spider-Man'='Spiderman'(대칭이라 오병합 아님). 제목이 괄호로
+    '시작'하면('(I Can't Get No) Satisfaction') 보존 — 전체 붕괴 오병합 방지.
     """
     t = title.lower()
     t = _SUFFIX_DASH.sub("", t)

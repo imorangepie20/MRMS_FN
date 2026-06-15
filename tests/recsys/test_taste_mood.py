@@ -86,6 +86,13 @@ def test_song_key_merges_versions_keeps_distinct():
     assert _song_key("A", "Song One") != _song_key("A", "Song Two")
     # 아티스트 다르면 같은 제목도 다른 키
     assert _song_key("A", "Hello") != _song_key("B", "Hello")
+    # 제목이 괄호로 '시작'하면 보존 — 서로 다른 곡이 ''로 붕괴해 오병합되면 안 됨
+    sat = _song_key("Stones", "(I Can't Get No) Satisfaction")
+    dock = _song_key("Stones", "(Sittin' On) The Dock of the Bay")
+    assert sat != dock
+    assert sat == _song_key("Stones", "(I Can't Get No) Satisfaction")
+    # 접미사 괄호는 여전히 제거(버전 병합 유지)
+    assert _song_key("A", "Title (Live)") == _song_key("A", "Title")
 
 
 def test_dedupes_same_song_versions(db_conn, cleanup):
