@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import math
+import random
 import re
 from typing import Any
 
@@ -76,6 +77,37 @@ def _song_key(artist: str, title: str) -> str:
     return f"{artist.strip().lower()}|{t}"
 
 
+def _diverse_sample(
+    candidates: list[dict[str, Any]],
+    n: int,
+    *,
+    artist_cap: int,
+    rng: random.Random,
+) -> list[dict[str, Any]]:
+    """score(mood_fit) 가중 비복원 랜덤 샘플 n곡 + 아티스트당 artist_cap 캡.
+
+    candidates는 score 내림차순(상위 관련 window). 무드 점수가 거친 v/e/t라 상위가 사실상
+    동점이면 정렬론 매번 같은 곡 → 가중 랜덤으로 매 호출 다른 조합을 준다(가중치=score라
+    잘 맞는 곡이 더 자주). 아티스트 캡으로 한 결과 안에서도 다양. 캡 때문에 n을 못 채우면
+    캡 초과분(overflow)을 score 높은 순으로 보충."""
+    pool = list(candidates)
+    chosen: list[dict[str, Any]] = []
+    overflow: list[dict[str, Any]] = []
+    artist_count: dict[str, int] = {}
+    while pool and len(chosen) < n:
+        weights = [max(float(c["score"]), 1e-6) for c in pool]
+        c = pool.pop(rng.choices(range(len(pool)), weights=weights, k=1)[0])
+        if artist_count.get(c["artist"], 0) >= artist_cap:
+            overflow.append(c)
+            continue
+        chosen.append(c)
+        artist_count[c["artist"]] = artist_count.get(c["artist"], 0) + 1
+    if len(chosen) < n:
+        overflow.sort(key=lambda d: d["score"], reverse=True)
+        chosen.extend(overflow[: n - len(chosen)])
+    return chosen
+
+
 def recommend_by_taste_mood(
     conn: psycopg.Connection,
     user_id: str,
@@ -84,6 +116,9 @@ def recommend_by_taste_mood(
     tempo: float,
     n: int = 20,
     pool_size: int = 500,
+    window_mult: int = 4,
+    artist_cap: int = 2,
+    rng: random.Random | None = None,
 ) -> list[dict[str, Any]]:
     """취향 임베딩 최근접 pool_size곡(보유/차단 제외)을 무드(v/e/t)로 재정렬한 top-n.
 
@@ -148,4 +183,9 @@ def recommend_by_taste_mood(
             continue
         seen.add(k)
         deduped.append(d)
-    return deduped[:n]
+    # 후보가 n 이하면 더 고를 게 없으니 정렬 그대로(결정적). 잉여가 있을 때만 다양성 주입:
+    # 상위 관련 window에서 mood_fit 가중 랜덤 샘플 + 아티스트 캡 → 매 호출 다른 조합.
+    if len(deduped) <= n:
+        return deduped
+    window = deduped[: max(n, n * window_mult)]
+    return _diverse_sample(window, n, artist_cap=artist_cap, rng=rng or random.Random())

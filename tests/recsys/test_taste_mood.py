@@ -108,3 +108,36 @@ def test_dedupes_same_song_versions(db_conn, cleanup):
     recs = recommend_by_taste_mood(db_conn, uid, 0.40, 0.25, 85.0, n=500, pool_size=500)
     ids = [r["track_id"] for r in recs]
     assert len({v1, v2} & set(ids)) == 1     # 두 버전 중 정확히 하나만
+
+
+def test_diverse_sample_varies_caps_and_fills():
+    """_diverse_sample — 시드별 다른 조합(다양성) + 재현 + 아티스트 캡 + overflow 보충."""
+    import random
+    from collections import Counter
+
+    from mrms.recsys.taste_mood import _diverse_sample
+
+    # 동점 풀(score 동일) — 정렬로는 다양성이 안 나오는 케이스. 20 아티스트 × 2곡.
+    cand = [
+        {"track_id": f"t{i}", "artist": f"Ar{i % 20}", "title": f"S{i}", "score": 1.0}
+        for i in range(40)
+    ]
+    s1 = [c["track_id"] for c in _diverse_sample(cand, 20, artist_cap=2, rng=random.Random(1))]
+    s2 = [c["track_id"] for c in _diverse_sample(cand, 20, artist_cap=2, rng=random.Random(2))]
+    assert len(s1) == 20 and len(s2) == 20
+    assert s1 != s2  # 시드 다르면 다른 조합(의도적 다양성)
+    s1b = [c["track_id"] for c in _diverse_sample(cand, 20, artist_cap=2, rng=random.Random(1))]
+    assert s1 == s1b  # 같은 시드 = 재현(테스트 가능)
+    counts = Counter(
+        c["artist"]
+        for c in _diverse_sample(cand, 20, artist_cap=2, rng=random.Random(3))
+    )
+    assert max(counts.values()) <= 2  # 아티스트 캡 준수(아티스트 충분할 때)
+
+    # 한 아티스트뿐 → 캡 초과해도 overflow 보충으로 n 채움
+    solo = [
+        {"track_id": f"u{i}", "artist": "Solo", "title": f"S{i}", "score": 1.0}
+        for i in range(30)
+    ]
+    sel = _diverse_sample(solo, 20, artist_cap=2, rng=random.Random(1))
+    assert len(sel) == 20
