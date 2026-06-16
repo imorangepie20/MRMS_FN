@@ -19,8 +19,10 @@ export function ArtistIntroModal() {
   const [data, setData] = useState<ArtistIntro | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
+    setExpanded(false);
     if (!name) {
       setData(null);
       setError(false);
@@ -80,9 +82,20 @@ export function ArtistIntroModal() {
             </div>
           )}
           {!loading && data?.bio && (
-            <p className="text-[14px] text-(--mrms-ink-soft) leading-relaxed mb-4">
-              {data.bio}
-            </p>
+            <div className="mb-4">
+              <p className="text-[14px] text-(--mrms-ink-soft) leading-relaxed whitespace-pre-line">
+                {expanded ? data.bioFull : data.bio}
+              </p>
+              {data.bioFull && data.bioFull !== data.bio && (
+                <button
+                  type="button"
+                  onClick={() => setExpanded((e) => !e)}
+                  className="mt-2 font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) hover:text-(--mrms-rust) bg-transparent border-0 cursor-pointer"
+                >
+                  {expanded ? "접기" : "더보기"}
+                </button>
+              )}
+            </div>
           )}
           {!loading && (data?.tracks?.length ?? 0) > 0 && (
             <>

@@ -7,6 +7,7 @@ export interface ArtistIntro {
   image: string | null;
   genres: string[];
   bio: string | null;
+  bioFull: string | null;
   tracks: ModalTrack[];
 }
 
