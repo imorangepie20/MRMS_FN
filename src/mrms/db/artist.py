@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import psycopg
 
+from mrms.db.user_track import get_user_track_states
+
 
 def artist_tracks_by_name(
     conn: psycopg.Connection, name_normalized: str, *,
@@ -56,13 +58,7 @@ def artist_tracks_by_name(
         })
 
     if user_id and track_ids:
-        with conn.cursor() as cur:
-            cur.execute(
-                '''SELECT "trackId", source, "isCore" FROM "UserTrack"
-                   WHERE "userId" = %s AND "trackId" = ANY(%s)''',
-                (user_id, track_ids),
-            )
-            state = {row[0]: (row[1] == "liked", bool(row[2])) for row in cur.fetchall()}
+        state = get_user_track_states(conn, user_id, track_ids)
         for t in out:
             liked, pct = state.get(t["track_id"], (False, False))
             t["liked"], t["pct"] = liked, pct
