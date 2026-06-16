@@ -236,7 +236,7 @@ export function MrtDashboard({ user, mrt }: Props) {
                     className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5 truncate"
                     title={a.artist}
                   >
-                    {a.artist}
+                    <ArtistLink name={a.artist} as="span" />
                   </div>
                 </button>
                 {removedAlbums[a.album_id] ? (

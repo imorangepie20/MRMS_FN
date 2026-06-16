@@ -347,7 +347,7 @@ function AlbumsTab({ count }: { count: number }) {
                 className="font-mono text-[11px] text-[var(--mrms-ink-soft)] mt-0.5 truncate"
                 title={a.artist}
               >
-                {a.artist}
+                <ArtistLink name={a.artist} as="span" />
               </div>
               <div className="font-mono text-[10px] text-[var(--mrms-ink-mute)] mt-0.5">
                 {a.track_count} tracks
@@ -370,7 +370,7 @@ function AlbumsTab({ count }: { count: number }) {
               {selected.title}
             </span>
             <span className="font-mono text-[11px] text-[var(--mrms-ink-soft)]">
-              {selected.artist}
+              <ArtistLink name={selected.artist} />
             </span>
           </div>
           <TrackList tracks={tracks} loading={tracksLoading} />
