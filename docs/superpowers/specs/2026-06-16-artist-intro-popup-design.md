@@ -11,7 +11,7 @@
 
 ## 핵심 결정
 
-1. **소스 = 하이브리드**: 소개 텍스트는 Gemini(아티스트명 + 장르 맥락), 이미지·장르는 Spotify, 곡은 우리 DB. 어느 한쪽 실패해도 나머지로 표시(best-effort).
+1. **소스 = 하이브리드**(Tidal 강화 후 최종): bio는 **Tidal 실제 에디토리얼 전기**를 **Gemini가 2-3문장 한국어로 요약**(생성 아닌 요약 → 환각 최소), 전체 전기는 모달 "더보기"(`bioFull`). 이미지는 **Tidal 우선 → Spotify 폴백**. 곡은 우리 DB. 어느 소스 실패해도 나머지로 성립(best-effort). Tidal bio 없으면 Gemini가 장르 맥락으로 생성(폴백). **장르는 현재 신뢰 소스 없음**(Spotify가 `genres` 필드 deprecate, `Artist.mainGenre` 미채움) → 칩 미표시(graceful), Tidal bio가 보완. 상세는 문서 하단 "Tidal 강화" 참조.
 2. **트리거 = 모든 페이지**: 공용 `<ArtistLink>` 컴포넌트로 아티스트명을 감싸 일괄 적용(MRT·검색·PGT·EMP 등).
 3. **키 = nameNormalized**(`name.lower().strip()`, Artist.nameNormalized와 동일). 트리거는 어디서나 아티스트 **이름 문자열**만 가지므로 이름 기준.
 4. **캐시**: 소개 텍스트·이미지·장르는 잘 안 변해 `ArtistProfile` 테이블에 영구 캐시(재생성/재호출 X). 곡 리스트는 DB에서 라이브 조회.
@@ -100,6 +100,16 @@ CREATE TABLE IF NOT EXISTS "ArtistProfile" (
 4. 프론트 `ArtistLink`·`ArtistIntroModal`·provider + 레이아웃 마운트 + 렌더처 교체 + `lib/api/artist.ts`.
 5. 테스트(백엔드 4종 + 프론트 tsc/build).
 
+## Tidal 강화 (구현 반영 — 1차 배포 후 후속)
+
+bio 품질을 위해 소스를 Tidal 중심으로 재구성(브랜치 feat/artist-tidal-bio):
+
+- **Tidal 아티스트 조회** `src/mrms/search/tidal_artist.py:fetch_tidal_artist(http, name) -> (image_url, bio_full)`: app 토큰(`get_app_token(http,"tidal")`, 유저인증 불필요) → `v1/search?types=ARTISTS&limit=1&countryCode=KR` → **정규화 이름 일치 가드**(Spotify와 동일, 퍼지 top-hit으로 다른 아티스트 캐시 방지) → picture UUID(`-`→`/`)로 `resources.tidal.com/images/{path}/750x750.jpg`, `v1/artists/{id}/bio` text를 `_strip_tidal_markup`(알려진 `[wimpLink]`/`[album]`/`[track]`/`[video]` 태그만 제거, 문단 줄바꿈 보존)으로 정리해 `bio_full`. 전 단계 best-effort.
+- **Gemini 요약** `recsys/artist_bio.py:gemini_artist_bio(name, genres, source_text=None)`: `source_text`(Tidal bio) 있으면 원문을 2-3문장으로 **요약**(원문 사실만, [:3000] 캡), 없으면 기존 생성. 엔드포인트에서 `await asyncio.to_thread(...)`로 호출(이벤트루프 블로킹 방지).
+- **엔드포인트** `api/artist.py`: 캐시 MISS + 풀 존재 시 같은 httpx 컨텍스트에서 Tidal+Spotify 조회 → `image = tidal or spotify`, `bio = Gemini요약 or bio_full`. `ArtistProfile.bioFull` 컬럼 추가(마이그레이션 `20260616110000_artistprofile_biofull`). 응답 `{name, image, genres, bio, bioFull, tracks}`.
+- **모달** `ArtistIntroModal`: 요약(`bio`) 표시 + `bioFull && bioFull!==bio`일 때 "더보기/접기" 토글로 전체 전기 펼침. `name` 변경 시 `expanded` 리셋.
+- **장르 부재**(2026-06 확인): Spotify Web API가 artist `genres`를 `null`로 deprecate, `Artist.mainGenre`는 0% 채움 → 신뢰 가능한 장르 소스 없음. 모달은 빈 장르를 graceful 숨김. 장르 칩이 필요하면 후속으로 Gemini가 Tidal bio에서 태그 추출(미채택).
+
 ## 관련 문서
 
-- 코드: `src/mrms/search/app_token.py`(Spotify 앱 토큰), `src/mrms/recsys/discover.py`(Gemini 패턴), `src/mrms/api/main.py:_fetch_track_metadata`(커버/플랫폼 LATERAL), `web/src/components/track/ModalTrackList.tsx`(트랙 리스트/재생), `web/src/components/album/AlbumDetailModal.tsx`(모달 톤).
+- 코드: `src/mrms/search/app_token.py`(Spotify/Tidal 앱 토큰), `src/mrms/search/tidal_artist.py`(Tidal 아티스트 bio/이미지), `src/mrms/recsys/artist_bio.py`(Gemini 요약), `src/mrms/api/artist.py`(엔드포인트), `web/src/components/track/ModalTrackList.tsx`(트랙 리스트/재생), `web/src/components/artist/ArtistIntroModal.tsx`(모달).
