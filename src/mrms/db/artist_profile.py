@@ -8,7 +8,7 @@ def get_artist_profile(conn: psycopg.Connection, name_normalized: str) -> dict |
     """nameNormalized로 캐시된 프로필. 없으면 None."""
     with conn.cursor() as cur:
         cur.execute(
-            'SELECT "nameNormalized", name, bio, "imageUrl", genres '
+            'SELECT "nameNormalized", name, bio, "imageUrl", genres, "bioFull" '
             'FROM "ArtistProfile" WHERE "nameNormalized" = %s',
             (name_normalized,),
         )
@@ -17,24 +17,27 @@ def get_artist_profile(conn: psycopg.Connection, name_normalized: str) -> dict |
         return None
     return {
         "name_normalized": r[0], "name": r[1], "bio": r[2],
-        "image_url": r[3], "genres": list(r[4] or []),
+        "image_url": r[3], "genres": list(r[4] or []), "bio_full": r[5],
     }
 
 
 def upsert_artist_profile(
     conn: psycopg.Connection, name_normalized: str, name: str,
     bio: str | None, image_url: str | None, genres: list[str],
+    *, bio_full: str | None = None,
 ) -> None:
     """프로필 캐시 저장(replace). 자체 commit."""
     with conn.cursor() as cur:
         cur.execute(
             '''INSERT INTO "ArtistProfile"
-                 ("nameNormalized", name, bio, "imageUrl", genres, "fetchedAt")
-               VALUES (%s, %s, %s, %s, %s, NOW())
+                 ("nameNormalized", name, bio, "imageUrl", genres,
+                  "bioFull", "fetchedAt")
+               VALUES (%s, %s, %s, %s, %s, %s, NOW())
                ON CONFLICT ("nameNormalized") DO UPDATE SET
                  name = EXCLUDED.name, bio = EXCLUDED.bio,
                  "imageUrl" = EXCLUDED."imageUrl", genres = EXCLUDED.genres,
+                 "bioFull" = EXCLUDED."bioFull",
                  "fetchedAt" = NOW()''',
-            (name_normalized, name, bio, image_url, genres),
+            (name_normalized, name, bio, image_url, genres, bio_full),
         )
     conn.commit()

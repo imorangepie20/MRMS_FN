@@ -54,6 +54,7 @@ model ArtistProfile {
   nameNormalized String   @id
   name           String
   bio            String?
+  bioFull        String?
   imageUrl       String?
   genres         String[] @default([])
   fetchedAt      DateTime @default(now())
