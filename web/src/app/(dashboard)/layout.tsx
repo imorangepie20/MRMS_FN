@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { ArtistIntroModal } from "@/components/artist/ArtistIntroModal";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
 import { PlayerBar } from "@/components/player/PlayerBar";
@@ -34,6 +35,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <main className="flex-1 pb-32 md:pb-36">{children}</main>
       </div>
       <PlayerBar />
+      <ArtistIntroModal />
     </div>
   );
 }
