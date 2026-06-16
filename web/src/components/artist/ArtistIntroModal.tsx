@@ -18,26 +18,32 @@ export function ArtistIntroModal() {
   const close = useArtistModal((s) => s.close);
   const [data, setData] = useState<ArtistIntro | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     if (!name) {
       setData(null);
+      setError(false);
       return;
     }
     let mounted = true;
     setData(null);
+    setError(false);
     setLoading(true);
     fetchArtistIntro(name)
       .then((d) => mounted && setData(d))
-      .catch(() => mounted && setData(null))
+      .catch(() => mounted && setError(true))
       .finally(() => mounted && setLoading(false));
     return () => {
       mounted = false;
     };
   }, [name]);
 
-  const empty =
-    !loading && data && !data.bio && !data.image && (data.tracks?.length ?? 0) === 0;
+  const hasContent = !!(
+    data && (data.bio || data.image || (data.tracks?.length ?? 0) > 0)
+  );
+  // fetch 실패가 아니라 정상 응답인데 내용이 없을 때만 "정보 없어요".
+  const empty = !loading && !error && !hasContent;
 
   return (
     <Dialog open={!!name} onOpenChange={(o) => !o && close()}>
@@ -88,6 +94,11 @@ export function ArtistIntroModal() {
               </div>
               <ModalTrackList tracks={data!.tracks} />
             </>
+          )}
+          {!loading && error && (
+            <div className="py-8 text-center font-mono text-[11px] tracking-editorial uppercase text-(--mrms-ink-mute)">
+              아티스트 정보를 불러오지 못했어요
+            </div>
           )}
           {empty && (
             <div className="py-8 text-center font-mono text-[11px] tracking-editorial uppercase text-(--mrms-ink-mute)">
