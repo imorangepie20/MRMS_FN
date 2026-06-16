@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from mrms.api.admin_emp import router as admin_emp_router
 from mrms.api.albums import router as albums_router
+from mrms.api.artist import router as artist_router
 from mrms.api.artwork import router as artwork_router
 from mrms.api.auth_session import router as auth_session_router
 from mrms.api.auth_spotify import router as auth_spotify_router
@@ -59,6 +60,7 @@ app.include_router(user_tracks_router)
 app.include_router(playlists_router)
 app.include_router(shared_router)
 app.include_router(albums_router)
+app.include_router(artist_router)
 app.include_router(artwork_router)
 app.include_router(admin_emp_router)
 app.include_router(emp_browse_router)

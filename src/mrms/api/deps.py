@@ -89,3 +89,28 @@ def get_current_user_id(
         if expires_at < datetime.now(timezone.utc):
             raise HTTPException(401, "Session expired")
     return user_id
+
+
+def get_current_user_id_optional(
+    request: Request,
+    conn: psycopg.Connection = Depends(db_conn),
+) -> str | None:
+    """세션 있으면 user_id, 없거나 무효/만료면 None (raise 안 함). 공개+개인화 겸용."""
+    session_id = request.cookies.get("mrms_session")
+    if not session_id:
+        return None
+    with conn.cursor() as cur:
+        cur.execute(
+            'SELECT "userId", "expiresAt" FROM "AuthSession" WHERE id = %s',
+            (session_id,),
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    user_id, expires_at = row
+    if expires_at is not None:
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < datetime.now(timezone.utc):
+            return None
+    return user_id
