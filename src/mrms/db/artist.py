@@ -6,6 +6,19 @@ import psycopg
 from mrms.db.user_track import get_user_track_states
 
 
+def artist_in_pool(conn: psycopg.Connection, name_normalized: str) -> bool:
+    """우리 카탈로그(Artist)에 이 정규화 이름이 존재하는가.
+
+    소개 팝업의 외부(Spotify/Gemini) 호출 게이트 — 우리 풀에 없는 임의 이름으로
+    무인증 비용 소진/캐시 오염을 막는다(풀에 없으면 곡도 0개라 외부 조회 무의미)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            'SELECT 1 FROM "Artist" WHERE "nameNormalized" = %s LIMIT 1',
+            (name_normalized,),
+        )
+        return cur.fetchone() is not None
+
+
 def artist_tracks_by_name(
     conn: psycopg.Connection, name_normalized: str, *,
     user_id: str | None = None, limit: int = 30,
