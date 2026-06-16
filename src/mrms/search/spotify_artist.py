@@ -30,6 +30,11 @@ async def fetch_spotify_artist(
         if not items:
             return None, []
         a = items[0]
+        # 캐시되는 값이므로 느슨하게 관련된 다른 아티스트를 채택하지 않도록
+        # 반환 이름이 입력 이름과 정규화상 일치할 때만 채택(nameNormalized 규약 동일).
+        if (a.get("name") or "").strip().lower() != name.strip().lower():
+            log.info("spotify artist mismatch: query=%r matched=%r", name, a.get("name"))
+            return None, []
         imgs = a.get("images") or []
         image = imgs[0].get("url") if imgs else None
         return image, list(a.get("genres") or [])

@@ -17,10 +17,18 @@ def test_artist_tracks_by_name_shape(db_conn, cleanup):
     )
     tid = r["track_id"]
     db_conn.commit()
-    cleanup('DELETE FROM "EMPSource" WHERE source_id = %s', ("station:art",))
-    cleanup('DELETE FROM "TrackPlatform" WHERE "trackId" = %s', (tid,))
-    cleanup('DELETE FROM "Track" WHERE id = %s', (tid,))
+    # cleanup은 등록 역순으로 실행 → 자식(EMPSource/TrackPlatform/Track/Album)을
+    # 먼저 지우고 부모(Artist)를 마지막에 지우도록 Artist를 가장 먼저 등록.
+    # album_title="Alb"가 Album(→Artist FK)을 생성하므로 Album cleanup도 등록.
     cleanup('DELETE FROM "Artist" WHERE "nameNormalized" = %s', (artist.lower().strip(),))
+    cleanup(
+        'DELETE FROM "Album" WHERE "artistId" IN '
+        '(SELECT id FROM "Artist" WHERE "nameNormalized" = %s)',
+        (artist.lower().strip(),),
+    )
+    cleanup('DELETE FROM "Track" WHERE id = %s', (tid,))
+    cleanup('DELETE FROM "TrackPlatform" WHERE "trackId" = %s', (tid,))
+    cleanup('DELETE FROM "EMPSource" WHERE source_id = %s', ("station:art",))
 
     out = artist_tracks_by_name(db_conn, artist.lower().strip())
     rows = [t for t in out if t["track_id"] == tid]
@@ -51,11 +59,13 @@ def test_artist_tracks_liked_pct_when_user(db_conn, cleanup):
             ("ut_" + _uuid.uuid4().hex[:12], uid, tid, "liked", "youtube"),
         )
     db_conn.commit()
-    cleanup('DELETE FROM "EMPSource" WHERE source_id = %s', ("station:liked",))
-    cleanup('DELETE FROM "TrackPlatform" WHERE "trackId" = %s', (tid,))
-    cleanup('DELETE FROM "UserTrack" WHERE "userId" = %s', (uid,))
-    cleanup('DELETE FROM "Track" WHERE id = %s', (tid,))
+    # cleanup은 등록 역순 실행 → 부모(Artist)를 가장 먼저 등록해 마지막에 삭제.
+    # album_title=None이라 Album은 생성되지 않음.
     cleanup('DELETE FROM "Artist" WHERE "nameNormalized" = %s', (artist.lower().strip(),))
+    cleanup('DELETE FROM "Track" WHERE id = %s', (tid,))
+    cleanup('DELETE FROM "UserTrack" WHERE "userId" = %s', (uid,))
+    cleanup('DELETE FROM "TrackPlatform" WHERE "trackId" = %s', (tid,))
+    cleanup('DELETE FROM "EMPSource" WHERE source_id = %s', ("station:liked",))
 
     out = artist_tracks_by_name(db_conn, artist.lower().strip(), user_id=uid)
     t = next(x for x in out if x["track_id"] == tid)
