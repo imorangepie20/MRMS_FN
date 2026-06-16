@@ -59,9 +59,11 @@ def test_artist_tracks_liked_pct_when_user(db_conn, cleanup):
             ("ut_" + _uuid.uuid4().hex[:12], uid, tid, "liked", "youtube"),
         )
     db_conn.commit()
-    # cleanup은 등록 역순 실행 → 부모(Artist)를 가장 먼저 등록해 마지막에 삭제.
-    # album_title=None이라 Album은 생성되지 않음.
+    # cleanup은 등록 역순 실행 → 부모(Artist/User)를 먼저 등록해 마지막에 삭제.
+    # album_title=None이라 Album은 생성되지 않음. User는 UserTrack 삭제 후 지워야 하므로
+    # UserTrack보다 먼저 등록(역순 실행 시 나중에 삭제)해 매 실행마다 고아 User가 안 남게.
     cleanup('DELETE FROM "Artist" WHERE "nameNormalized" = %s', (artist.lower().strip(),))
+    cleanup('DELETE FROM "User" WHERE id = %s', (uid,))
     cleanup('DELETE FROM "Track" WHERE id = %s', (tid,))
     cleanup('DELETE FROM "UserTrack" WHERE "userId" = %s', (uid,))
     cleanup('DELETE FROM "TrackPlatform" WHERE "trackId" = %s', (tid,))
