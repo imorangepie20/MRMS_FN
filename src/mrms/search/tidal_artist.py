@@ -91,17 +91,18 @@ async def fetch_tidal_artist(
         log.warning("tidal artist search failed for %s: %r", name, e)
         return None, None
 
-    try:
-        rb = await http.get(
-            f"{TIDAL_ARTIST_URL}/{artist_id}/bio",
-            params={"countryCode": "KR"},
-            headers=headers,
-        )
-        if rb.status_code == 200:
-            text = (rb.json().get("text") or "").strip()
-            if text:
-                bio_full = _strip_tidal_markup(text) or None
-    except Exception as e:  # noqa: BLE001 — best-effort
-        log.warning("tidal artist bio failed for %s: %r", name, e)
+    if artist_id is not None:
+        try:
+            rb = await http.get(
+                f"{TIDAL_ARTIST_URL}/{artist_id}/bio",
+                params={"countryCode": "KR"},
+                headers=headers,
+            )
+            if rb.status_code == 200:
+                text = (rb.json().get("text") or "").strip()
+                if text:
+                    bio_full = _strip_tidal_markup(text) or None
+        except Exception as e:  # noqa: BLE001 — best-effort
+            log.warning("tidal artist bio failed for %s: %r", name, e)
 
     return image_url, bio_full
