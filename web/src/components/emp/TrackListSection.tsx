@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Play } from "lucide-react";
 
+import { ArtistLink } from "@/components/artist/ArtistLink";
 import { fetchEmpItemTracks } from "@/lib/api/emp";
 import type { EmpItemTrack, EmpSection } from "@/lib/types";
 import {
@@ -128,7 +129,7 @@ export function TrackListSection({
                       className="font-mono text-[11px] text-(--mrms-ink-soft) truncate mt-0.5"
                       title={t.artist}
                     >
-                      {t.artist}
+                      <ArtistLink name={t.artist} />
                     </div>
                   </div>
 

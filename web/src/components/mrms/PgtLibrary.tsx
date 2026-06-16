@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Heart, Play, Sparkles } from "lucide-react";
 
+import { ArtistLink } from "@/components/artist/ArtistLink";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { SharePlaylistButton } from "@/components/playlist/SharePlaylistButton";
 import { loadAndPlay } from "@/lib/player";
@@ -134,7 +135,7 @@ function PgtTrackRow({ track }: { track: PgtTrack }) {
           className="text-xs text-[var(--mrms-ink-soft)] mt-0.5 truncate"
           title={`${track.artist}${track.album_title ? ` — ${track.album_title}` : ""}`}
         >
-          {track.artist}
+          <ArtistLink name={track.artist} />
           {track.album_title && (
             <>
               {" — "}

@@ -6,6 +6,7 @@ import { EyeOff, Heart, Play, Sparkles, ThumbsDown } from "lucide-react";
 import { collectAlbum, dislikeAlbum, dislikeTrack, dismissAlbum, dismissTrack } from "@/lib/api";
 
 import { AlbumDetailModal } from "@/components/album/AlbumDetailModal";
+import { ArtistLink } from "@/components/artist/ArtistLink";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { CreatePlaylistModal } from "@/components/playlist/CreatePlaylistModal";
 import { PlaylistDetailModal } from "@/components/playlist/PlaylistDetailModal";
@@ -550,7 +551,7 @@ function TrackRow({
           className="text-xs text-[var(--mrms-ink-soft)] mt-0.5 truncate"
           title={`${track.artist}${track.album_title ? ` — ${track.album_title}` : ""}`}
         >
-          {track.artist}
+          <ArtistLink name={track.artist} />
           {track.album_title && (
             <>
               {" — "}

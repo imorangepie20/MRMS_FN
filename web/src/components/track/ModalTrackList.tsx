@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Heart, Play, Sparkles } from "lucide-react";
 
+import { ArtistLink } from "@/components/artist/ArtistLink";
 import { loadAndPlay, realYoutubeId } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
 import type { QueueTrack } from "@/store/player";
@@ -203,7 +204,7 @@ function ModalTrackRow({
           className="sm:hidden text-[11px] text-(--mrms-ink-soft) truncate mt-0.5"
           title={`${track.artist}${track.album_title ? ` — ${track.album_title}` : ""}`}
         >
-          {track.artist}
+          <ArtistLink name={track.artist} />
           {track.album_title ? ` — ${track.album_title}` : ""}
         </div>
       </div>
@@ -211,7 +212,7 @@ function ModalTrackRow({
         className="hidden sm:block min-w-0 text-[12px] text-(--mrms-ink-soft) truncate"
         title={track.artist}
       >
-        {track.artist}
+        <ArtistLink name={track.artist} />
       </div>
       <div
         className="hidden sm:block min-w-0 font-display italic text-[12px] text-(--mrms-ink-soft) truncate"

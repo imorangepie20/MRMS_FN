@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Play } from "lucide-react";
 
+import { ArtistLink } from "@/components/artist/ArtistLink";
 import { fetchEmpItemTracks } from "@/lib/api/emp";
 import type { EmpItemTrack, EmpSection } from "@/lib/types";
 import { PlayAllButton, formatDuration, isPlayable, playTracks } from "@/components/track/ModalTrackList";
@@ -232,7 +233,7 @@ function TrackCard({
         {track.title}
       </div>
       <div className="font-mono text-[10px] text-(--mrms-ink-mute) truncate" title={track.artist}>
-        {track.artist}
+        <ArtistLink name={track.artist} />
         {track.duration_ms != null && (
           <span className="text-(--mrms-ink-mute)"> · {formatDuration(track.duration_ms)}</span>
         )}
