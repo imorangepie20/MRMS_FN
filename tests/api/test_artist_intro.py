@@ -32,6 +32,7 @@ def _seed_pool_artist(db_conn, cleanup, name, norm):
     return tid
 
 
+@respx.mock  # 등록 라우트 0개 → 외부 호출 시 즉시 실패(no-egress 계약을 강제).
 def test_intro_cache_hit_no_external(db_conn, cleanup, monkeypatch):
     """캐시된 프로필이면 Tidal/Spotify/Gemini 호출 없이 반환(bioFull 포함)."""
     name = f"Cached Artist {_uuid.uuid4().hex[:6]}"
@@ -128,6 +129,7 @@ def test_intro_miss_tidal_bio_404_falls_back(db_conn, cleanup, monkeypatch):
     assert d["genres"] == ["jazz"]
 
 
+@respx.mock  # 등록 라우트 0개 → 게이트가 깨져 외부가 불리면 즉시 실패.
 def test_intro_not_in_pool_no_external(db_conn, cleanup, monkeypatch):
     """우리 풀에 없는 임의 이름 → Tidal/Spotify/Gemini 미호출, 빈 결과(곡 0). 비용 DoS 차단."""
     name = f"Ghost Artist {_uuid.uuid4().hex[:6]}"

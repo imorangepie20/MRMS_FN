@@ -30,14 +30,19 @@ _CLOSE_TAG_RE = re.compile(
     r"\[/(?:" + "|".join(_KNOWN_TAGS) + r")\]",
     re.IGNORECASE,
 )
-_WS_RE = re.compile(r"\s+")
+# 공백/탭만 접고(줄바꿈은 보존), 빈 줄 연속은 한 줄로 정규화 — 프론트의
+# whitespace-pre-line이 \n을 문단 구분으로 렌더하므로 문단 구조를 유지한다.
+_HSPACE_RE = re.compile(r"[ \t]+")
+_BLANKLINES_RE = re.compile(r"\n[ \t]*\n[ \t\n]*")
 
 
 def _strip_tidal_markup(text: str) -> str:
-    """Tidal 인라인 마크업 태그 제거(내부 텍스트 보존), 연속 공백 정리."""
+    """Tidal 인라인 마크업 태그 제거(내부 텍스트 보존). 공백/탭은 접되 문단
+    구분 줄바꿈은 보존(프론트 whitespace-pre-line 의도와 일치)."""
     out = _OPEN_TAG_RE.sub("", text)
     out = _CLOSE_TAG_RE.sub("", out)
-    out = _WS_RE.sub(" ", out)
+    out = _HSPACE_RE.sub(" ", out)
+    out = _BLANKLINES_RE.sub("\n\n", out)
     return out.strip()
 
 
@@ -73,6 +78,13 @@ async def fetch_tidal_artist(
         if not items:
             return None, None
         artist = items[0]
+        # bio/이미지는 고신뢰 필드라 캐시·노출됨 — limit=1 검색의 첫 결과를
+        # 맹신하면 풀에 정확 일치가 없는 아티스트에 다른 아티스트의 전기/이미지가
+        # 붙는다. Spotify와 동일하게 정규화 이름이 일치할 때만 채택.
+        if (artist.get("name") or "").strip().lower() != name.strip().lower():
+            log.info("tidal artist mismatch: query=%r matched=%r",
+                     name, artist.get("name"))
+            return None, None
         artist_id = artist.get("id")
         image_url = _tidal_artist_image(artist.get("picture"))
     except Exception as e:  # noqa: BLE001 — best-effort
