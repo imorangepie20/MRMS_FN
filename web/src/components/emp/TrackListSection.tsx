@@ -129,7 +129,7 @@ export function TrackListSection({
                       className="font-mono text-[11px] text-(--mrms-ink-soft) truncate mt-0.5"
                       title={t.artist}
                     >
-                      <ArtistLink name={t.artist} />
+                      <ArtistLink name={t.artist} as="span" />
                     </div>
                   </div>
 

@@ -233,7 +233,7 @@ function TrackCard({
         {track.title}
       </div>
       <div className="font-mono text-[10px] text-(--mrms-ink-mute) truncate" title={track.artist}>
-        <ArtistLink name={track.artist} />
+        <ArtistLink name={track.artist} as="span" />
         {track.duration_ms != null && (
           <span className="text-(--mrms-ink-mute)"> · {formatDuration(track.duration_ms)}</span>
         )}
