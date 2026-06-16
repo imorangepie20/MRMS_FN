@@ -990,3 +990,16 @@ git commit -m "feat(artist): 아티스트명 렌더처를 ArtistLink로 교체 (
 **Placeholder scan:** 모든 스텝 실제 코드·명령·기대출력. 마이그레이션 prod 적용은 deploy.sh `apply_pending_migrations` 자동(디렉토리 커밋만) — 별도 액션 없음. 그 외 placeholder 없음.
 
 **Type consistency:** 백엔드 곡 dict 키(track_id/title/artist/album_id/album_title/album_cover/tidal_track_id/spotify_track_id/youtube_track_id/duration_ms/liked/pct) ↔ 프론트 `ModalTrack` 필수 필드(track_id/title/artist/tidal_track_id/spotify_track_id, 나머지 optional) 일치 → 캐스팅 없이 `ModalTrackList`에 흘러감. 엔드포인트 응답 `{name,image,genres,bio,tracks}` ↔ `ArtistIntro` ↔ 테스트 단언 일치. `get_artist_profile` 반환 `image_url`/`genres` ↔ 엔드포인트 `prof.get("image_url")` 일치. `gemini_artist_bio(name, genres)` 시그니처 ↔ 엔드포인트 호출·테스트 monkeypatch(`lambda n, g, **k`) 일치. `fetch_spotify_artist(http, name) -> (image, genres)` ↔ 엔드포인트 언패킹 일치.
+
+---
+
+## 구현 후 보강 (홀리스틱 리뷰 + 완성도) — 최종 반영
+
+5태스크 실행 후 전체 홀리스틱 리뷰(4차원 병렬 + 적대적 검증)와 완성도 점검에서 아래를 추가 반영했다(전부 커밋·테스트 통과):
+
+1. **보안 — 무인증 비용 DoS/캐시 오염 차단**: 엔드포인트가 캐시 MISS 시 `db/artist.py:artist_in_pool()` 게이트로 **우리 풀(`Artist.nameNormalized`)에 실제 있는 아티스트일 때만** Spotify/Gemini 외부 호출 + `ArtistProfile` upsert. 풀에 없는 임의 `name`은 외부 호출·캐시쓰기 생략(곡 0개라 무의미). 테스트 `test_intro_not_in_pool_no_external` 추가, `test_intro_miss_fetches_and_caches`는 Artist 풀 시드 후 검증.
+2. **성능 — 이벤트루프 블로킹 제거**: async 핸들러의 blocking `gemini_artist_bio`를 `await asyncio.to_thread(...)`로 오프로드.
+3. **UX — 모달 fetch 실패 처리**: `ArtistIntroModal`에 `error` 상태 추가, 백엔드 5xx/네트워크 오류 시 "아티스트 정보를 불러오지 못했어요" 안내(빈 다이얼로그 죽은 상태 제거), `name` 변경 시 리셋. `empty`는 정상응답+무내용일 때만.
+4. **완성도 — 앨범 단위 아티스트명도 커버**: MrtDashboard 추천 앨범카드, PgtLibrary 앨범 그리드카드(둘 다 `<button>` 안 → `as="span"`), PgtLibrary 선택앨범 마스트헤드. "아티스트명 노출 모든 곳" 목표 충족.
+5. **테스트 위생**: `test_artist_tracks`가 Album cleanup 누락으로 teardown FK 에러 + 고아행을 남기던 것 수정, 매 실행 User 누수도 하드닝.
+6. **알려진 한계**: EMP 비재생 트랙은 카드 전체가 `disabled <button>`이라 그 안 ArtistLink 클릭이 억제될 수 있음(구조적·저빈도). 후속.

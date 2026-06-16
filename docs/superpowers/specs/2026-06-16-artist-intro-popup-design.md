@@ -50,10 +50,10 @@ CREATE TABLE IF NOT EXISTS "ArtistProfile" (
 
 흐름(**인증 선택** — 프로필·곡은 공개 카탈로그라 무인증 허용; 세션 있을 때만 곡에 liked/pct 부여 → 공유 페이지 `/p/{token}`에서도 동작):
 1. `norm = name.lower().strip()`. 빈 이름 → 400.
-2. **프로필**: `ArtistProfile`에서 `norm` 조회. 있으면 `{name, image, genres, bio}` 사용. 없으면:
+2. **프로필**: `ArtistProfile`에서 `norm` 조회. 있으면 `{name, image, genres, bio}` 사용. 없으면 — **우리 풀(`Artist.nameNormalized`)에 실제 존재하는 아티스트일 때만** 아래 외부 조회를 수행한다(`artist_in_pool` 게이트). 풀에 없으면 외부 호출·캐시쓰기 없이 빈 프로필(`bio/image=None, genres=[]`) — 어차피 곡 0개라 무의미하고, 무인증 임의 `name`으로 유료 Gemini/Spotify를 무제한 소진하거나 전역 캐시를 오염시키는 비용 DoS·enumeration을 원천 차단한다.
    - **Spotify**(best-effort): `get_app_token` → `GET /v1/search?type=artist&q={name}&limit=1` → 첫 매칭의 `images[0].url`·`genres`. 실패/무매칭 → image=None, genres=[].
-   - **Gemini bio**(best-effort): 프롬프트(아티스트명 + 우리 `Artist.mainGenre` + Spotify 장르) → 2-3문장 한국어 소개. `thinking_budget=0`, 실패 → bio=None.
-   - `ArtistProfile` upsert(자체 commit) — **bio 또는 image 중 하나라도 있으면 저장**(캐시 HIT). **둘 다 None(전체 실패)이면 저장 생략**해 다음 호출에 재시도 허용(곡은 그래도 반환).
+   - **Gemini bio**(best-effort): 프롬프트(아티스트명 + Spotify 장르) → 2-3문장 한국어 소개. `thinking_budget=0`, 실패 → bio=None. **blocking 호출이라 `await asyncio.to_thread(...)`로 오프로드**해 async 이벤트루프 블로킹을 막는다.
+   - `ArtistProfile` upsert(자체 commit) — **bio 또는 image 중 하나라도 있으면 저장**(캐시 HIT). **둘 다 None이면 저장 생략**해 다음 호출에 재시도 허용(곡은 그래도 반환). 풀 게이트 덕에 임의 `name`이 캐시에 쌓이지 않는다.
 3. **곡**: `Track JOIN Artist a ON a.id=t."artistId" WHERE a."nameNormalized"=%s`로 그 아티스트 곡 조회 + tidal/spotify/youtube LEFT join + EMPSource cover LATERAL(`_fetch_track_metadata` 패턴) → `RecommendedTrack` shape(youtube 합성 `yt_` 제외). 보유/차단 제외는 하지 않음(소개 맥락 — 그냥 그 아티스트 곡 노출). liked/pct 상태 부여. `LIMIT 30`, 같은 곡 `_song_key` dedup.
 
 ### bio 생성 헬퍼 `recsys`/`llm` 또는 `api/artist.py` 내부
@@ -65,14 +65,16 @@ CREATE TABLE IF NOT EXISTS "ArtistProfile" (
 - **`web/src/components/artist/ArtistLink.tsx`**(신규): `({ name, className? })` — 아티스트명을 `<button>`(밑줄/hover)으로 감싸 클릭 시 전역 모달 오픈. 전역 상태는 가벼운 zustand store(`useArtistModal`) 또는 Context로 `{ openArtist(name) }` 제공(어느 페이지서나 단일 모달 인스턴스).
 - **`web/src/components/artist/ArtistIntroModal.tsx`**(신규): 열린 아티스트명으로 `/api/artist/intro` fetch → 이미지+이름+장르 칩 + 소개 텍스트 + `ModalTrackList`(곡, `PlayAllButton`). 로딩/빈(소개·이미지 없으면 곡만, 곡도 없으면 "정보 없음") 상태. AlbumDetailModal 톤 재사용.
 - **전역 모달 마운트**: `app/(dashboard)/layout.tsx`(+ 공유 페이지 `p/layout.tsx`)에 `<ArtistIntroModal />` 1개 + provider. 어느 페이지서나 `ArtistLink`가 동일 모달을 연다.
-- **아티스트명 교체**: 렌더처의 `{artist}`/`track.artist`를 `<ArtistLink name={artist} />`로. 최소 대상: MrtDashboard(TrackRow), ModalTrackList(검색·모달 공용 → 큰 커버리지), PgtLibrary, EMP TrackCard. (공용 컴포넌트라 한 곳 바꾸면 여러 화면 커버.)
+- **아티스트명 교체**: 렌더처의 `{artist}`/`track.artist`를 `<ArtistLink name={artist} />`로. 대상: ModalTrackList(검색·모달·공유 공용 → 모바일+데스크탑 둘 다, 큰 커버리지), MrtDashboard(TrackRow + 추천 앨범카드), PgtLibrary(TrackList + 앨범 그리드카드 + 선택앨범 마스트헤드), EMP TrackSectionRow·TrackListSection. **클릭 가능한 행/카드(`<button>`) 안에서는 `<ArtistLink as="span">`**(role=button+키보드)로 렌더해 중첩 `<button>` 무효 HTML을 피한다. ArtistLink onClick은 `e.stopPropagation()`으로 행 재생/오픈 트리거를 막는다.
+- **알려진 한계**: EMP 비재생(unplayable) 트랙은 카드 전체가 `disabled <button>`이라, 그 안의 ArtistLink(span) 클릭이 브라우저에서 억제될 수 있음(구조적, 저빈도 — 대부분 트랙은 재생 가능). 추후 카드 구조 분리 시 해소.
 - **API 클라**: `lib/api/artist.ts` `fetchArtistIntro(name) -> ArtistIntro`.
 
 ## 에러 / 엣지
 
 - Spotify 무매칭/실패 → image=null, genres=[] (소개·곡으로 성립).
 - Gemini 실패/키 없음 → bio=null (이미지·장르·곡으로 성립).
-- 둘 다 없고 곡도 0 → 모달에 "이 아티스트 정보가 아직 없어요".
+- 둘 다 없고 곡도 0(정상 200 응답) → 모달에 "이 아티스트 정보가 아직 없어요".
+- **fetch 자체 실패(백엔드 5xx·네트워크 오류)** → 모달이 빈 본문으로 멈추지 않도록 error 상태를 별도 추적해 "아티스트 정보를 불러오지 못했어요" 안내(헤더만 남는 죽은 상태 방지). `name` 변경 시 error 리셋.
 - 동명이인: 이름 기준이라 Spotify 첫 매칭이 다른 동명 아티스트일 수 있음(MVP 허용 — 우리 곡은 우리 카탈로그 기준이라 정확).
 - 캐시: 프로필 영구(soft); 갱신 필요 시 후속(관리 액션).
 - ArtistLink는 공용 모달 1개를 공유(중복 마운트 금지).
