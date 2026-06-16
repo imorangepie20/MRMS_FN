@@ -25,6 +25,7 @@ export function ArtistIntroModal() {
       return;
     }
     let mounted = true;
+    setData(null);
     setLoading(true);
     fetchArtistIntro(name)
       .then((d) => mounted && setData(d))

@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ArtistIntroModal } from "@/components/artist/ArtistIntroModal";
 import { PlayerBar } from "@/components/player/PlayerBar";
 
 
@@ -23,6 +24,7 @@ export default function PublicShareLayout({
       </header>
       <main className="flex-1 pb-32 md:pb-36">{children}</main>
       <PlayerBar sidebarInset={false} />
+      <ArtistIntroModal />
     </div>
   );
 }
