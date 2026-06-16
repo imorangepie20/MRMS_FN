@@ -50,6 +50,15 @@ model Artist {
   @@index([nameNormalized])
 }
 
+model ArtistProfile {
+  nameNormalized String   @id
+  name           String
+  bio            String?
+  imageUrl       String?
+  genres         String[] @default([])
+  fetchedAt      DateTime @default(now())
+}
+
 model Album {
   id          String    @id @default(cuid())
   title       String
