@@ -243,11 +243,13 @@ function EditableTrackList({
   tracks,
   setTracks,
   onCountDelta,
+  loading,
 }: {
   playlistId: string;
   tracks: PgtTrack[];
   setTracks: (t: PgtTrack[]) => void;
   onCountDelta: (d: number) => void;
+  loading: boolean;
 }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -274,6 +276,13 @@ function EditableTrackList({
     });
   };
 
+  if (loading) {
+    return (
+      <div className="py-12 text-center font-mono text-[11px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
+        loading…
+      </div>
+    );
+  }
   if (!tracks.length) return <Empty />;
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
@@ -564,12 +573,15 @@ type PlaylistSelection =
   | { kind: "imported"; pl: PgtImportedPlaylist };
 
 function PlaylistsTab({
-  userPlaylists,
+  userPlaylists: initialUserPlaylists,
   importedPlaylists,
 }: {
   userPlaylists: UserPlaylistSummary[];
   importedPlaylists: PgtImportedPlaylist[];
 }) {
+  // 로컬 사본: rename/delete가 store뿐 아니라 이 화면(목록·헤더)에도 즉시 반영되게 한다.
+  const [userPlaylists, setUserPlaylists] =
+    useState<UserPlaylistSummary[]>(initialUserPlaylists);
   const [selected, setSelected] = useState<PlaylistSelection | null>(null);
   const [tracks, setTracks] = useState<PgtTrack[]>([]);
   const [tracksLoading, setTracksLoading] = useState(false);
@@ -700,7 +712,7 @@ function PlaylistsTab({
         <div>
           <div className="flex items-center gap-3 pb-2 mb-4 border-b border-[var(--mrms-ink)]">
             <button
-              onClick={() => { setSelected(null); setTracks([]); }}
+              onClick={() => { setSelected(null); setTracks([]); setEditingName(false); }}
               className="bg-transparent border-0 p-0 cursor-pointer font-mono text-[10px] tracking-editorial uppercase text-[var(--mrms-ink-mute)] hover:text-[var(--mrms-rust)]"
             >
               ← back
@@ -712,7 +724,13 @@ function PlaylistsTab({
                 onChange={(e) => setDraftName(e.target.value)}
                 onBlur={() => {
                   const n = draftName.trim();
-                  if (n && n !== selected.pl.name) renamePl(selected.pl.id, n);
+                  if (n && n !== selected.pl.name) {
+                    renamePl(selected.pl.id, n);
+                    setUserPlaylists((ps) =>
+                      ps.map((p) => (p.id === selected.pl.id ? { ...p, name: n } : p)),
+                    );
+                    setSelected({ kind: "user", pl: { ...selected.pl, name: n } });
+                  }
                   setEditingName(false);
                 }}
                 onKeyDown={(e) => {
@@ -745,7 +763,9 @@ function PlaylistsTab({
               <button
                 onClick={() => {
                   if (confirm(`'${selected.pl.name}' 삭제할까요?`)) {
-                    removePl(selected.pl.id);
+                    const deletedId = selected.pl.id;
+                    removePl(deletedId);
+                    setUserPlaylists((ps) => ps.filter((p) => p.id !== deletedId));
                     setSelected(null);
                     setTracks([]);
                   }
@@ -772,6 +792,7 @@ function PlaylistsTab({
               tracks={tracks}
               setTracks={setTracks}
               onCountDelta={(d) => usePlaylistStore.getState().bumpCount(selected.pl.id, d)}
+              loading={tracksLoading}
             />
           ) : (
             <TrackList tracks={tracks} loading={tracksLoading} />
