@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Heart, Play, Sparkles } from "lucide-react";
 
 import { ArtistLink } from "@/components/artist/ArtistLink";
+import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { AddToPlaylistMenu } from "@/components/playlist/AddToPlaylistMenu";
 import { loadAndPlay, realYoutubeId } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
@@ -105,7 +106,14 @@ export function PlayAllButton({ tracks }: { tracks: ModalTrack[] }) {
 /** Shared track list for ItemTracksModal / AlbumDetailModal / PlaylistDetailModal.
  *  Columns: title, artist, album, duration, like (heart), pct (sparkles).
  *  Hovering a row swaps the row number for a play button. */
-export function ModalTrackList({ tracks }: { tracks: ModalTrack[] }) {
+export function ModalTrackList({
+  tracks,
+  showCover = false,
+}: {
+  tracks: ModalTrack[];
+  /** 타이틀 옆에 앨범 커버 썸네일 표시 (공유 페이지 등에서 opt-in). */
+  showCover?: boolean;
+}) {
   if (!tracks.length) return null;
   return (
     <div>
@@ -122,6 +130,7 @@ export function ModalTrackList({ tracks }: { tracks: ModalTrack[] }) {
           key={t.track_id}
           track={t}
           index={i}
+          showCover={showCover}
           onPlay={() => playTracks(tracks, i)}
         />
       ))}
@@ -134,10 +143,12 @@ function ModalTrackRow({
   track,
   index,
   onPlay,
+  showCover = false,
 }: {
   track: ModalTrack;
   index: number;
   onPlay: () => void;
+  showCover?: boolean;
 }) {
   const [liked, setLiked] = useState(track.liked ?? false);
   const [pct, setPct] = useState(track.pct ?? false);
@@ -197,19 +208,29 @@ function ModalTrackRow({
           />
         </button>
       </div>
-      <div className="min-w-0">
-        <div
-          className="font-display font-semibold text-[14px] leading-tight truncate"
-          title={track.title}
-        >
-          {track.title}
-        </div>
-        <div
-          className="sm:hidden text-[11px] text-(--mrms-ink-soft) truncate mt-0.5"
-          title={`${track.artist}${track.album_title ? ` — ${track.album_title}` : ""}`}
-        >
-          <ArtistLink name={track.artist} />
-          {track.album_title ? ` — ${track.album_title}` : ""}
+      <div className="min-w-0 flex items-center gap-2.5">
+        {showCover && (
+          <AlbumArt
+            artist={track.artist}
+            album={track.album_title ?? null}
+            initialUrl={track.album_cover ?? null}
+            className="size-9 shrink-0 rounded-[2px]"
+          />
+        )}
+        <div className="min-w-0 flex-1">
+          <div
+            className="font-display font-semibold text-[14px] leading-tight truncate"
+            title={track.title}
+          >
+            {track.title}
+          </div>
+          <div
+            className="sm:hidden text-[11px] text-(--mrms-ink-soft) truncate mt-0.5"
+            title={`${track.artist}${track.album_title ? ` — ${track.album_title}` : ""}`}
+          >
+            <ArtistLink name={track.artist} />
+            {track.album_title ? ` — ${track.album_title}` : ""}
+          </div>
         </div>
       </div>
       <div

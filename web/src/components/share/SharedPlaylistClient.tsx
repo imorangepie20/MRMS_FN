@@ -55,7 +55,7 @@ export function SharedPlaylistClient({ shareId }: { shareId: string }) {
       </div>
 
       <div className="mt-6">
-        <ModalTrackList tracks={data.tracks} />
+        <ModalTrackList tracks={data.tracks} showCover />
       </div>
     </div>
   );
