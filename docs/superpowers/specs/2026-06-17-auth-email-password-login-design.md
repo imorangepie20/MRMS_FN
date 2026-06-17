@@ -29,16 +29,16 @@
 ### 데이터 모델 변경 — `prisma/schema.prisma` `User`
 
 추가:
-- `nickname String @unique` — 필수. 표시명 겸용. (대소문자 무시 유니크는 앱 레벨에서 `lower(nickname)` 비교 + DB는 `@unique`로 보강.)
-- `passwordHash String` — 필수. bcrypt 해시.
+- `nickname String? @unique` — 표시명 겸용. **DB는 nullable, API(signup)에서 필수 강제.** 대소문자 무시 유니크는 앱 레벨 `lower(nickname)` 비교 + DB `@unique`로 보강.
+- `passwordHash String?` — bcrypt 해시. **DB는 nullable, API에서 필수 강제.**
+
+> **DB nullable + API required 이유**: `ADD COLUMN`을 비파괴적(additive)으로 만들어 로컬 테스트 DB에 강제 wipe 없이 적용 가능하고, 테스트/레거시 부트스트랩 헬퍼(`get_or_create_user`, nickname/pw 없이 User 생성)가 그대로 동작한다. 그린필드 리셋(TRUNCATE)은 배포 시 별도 사용자 승인 단계로 분리(아래). passwordHash 없는 레거시 `@auto.local` 계정은 어차피 로그인 불가(verify 실패)이므로 리셋 미적용 상태도 안전.
 
 변경 없음(의미만): `email String @unique` — 이제 실제 이메일. `@auto.local` 자동생성 폐기. `displayName String?` 유지하되 가입 시 `nickname` 값으로 채움(기존 UI 참조 무회귀).
 
-마이그레이션(파괴적, 배포 시 별도 승인):
-1. 기존 데이터 정리: `DELETE FROM "User"` (→ `AuthSession`/`UserOAuth`/`UserEmbedding`/`UserPersona`/`UserProfile`/`UserTrack`/`TrackInteraction`/`PlaylistHistory`/`UserBlocked`/`UserSession` onDelete Cascade로 연쇄 삭제).
-2. `nickname`/`passwordHash` non-null 컬럼 추가 (행이 비어 있어 default 불요).
-
-> Prisma migration 파일 1개 + 위 DELETE를 포함. 배포 시 destructive DB 작업이라 사용자 명시 승인 + `dangerouslyDisableSandbox` 후 실행.
+마이그레이션은 **두 부분으로 분리**:
+1. **스키마 변경(비파괴적, 마이그레이션 파일)** — `nickname`/`passwordHash` nullable 컬럼 추가 + nickname unique index. 로컬 테스트 DB·prod 모두 안전 적용.
+2. **그린필드 리셋(파괴적, 배포 시 별도 사용자 승인)** — `TRUNCATE "User" CASCADE` (모든 참조 테이블 연쇄 정리). 마이그레이션 파일이 아니라 배포 단계의 사용자-게이트 작업으로 실행(`dangerouslyDisableSandbox`). 미적용해도 레거시 계정은 로그인 불가라 시스템은 정상.
 
 ### 비밀번호 모듈 — 신규 `src/mrms/auth/password.py`
 
