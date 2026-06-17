@@ -6,11 +6,16 @@ from pydantic import BaseModel, Field
 
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.db.playlist import (
+    add_tracks_to_playlist,
     create_playlist,
+    delete_playlist,
     get_playlist,
     get_playlist_tracks,
     list_user_playlists,
+    remove_track_from_playlist,
+    reorder_playlist_tracks,
     set_playlist_share,
+    update_playlist_meta,
 )
 from mrms.db.user_track import get_user_track_states
 
@@ -25,6 +30,29 @@ class CreatePlaylistRequest(BaseModel):
 
 class ShareRequest(BaseModel):
     enabled: bool
+
+
+class AddTracksRequest(BaseModel):
+    track_ids: list[str]
+
+
+class ReorderRequest(BaseModel):
+    track_ids: list[str]
+
+
+class UpdatePlaylistRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
+
+def _require_owned(conn, playlist_id: str, user_id: str) -> dict:
+    """소유 플레이리스트 반환. 없으면 404, 타인 소유면 403."""
+    pl = get_playlist(conn, playlist_id)
+    if not pl:
+        raise HTTPException(404, "playlist not found")
+    if pl["user_id"] != user_id:
+        raise HTTPException(403, "forbidden")
+    return pl
 
 
 @router.post("/api/user/playlists")
@@ -92,3 +120,68 @@ def toggle_playlist_share(
         "share_id": share_id,
         "share_url": f"/p/{share_id}" if share_id else None,
     }
+
+
+@router.post("/api/playlists/{playlist_id}/tracks")
+def add_tracks_endpoint(
+    playlist_id: str,
+    body: AddTracksRequest,
+    user_id: str = Depends(get_current_user_id),
+    conn=Depends(db_conn),
+):
+    _require_owned(conn, playlist_id, user_id)
+    if not body.track_ids:
+        raise HTTPException(400, "track_ids required")
+    return add_tracks_to_playlist(conn, playlist_id, body.track_ids, user_id)
+
+
+@router.delete("/api/playlists/{playlist_id}/tracks/{track_id}")
+def remove_track_endpoint(
+    playlist_id: str,
+    track_id: str,
+    user_id: str = Depends(get_current_user_id),
+    conn=Depends(db_conn),
+):
+    _require_owned(conn, playlist_id, user_id)
+    remove_track_from_playlist(conn, playlist_id, track_id)
+    return {"ok": True}
+
+
+@router.patch("/api/playlists/{playlist_id}/tracks/order")
+def reorder_tracks_endpoint(
+    playlist_id: str,
+    body: ReorderRequest,
+    user_id: str = Depends(get_current_user_id),
+    conn=Depends(db_conn),
+):
+    _require_owned(conn, playlist_id, user_id)
+    if not reorder_playlist_tracks(conn, playlist_id, body.track_ids):
+        raise HTTPException(400, "track set mismatch")
+    return {"ok": True}
+
+
+@router.patch("/api/playlists/{playlist_id}")
+def update_playlist_endpoint(
+    playlist_id: str,
+    body: UpdatePlaylistRequest,
+    user_id: str = Depends(get_current_user_id),
+    conn=Depends(db_conn),
+):
+    pl = _require_owned(conn, playlist_id, user_id)
+    name = (body.name if body.name is not None else pl["name"]).strip()
+    if not name:
+        raise HTTPException(400, "name required")
+    description = body.description if body.description is not None else pl["description"]
+    update_playlist_meta(conn, playlist_id, name, description)
+    return {"playlist": get_playlist(conn, playlist_id)}
+
+
+@router.delete("/api/playlists/{playlist_id}")
+def delete_playlist_endpoint(
+    playlist_id: str,
+    user_id: str = Depends(get_current_user_id),
+    conn=Depends(db_conn),
+):
+    _require_owned(conn, playlist_id, user_id)
+    delete_playlist(conn, playlist_id)
+    return {"ok": True}

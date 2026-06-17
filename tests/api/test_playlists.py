@@ -186,3 +186,62 @@ def test_share_requires_auth(db_conn):
     client.cookies.clear()
     r = client.post("/api/user/playlists/whatever/share", json={"enabled": True})
     assert r.status_code == 401
+
+
+def _make_pl(db_conn, login, name="PL", n=2):
+    user_id, session_id = login()
+    tids = _pick_track_ids(db_conn, n)
+    client.cookies.set("mrms_session", session_id)
+    r = client.post("/api/user/playlists", json={"name": name, "track_ids": tids})
+    pid = r.json()["playlist"]["id"]
+    return user_id, session_id, pid, tids
+
+
+def test_add_tracks_endpoint(db_conn, login):
+    uid, sid, pid, tids = _make_pl(db_conn, login, n=2)
+    more = _pick_track_ids(db_conn, 4)
+    r = client.post(f"/api/playlists/{pid}/tracks", json={"track_ids": more})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["added"] == 2 and body["skipped"] == 2
+    client.cookies.clear()
+
+
+def test_remove_track_endpoint(db_conn, login):
+    uid, sid, pid, tids = _make_pl(db_conn, login, n=2)
+    r = client.delete(f"/api/playlists/{pid}/tracks/{tids[0]}")
+    assert r.status_code == 200, r.text
+    t = client.get(f"/api/playlists/{pid}/tracks").json()["tracks"]
+    assert tids[0] not in [x["track_id"] for x in t]
+    client.cookies.clear()
+
+
+def test_reorder_endpoint_and_mismatch(db_conn, login):
+    uid, sid, pid, tids = _make_pl(db_conn, login, n=2)
+    r = client.patch(f"/api/playlists/{pid}/tracks/order", json={"track_ids": [tids[1], tids[0]]})
+    assert r.status_code == 200, r.text
+    order = [x["track_id"] for x in client.get(f"/api/playlists/{pid}/tracks").json()["tracks"]]
+    assert order == [tids[1], tids[0]]
+    bad = client.patch(f"/api/playlists/{pid}/tracks/order", json={"track_ids": [tids[0]]})
+    assert bad.status_code == 400
+    client.cookies.clear()
+
+
+def test_update_and_delete_endpoint(db_conn, login):
+    uid, sid, pid, tids = _make_pl(db_conn, login, n=1)
+    r = client.patch(f"/api/playlists/{pid}", json={"name": "renamed", "description": "d"})
+    assert r.status_code == 200 and r.json()["playlist"]["name"] == "renamed"
+    d = client.delete(f"/api/playlists/{pid}")
+    assert d.status_code == 200
+    assert client.get(f"/api/playlists/{pid}/tracks").status_code == 404
+    client.cookies.clear()
+
+
+def test_ownership_forbidden(db_conn, login):
+    uid, sid, pid, tids = _make_pl(db_conn, login, n=1)
+    client.cookies.clear()
+    _, other_sid = login("other-owner@test.com")
+    client.cookies.set("mrms_session", other_sid)
+    r = client.delete(f"/api/playlists/{pid}")
+    assert r.status_code == 403
+    client.cookies.clear()
