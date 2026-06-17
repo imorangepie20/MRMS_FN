@@ -2,13 +2,30 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Heart, Play, Sparkles } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical, Heart, Play, Sparkles, Trash2, X } from "lucide-react";
 
 import { ArtistLink } from "@/components/artist/ArtistLink";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { SharePlaylistButton } from "@/components/playlist/SharePlaylistButton";
+import { removeTrackFromPlaylist, reorderPlaylistTracks } from "@/lib/api/playlists";
 import { loadAndPlay } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
+import { usePlaylistStore } from "@/store/playlist";
 import {
   getPgtSections,
   getPgtLiked,
@@ -215,6 +232,90 @@ function TrackList({ tracks, loading }: { tracks: PgtTrack[]; loading: boolean }
         <PgtTrackRow key={t.track_id} track={t} />
       ))}
     </>
+  );
+}
+
+
+// ── EditableTrackList — sortable + removable (user playlists only) ──────────
+
+function EditableTrackList({
+  playlistId,
+  tracks,
+  setTracks,
+  onCountDelta,
+}: {
+  playlistId: string;
+  tracks: PgtTrack[];
+  setTracks: (t: PgtTrack[]) => void;
+  onCountDelta: (d: number) => void;
+}) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldIdx = tracks.findIndex((t) => t.track_id === active.id);
+    const newIdx = tracks.findIndex((t) => t.track_id === over.id);
+    if (oldIdx < 0 || newIdx < 0) return;
+    const next = arrayMove(tracks, oldIdx, newIdx);
+    setTracks(next);
+    reorderPlaylistTracks(playlistId, next.map((t) => t.track_id)).catch(() => {
+      setTracks(tracks); // 롤백
+    });
+  };
+
+  const onRemove = (trackId: string) => {
+    const prev = tracks;
+    setTracks(tracks.filter((t) => t.track_id !== trackId));
+    onCountDelta(-1);
+    removeTrackFromPlaylist(playlistId, trackId).catch(() => {
+      setTracks(prev);
+      onCountDelta(1);
+    });
+  };
+
+  if (!tracks.length) return <Empty />;
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <SortableContext items={tracks.map((t) => t.track_id)} strategy={verticalListSortingStrategy}>
+        {tracks.map((t) => (
+          <SortableTrackRow key={t.track_id} track={t} onRemove={() => onRemove(t.track_id)} />
+        ))}
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+function SortableTrackRow({ track, onRemove }: { track: PgtTrack; onRemove: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: track.track_id,
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`group flex items-center gap-2 py-2.5 border-b border-[var(--mrms-rule)] ${isDragging ? "opacity-50 bg-[var(--mrms-paper)]" : ""}`}
+    >
+      <button
+        {...listeners}
+        {...attributes}
+        aria-label="순서 변경"
+        className="cursor-grab active:cursor-grabbing bg-transparent border-0 p-1 text-(--mrms-ink-mute) touch-none"
+      >
+        <GripVertical className="size-4" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="text-[13px] text-(--mrms-ink) truncate">{track.title}</div>
+        <div className="text-[11px] text-(--mrms-ink-soft) truncate">{track.artist}</div>
+      </div>
+      <button
+        onClick={onRemove}
+        aria-label="곡 제거"
+        className="bg-transparent border-0 p-1 cursor-pointer text-(--mrms-ink-mute) hover:text-[#d9534f] opacity-0 group-hover:opacity-100"
+      >
+        <X className="size-3.5" />
+      </button>
+    </div>
   );
 }
 
@@ -472,6 +573,10 @@ function PlaylistsTab({
   const [selected, setSelected] = useState<PlaylistSelection | null>(null);
   const [tracks, setTracks] = useState<PgtTrack[]>([]);
   const [tracksLoading, setTracksLoading] = useState(false);
+  const renamePl = usePlaylistStore((s) => s.rename);
+  const removePl = usePlaylistStore((s) => s.remove);
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState("");
 
   const selectUserPlaylist = async (pl: UserPlaylistSummary) => {
     setSelected({ kind: "user", pl });
@@ -600,9 +705,35 @@ function PlaylistsTab({
             >
               ← back
             </button>
-            <span className="flex-1 min-w-0 font-display font-semibold text-[18px] leading-tight truncate">
-              {selected.pl.name}
-            </span>
+            {selected.kind === "user" && editingName ? (
+              <input
+                autoFocus
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                onBlur={() => {
+                  const n = draftName.trim();
+                  if (n && n !== selected.pl.name) renamePl(selected.pl.id, n);
+                  setEditingName(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  if (e.key === "Escape") setEditingName(false);
+                }}
+                className="flex-1 min-w-0 font-display font-semibold text-[18px] bg-transparent border-b border-(--mrms-rust) focus:outline-none text-(--mrms-ink)"
+              />
+            ) : (
+              <span
+                className="flex-1 min-w-0 font-display font-semibold text-[18px] leading-tight truncate"
+                onDoubleClick={() => {
+                  if (selected.kind === "user") {
+                    setDraftName(selected.pl.name);
+                    setEditingName(true);
+                  }
+                }}
+              >
+                {selected.pl.name}
+              </span>
+            )}
             <button
               onClick={playAll}
               disabled={!tracks.length}
@@ -610,6 +741,21 @@ function PlaylistsTab({
             >
               <Play className="h-3.5 w-3.5" /> All Play
             </button>
+            {selected.kind === "user" && (
+              <button
+                onClick={() => {
+                  if (confirm(`'${selected.pl.name}' 삭제할까요?`)) {
+                    removePl(selected.pl.id);
+                    setSelected(null);
+                    setTracks([]);
+                  }
+                }}
+                className="shrink-0 bg-transparent border-0 p-1 cursor-pointer text-(--mrms-ink-mute) hover:text-[#d9534f]"
+                aria-label="플레이리스트 삭제"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
           </div>
           {selected.kind === "user" && (
             <div className="mb-4">
@@ -620,7 +766,16 @@ function PlaylistsTab({
               />
             </div>
           )}
-          <TrackList tracks={tracks} loading={tracksLoading} />
+          {selected.kind === "user" ? (
+            <EditableTrackList
+              playlistId={selected.pl.id}
+              tracks={tracks}
+              setTracks={setTracks}
+              onCountDelta={(d) => usePlaylistStore.getState().bumpCount(selected.pl.id, d)}
+            />
+          ) : (
+            <TrackList tracks={tracks} loading={tracksLoading} />
+          )}
         </div>
       )}
     </div>
