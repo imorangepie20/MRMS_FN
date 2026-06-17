@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-import { fetchSharedMeta } from "@/lib/server/shared-fetch";
+import { fetchSharedMeta, resolveCoverGrid } from "@/lib/server/shared-fetch";
 
 export const runtime = "nodejs";
 export const alt = "Shared playlist on MRMS";
@@ -26,10 +26,8 @@ export default async function Image({
   const title = rawName.length > 58 ? `${rawName.slice(0, 58)}…` : rawName;
   const owner = data?.playlist?.owner_name ?? null;
   const tracks = data?.tracks ?? [];
-  const covers = tracks
-    .map((t) => t.album_cover)
-    .filter((c): c is string => !!c)
-    .slice(0, 4);
+  // album_cover(EMPSource) 우선, 없으면 /api/artwork(iTunes)로 서버 resolve → 2×2 그리드.
+  const covers = await resolveCoverGrid(tracks, 4);
   const cells: (string | null)[] = [
     covers[0] ?? null,
     covers[1] ?? null,
