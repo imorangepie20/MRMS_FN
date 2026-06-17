@@ -85,8 +85,14 @@ def test_preview_tracks_miss_resolves_and_caches(db_conn, cleanup, monkeypatch):
         assert cur.fetchone()[0] == "https://dz/p.mp3"
 
 
-def test_preview_tracks_unauth_ok():
-    """무인증 200(쿠키 없음)."""
+@respx.mock
+def test_preview_tracks_unauth_ok(monkeypatch):
+    """무인증 200(쿠키 없음). 풀을 빈 후보로 고정 → resolve/write-back 미실행(라이브·DB변경 0)."""
+    import mrms.api.landing as _land
+    # 실제 dev 풀 상태(빈/NULL-preview 트랙 유무)에 의존하지 않도록 후보를 빈 리스트로 고정.
+    # @respx.mock(등록 라우트 없음)으로 외부 호출 시 즉시 실패 → 라이브 호출이 없음을 강제.
+    monkeypatch.setattr(_land, "pick_preview_candidates", lambda conn, limit=15: [])
     client.cookies.clear()
     r = client.get("/api/landing/preview-tracks?n=3")
     assert r.status_code == 200
+    assert r.json()["tracks"] == []

@@ -26,6 +26,8 @@ model Track {
   artist          Artist   @relation(fields: [artistId], references: [id])
   album           Album?   @relation(fields: [albumId], references: [id])
 
+  previewUrl      String?  // 랜딩 히어로 30s preview 캐시(write-through, Deezer/iTunes resolve)
+
   platforms       TrackPlatform[]
   features        TrackAudioFeatures[]
   embeddings      TrackEmbedding[]
