@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   DndContext,
@@ -609,6 +609,10 @@ function PlaylistsTab({
   const removePl = usePlaylistStore((s) => s.remove);
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState("");
+  const searchParams = useSearchParams();
+  const plParam = searchParams.get("pl");
+  const detailRef = useRef<HTMLDivElement>(null);
+  const lastScrolledId = useRef<string | null>(null);
 
   const selectUserPlaylist = async (pl: UserPlaylistSummary) => {
     setSelected({ kind: "user", pl });
@@ -631,6 +635,28 @@ function PlaylistsTab({
       setTracksLoading(false);
     }
   };
+
+  // 사이드바에서 특정 플레이리스트(?pl=) 진입 시 자동으로 그 플리를 펼친다.
+  useEffect(() => {
+    if (!plParam) return;
+    const pl = userPlaylists.find((p) => p.id === plParam);
+    if (pl) selectUserPlaylist(pl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plParam]);
+
+  // 선택된 플리 상세로 스크롤 + 포커스(같은 플리 재선택/rename 시엔 재스크롤 안 함).
+  useEffect(() => {
+    if (!selected) {
+      lastScrolledId.current = null;
+      return;
+    }
+    const id = selected.kind === "user" ? selected.pl.id : selected.pl.source;
+    if (lastScrolledId.current === id) return;
+    lastScrolledId.current = id;
+    const el = detailRef.current;
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    el?.focus({ preventScroll: true });
+  }, [selected]);
 
   const playAll = async () => {
     if (!tracks.length) return;
@@ -729,7 +755,7 @@ function PlaylistsTab({
 
       {/* Expanded track list */}
       {selected && (
-        <div>
+        <div ref={detailRef} tabIndex={-1} className="outline-none scroll-mt-4">
           <div className="flex items-center gap-3 pb-2 mb-4 border-b border-[var(--mrms-ink)]">
             <button
               onClick={() => { setSelected(null); setTracks([]); setEditingName(false); }}

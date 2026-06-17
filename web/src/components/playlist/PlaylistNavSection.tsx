@@ -31,7 +31,7 @@ export function PlaylistNavSection() {
       {playlists.map((p) => (
         <Link
           key={p.id}
-          href="/pgt?tab=playlists"
+          href={`/pgt?tab=playlists&pl=${p.id}`}
           className={`${ROW} block text-[var(--mrms-ink)] no-underline`}
         >
           {p.name}
