@@ -82,23 +82,37 @@ ALTER TABLE "User" ADD COLUMN "passwordHash" TEXT;
 CREATE UNIQUE INDEX "User_nickname_key" ON "User"("nickname");
 ```
 
-- [ ] **Step 3: 로컬 테스트 DB에 적용**
+- [ ] **Step 3: 로컬 테스트 DB에 적용 (psql 없음 → psycopg)**
+
+이 환경엔 `psql` 바이너리가 없다. `.venv`의 psycopg로 마이그레이션 SQL을 적용한다(비파괴적 — 컬럼 추가만):
 
 Run:
 ```bash
-psql "${DATABASE_URL:-postgresql://mrms:mrms@localhost:5433/mrms}" \
-  -f "prisma/migrations/20260617130000_auth_email_password/migration.sql"
+.venv/bin/python -c "
+import os, psycopg
+dsn = os.environ.get('DATABASE_URL','postgresql://mrms:mrms@localhost:5433/mrms')
+with psycopg.connect(dsn, autocommit=True) as c, c.cursor() as cur:
+    cur.execute('ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"nickname\" TEXT')
+    cur.execute('ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"passwordHash\" TEXT')
+    cur.execute('CREATE UNIQUE INDEX IF NOT EXISTS \"User_nickname_key\" ON \"User\"(\"nickname\")')
+    print('applied')
+"
 ```
-Expected: `ALTER TABLE` ×2, `CREATE INDEX` 출력. (이미 있으면 "column already exists" — 그 경우 무시하고 다음.)
+Expected: `applied` 출력. (idempotent — `IF NOT EXISTS`로 재실행 안전.)
 
 - [ ] **Step 4: 컬럼 확인**
 
 Run:
 ```bash
-psql "${DATABASE_URL:-postgresql://mrms:mrms@localhost:5433/mrms}" \
-  -c '\d "User"' | grep -E "nickname|passwordHash"
+.venv/bin/python -c "
+import os, psycopg
+dsn = os.environ.get('DATABASE_URL','postgresql://mrms:mrms@localhost:5433/mrms')
+with psycopg.connect(dsn) as c, c.cursor() as cur:
+    cur.execute(\"select column_name from information_schema.columns where table_name='User' and column_name in ('nickname','passwordHash') order by column_name\")
+    print(cur.fetchall())
+"
 ```
-Expected: `nickname  | text` 와 `passwordHash | text` 출력.
+Expected: `[('nickname',), ('passwordHash',)]`.
 
 - [ ] **Step 5: Commit**
 
