@@ -5,12 +5,17 @@ import psycopg
 import pytest
 
 from mrms.db.playlist import (
+    add_tracks_to_playlist,
     create_playlist,
+    delete_playlist,
     get_playlist,
     get_playlist_by_share_id,
     get_playlist_tracks,
     list_user_playlists,
+    remove_track_from_playlist,
+    reorder_playlist_tracks,
     set_playlist_share,
+    update_playlist_meta,
 )
 from mrms.db.user_track import get_or_create_user, upsert_user_track
 
@@ -212,3 +217,74 @@ def test_get_playlist_tracks_includes_album_cover(db_conn, cleanup):
     tracks = get_playlist_tracks(db_conn, pid)
     assert len(tracks) == 1
     assert tracks[0]["album_cover"] == "https://example.com/plcov600.jpg"
+
+
+# ── 플레이리스트 관리(DnD) 신규 ops ───────────────────────────────
+def _track_ids(db_conn, n):
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT id FROM "Track" LIMIT %s', (n,))
+        return [r[0] for r in cur.fetchall()]
+
+
+def _seed_user_pl(db_conn, cleanup, name="PL", n=2):
+    import uuid as _u
+    uid = get_or_create_user(db_conn, f"plops-{_u.uuid4().hex[:8]}@t.com")
+    tids = _track_ids(db_conn, n)
+    pid = create_playlist(db_conn, user_id=uid, name=name, description=None, track_ids=tids)
+    # cleanup은 역순 실행 → 자식(PlaylistTrack/UserTrack) 먼저, 부모(Playlist/User) 나중
+    cleanup('DELETE FROM "User" WHERE id = %s', (uid,))
+    cleanup('DELETE FROM "Playlist" WHERE "userId" = %s', (uid,))
+    cleanup('DELETE FROM "UserTrack" WHERE "userId" = %s', (uid,))
+    cleanup('DELETE FROM "PlaylistTrack" WHERE "playlistId" = %s', (pid,))
+    return uid, pid, tids
+
+
+def test_add_tracks_appends_and_skips_dupes(db_conn, cleanup):
+    uid, pid, tids = _seed_user_pl(db_conn, cleanup, n=2)
+    more = _track_ids(db_conn, 4)  # 처음 2개는 이미 있음(중복), 뒤 2개는 신규
+    res = add_tracks_to_playlist(db_conn, pid, more, uid)
+    assert res["added"] == 2 and res["skipped"] == 2
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT COUNT(*) FROM "PlaylistTrack" WHERE "playlistId"=%s', (pid,))
+        assert cur.fetchone()[0] == 4  # 2 기존 + 2 신규
+        # 신규 곡이 curated UserTrack으로 편입됐는지
+        cur.execute('SELECT COUNT(*) FROM "UserTrack" WHERE "userId"=%s', (uid,))
+        assert cur.fetchone()[0] >= 4
+
+
+def test_remove_track(db_conn, cleanup):
+    uid, pid, tids = _seed_user_pl(db_conn, cleanup, n=2)
+    remove_track_from_playlist(db_conn, pid, tids[0])
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT "trackId" FROM "PlaylistTrack" WHERE "playlistId"=%s', (pid,))
+        remaining = {r[0] for r in cur.fetchall()}
+    assert tids[0] not in remaining and tids[1] in remaining
+
+
+def test_reorder_match_and_mismatch(db_conn, cleanup):
+    uid, pid, tids = _seed_user_pl(db_conn, cleanup, n=2)
+    ok = reorder_playlist_tracks(db_conn, pid, [tids[1], tids[0]])  # 뒤집기
+    assert ok is True
+    with db_conn.cursor() as cur:
+        cur.execute(
+            'SELECT "trackId" FROM "PlaylistTrack" WHERE "playlistId"=%s ORDER BY position',
+            (pid,),
+        )
+        order = [r[0] for r in cur.fetchall()]
+    assert order == [tids[1], tids[0]]
+    # 집합 불일치 → False, 변경 없음
+    assert reorder_playlist_tracks(db_conn, pid, [tids[0]]) is False
+
+
+def test_update_meta_and_delete(db_conn, cleanup):
+    uid, pid, tids = _seed_user_pl(db_conn, cleanup, n=1)
+    update_playlist_meta(db_conn, pid, "새이름", "새설명")
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT name, description FROM "Playlist" WHERE id=%s', (pid,))
+        assert cur.fetchone() == ("새이름", "새설명")
+    delete_playlist(db_conn, pid)
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT COUNT(*) FROM "Playlist" WHERE id=%s', (pid,))
+        assert cur.fetchone()[0] == 0
+        cur.execute('SELECT COUNT(*) FROM "PlaylistTrack" WHERE "playlistId"=%s', (pid,))
+        assert cur.fetchone()[0] == 0

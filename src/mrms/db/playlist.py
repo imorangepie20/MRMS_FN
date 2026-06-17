@@ -188,3 +188,86 @@ def get_playlist_by_share_id(
         "created_at": row[3].isoformat() if row[3] else None,
         "owner_name": row[4],
     }
+
+
+def add_tracks_to_playlist(
+    conn: psycopg.Connection, playlist_id: str, track_ids: list[str], user_id: str
+) -> dict:
+    """곡을 끝에 추가(중복 스킵) + curated UserTrack 편입. {added, skipped} 반환."""
+    added = 0
+    with conn.cursor() as cur:
+        cur.execute(
+            'SELECT COALESCE(MAX(position), -1) FROM "PlaylistTrack" WHERE "playlistId"=%s',
+            (playlist_id,),
+        )
+        nxt = cur.fetchone()[0] + 1
+        for tid in track_ids:
+            cur.execute(
+                '''INSERT INTO "PlaylistTrack" ("playlistId", "trackId", position)
+                   VALUES (%s, %s, %s)
+                   ON CONFLICT ("playlistId", "trackId") DO NOTHING''',
+                (playlist_id, tid, nxt),
+            )
+            if cur.rowcount:  # 1=신규 삽입, 0=중복 스킵
+                added += 1
+                nxt += 1
+    # 담은 곡 라이브러리 편입(ADR-002). upsert는 멱등이라 전체 대상에 호출해도 안전.
+    for tid in track_ids:
+        upsert_user_track(
+            conn, user_id, tid, is_core=False, source="curated", platform="mrms"
+        )
+    conn.commit()
+    return {"added": added, "skipped": len(track_ids) - added}
+
+
+def remove_track_from_playlist(
+    conn: psycopg.Connection, playlist_id: str, track_id: str
+) -> None:
+    """플레이리스트에서 곡 제거. UserTrack은 미변경(다른 플리/좋아요 안전)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            'DELETE FROM "PlaylistTrack" WHERE "playlistId"=%s AND "trackId"=%s',
+            (playlist_id, track_id),
+        )
+    conn.commit()
+
+
+def reorder_playlist_tracks(
+    conn: psycopg.Connection, playlist_id: str, track_ids: list[str]
+) -> bool:
+    """전달 순서대로 position 재기록. 전달 집합이 기존 집합과 정확히 일치할 때만
+    적용(True). 불일치(경합/누락)면 변경 없이 False."""
+    with conn.cursor() as cur:
+        cur.execute(
+            'SELECT "trackId" FROM "PlaylistTrack" WHERE "playlistId"=%s', (playlist_id,)
+        )
+        existing = [r[0] for r in cur.fetchall()]
+        if len(track_ids) != len(existing) or set(track_ids) != set(existing):
+            return False
+        for pos, tid in enumerate(track_ids):
+            cur.execute(
+                'UPDATE "PlaylistTrack" SET position=%s WHERE "playlistId"=%s AND "trackId"=%s',
+                (pos, playlist_id, tid),
+            )
+    conn.commit()
+    return True
+
+
+def update_playlist_meta(
+    conn: psycopg.Connection, playlist_id: str, name: str, description: str | None
+) -> None:
+    """이름·설명 수정."""
+    with conn.cursor() as cur:
+        cur.execute(
+            'UPDATE "Playlist" SET name=%s, description=%s WHERE id=%s',
+            (name, description, playlist_id),
+        )
+    conn.commit()
+
+
+def delete_playlist(conn: psycopg.Connection, playlist_id: str) -> None:
+    """플레이리스트 + 그 PlaylistTrack 삭제. UserTrack은 미변경."""
+    with conn.cursor() as cur:
+        cur.execute('DELETE FROM "PlaylistTrack" WHERE "playlistId"=%s', (playlist_id,))
+        cur.execute('DELETE FROM "Playlist" WHERE id=%s', (playlist_id,))
+    conn.commit()
