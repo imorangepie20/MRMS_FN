@@ -19,7 +19,7 @@ export async function HomeLoggedIn({ user }: { user: UserInfo }) {
   const newRel = (mrt.recommended_new_releases ?? []).slice(0, 12);
 
   return (
-    <div className="min-h-screen bg-(--mrms-bg)">
+    <div>
       <LandingHero />
       <div className="px-6 md:px-14 py-8 max-w-[1200px]">
         <div className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) mb-3">
