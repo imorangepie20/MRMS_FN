@@ -1,35 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useDroppable } from "@dnd-kit/core";
 
 import { usePlaylistStore } from "@/store/playlist";
 import { useNewPlaylistDialog } from "@/store/new-playlist-dialog";
 
-function DropRow({
-  id,
-  children,
-  onClick,
-}: {
-  id: string;
-  children: React.ReactNode;
-  onClick?: () => void;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id });
-  return (
-    <div
-      ref={setNodeRef}
-      onClick={onClick}
-      className={`px-1 py-1 text-[12px] truncate border-b border-[var(--mrms-rule)]/50 last:border-b-0 cursor-pointer transition-colors ${
-        isOver
-          ? "bg-[var(--mrms-rust)]/15 outline-dashed outline-1 outline-[var(--mrms-rust)] text-[var(--mrms-rust)]"
-          : "text-[var(--mrms-ink)] hover:pl-2"
-      }`}
-    >
-      {children}
-    </div>
-  );
-}
+const ROW =
+  "px-1 py-1 text-[12px] truncate border-b border-[var(--mrms-rule)]/50 last:border-b-0 transition-[padding] hover:pl-2";
 
 export function PlaylistNavSection() {
   const playlists = usePlaylistStore((s) => s.playlists);
@@ -43,17 +20,22 @@ export function PlaylistNavSection() {
         </span>
         <span className="font-mono text-[9px] text-[var(--mrms-rust)]">{playlists.length}</span>
       </div>
-      <DropRow id="playlist-new" onClick={() => openNew([])}>
+      <button
+        onClick={() => openNew([])}
+        className={`${ROW} w-full text-left bg-transparent border-0 cursor-pointer`}
+      >
         <span className="font-mono text-[11px] tracking-editorial uppercase text-[var(--mrms-rust)]">
           ＋ 새 플레이리스트
         </span>
-      </DropRow>
+      </button>
       {playlists.map((p) => (
-        <DropRow key={p.id} id={`playlist:${p.id}`}>
-          <Link href="/pgt?tab=playlists" className="block truncate text-inherit no-underline">
-            {p.name}
-          </Link>
-        </DropRow>
+        <Link
+          key={p.id}
+          href="/pgt?tab=playlists"
+          className={`${ROW} block text-[var(--mrms-ink)] no-underline`}
+        >
+          {p.name}
+        </Link>
       ))}
     </div>
   );

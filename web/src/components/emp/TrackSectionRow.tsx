@@ -151,6 +151,7 @@ export function TrackSectionRow({
           {tracks.map((t, i) => (
             <div
               key={t.track_id}
+              data-track-id={t.track_id}
               className="shrink-0 snap-start px-1.5"
               style={{ width: `${itemPx + 12}px` }}
             >

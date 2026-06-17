@@ -77,7 +77,7 @@ export function TrackListSection({
             const playable = isPlayable(t);
             const rank = i + 1;
             return (
-              <li key={t.track_id}>
+              <li key={t.track_id} data-track-id={t.track_id}>
                 <button
                   onClick={() => playTracks(tracks, i)}
                   disabled={!playable}

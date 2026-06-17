@@ -4,14 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { usePlaylistActionsEnabled } from "./playlist-actions-context";
-import { usePlaylistStore } from "@/store/playlist";
-import { useNewPlaylistDialog } from "@/store/new-playlist-dialog";
+import { PlaylistMenuContent } from "./PlaylistMenuContent";
 
 export function AddToPlaylistMenu({ trackId }: { trackId: string }) {
   const enabled = usePlaylistActionsEnabled();
-  const playlists = usePlaylistStore((s) => s.playlists);
-  const addTrack = usePlaylistStore((s) => s.addTrack);
-  const openNew = useNewPlaylistDialog((s) => s.openDialog);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -43,33 +39,7 @@ export function AddToPlaylistMenu({ trackId }: { trackId: string }) {
           onClick={(e) => e.stopPropagation()}
           className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-auto sm:right-0 sm:top-7 sm:bottom-auto sm:w-44 border border-(--mrms-ink) bg-(--mrms-paper) shadow-xl max-h-[50vh] overflow-y-auto"
         >
-          <button
-            onClick={() => {
-              openNew([trackId]);
-              setOpen(false);
-            }}
-            className="w-full text-left px-3 py-2 font-mono text-[11px] tracking-editorial uppercase text-(--mrms-rust) border-0 border-b border-(--mrms-rule) bg-transparent cursor-pointer hover:bg-(--mrms-bg)"
-          >
-            ＋ 새 플레이리스트
-          </button>
-          {playlists.length === 0 ? (
-            <div className="px-3 py-2 font-mono text-[10px] text-(--mrms-ink-mute)">
-              플레이리스트 없음
-            </div>
-          ) : (
-            playlists.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => {
-                  addTrack(p.id, trackId);
-                  setOpen(false);
-                }}
-                className="w-full text-left px-3 py-2 text-[12px] text-(--mrms-ink) border-0 border-b border-(--mrms-rule) last:border-b-0 bg-transparent cursor-pointer hover:bg-(--mrms-bg) truncate"
-              >
-                {p.name}
-              </button>
-            ))
-          )}
+          <PlaylistMenuContent trackId={trackId} onClose={() => setOpen(false)} />
         </div>
       )}
     </div>

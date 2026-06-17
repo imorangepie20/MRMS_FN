@@ -5,7 +5,6 @@ import { Heart, Play, Sparkles } from "lucide-react";
 
 import { ArtistLink } from "@/components/artist/ArtistLink";
 import { AddToPlaylistMenu } from "@/components/playlist/AddToPlaylistMenu";
-import { TrackDragHandle } from "@/components/playlist/TrackDragHandle";
 import { loadAndPlay, realYoutubeId } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
 import type { QueueTrack } from "@/store/player";
@@ -173,9 +172,11 @@ function ModalTrackRow({
   };
 
   return (
-    <div className="group grid grid-cols-[28px_minmax(0,1fr)_44px_56px] sm:grid-cols-[28px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_44px_56px] gap-2 sm:gap-3 py-2 border-b border-(--mrms-rule) items-center hover:bg-(--mrms-bg) transition-colors">
+    <div
+      data-track-id={track.track_id}
+      className="group grid grid-cols-[28px_minmax(0,1fr)_44px_56px] sm:grid-cols-[28px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_44px_56px] gap-2 sm:gap-3 py-2 border-b border-(--mrms-rule) items-center hover:bg-(--mrms-bg) transition-colors"
+    >
       <div className="relative h-7 flex items-center justify-end">
-        <TrackDragHandle trackId={track.track_id} />
         <span className="font-mono text-[11px] text-(--mrms-ink-mute) group-hover:opacity-0">
           {index + 1}
         </span>

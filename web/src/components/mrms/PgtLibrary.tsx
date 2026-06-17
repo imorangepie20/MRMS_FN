@@ -134,6 +134,7 @@ function PgtTrackRow({
 
   return (
     <div
+      data-track-id={track.track_id}
       className={`group grid ${
         dragHandle
           ? "grid-cols-[20px_48px_1fr_60px] md:grid-cols-[20px_56px_1fr_60px_80px]"
