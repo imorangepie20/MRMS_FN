@@ -15,3 +15,10 @@ def test_verify_wrong_password():
 
 def test_verify_malformed_hash_returns_false():
     assert verify_password("anything", "not-a-bcrypt-hash") is False
+
+
+def test_long_multibyte_password_roundtrip():
+    """한글 등 멀티바이트 비밀번호(>72바이트)도 hash/verify 라운드트립(bcrypt 5.x ValueError 방지)."""
+    pw = "비밀" * 15  # 30자, UTF-8 90바이트 > 72
+    h = hash_password(pw)
+    assert verify_password(pw, h) is True

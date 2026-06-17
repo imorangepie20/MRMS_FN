@@ -11,7 +11,10 @@ from pydantic import BaseModel, EmailStr, Field
 from mrms.api.deps import db_conn
 from mrms.auth.password import hash_password, verify_password
 from mrms.db.account import (
-    create_account, email_exists, get_account_by_email, nickname_exists,
+    create_account,
+    email_exists,
+    get_account_by_email,
+    nickname_exists,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -31,14 +34,17 @@ class LoginRequest(BaseModel):
     password: str
 
 
-def _issue_session(conn: psycopg.Connection, response: Response, request: Request, user_id: str) -> None:
+def _issue_session(
+    conn: psycopg.Connection, response: Response, request: Request, user_id: str
+) -> None:
     """AuthSession 1개 생성(기존 세션 삭제) + mrms_session 쿠키 set."""
     session_id = uuid.uuid4().hex
     expires = datetime.now(timezone.utc) + timedelta(seconds=SESSION_MAX_AGE)
     with conn.cursor() as cur:
         cur.execute('DELETE FROM "AuthSession" WHERE "userId" = %s', (user_id,))
         cur.execute(
-            'INSERT INTO "AuthSession" (id, "userId", "expiresAt", "userAgent") VALUES (%s, %s, %s, %s)',
+            'INSERT INTO "AuthSession" (id, "userId", "expiresAt", "userAgent") '
+            'VALUES (%s, %s, %s, %s)',
             (session_id, user_id, expires, request.headers.get("user-agent")),
         )
     conn.commit()
@@ -74,7 +80,11 @@ def login(
 ) -> dict:
     """이메일+비밀번호 검증 → 세션. 실패는 401(이메일 존재 여부 비노출)."""
     acct = get_account_by_email(conn, body.email)
-    if not acct or not acct["password_hash"] or not verify_password(body.password, acct["password_hash"]):
+    if (
+        not acct
+        or not acct["password_hash"]
+        or not verify_password(body.password, acct["password_hash"])
+    ):
         raise HTTPException(401, "invalid_credentials")
     _issue_session(conn, response, request, acct["id"])
     return {"user_id": acct["id"], "nickname": acct["nickname"], "email": str(body.email).lower()}

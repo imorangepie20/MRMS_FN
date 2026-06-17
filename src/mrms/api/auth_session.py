@@ -18,7 +18,6 @@ TIDAL_DEVICE_AUTH_URL = "https://auth.tidal.com/v1/oauth2/device_authorization"
 TIDAL_TOKEN_URL = "https://auth.tidal.com/v1/oauth2/token"
 TIDAL_SCOPES = "r_usr w_usr w_sub"
 SESSION_COOKIE_NAME = "mrms_session"
-SESSION_MAX_AGE = 30 * 24 * 60 * 60  # 30 days
 
 
 class DeviceCodePollRequest(BaseModel):
@@ -117,7 +116,10 @@ def me(
 ) -> dict:
     """현재 user 정보 반환."""
     with conn.cursor() as cur:
-        cur.execute('SELECT email, nickname, "displayName", country FROM "User" WHERE id = %s', (user_id,))
+        cur.execute(
+            'SELECT email, nickname, "displayName", country FROM "User" WHERE id = %s',
+            (user_id,),
+        )
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "User not found")
