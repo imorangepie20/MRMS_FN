@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { navGroups } from "@/lib/nav";
 import { useUser } from "@/lib/hooks/use-user";
+import { PlaylistNavSection } from "@/components/playlist/PlaylistNavSection";
 
 
 export function AppSidebar() {
@@ -92,6 +93,7 @@ export function AppSidebar() {
             })}
           </div>
         ))}
+        {user && <PlaylistNavSection />}
       </nav>
 
       {/* Sidebar foot */}

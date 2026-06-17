@@ -7,6 +7,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
 import { PlayerBar } from "@/components/player/PlayerBar";
 import { PlaylistActionsContext } from "@/components/playlist/playlist-actions-context";
+import { PlaylistDndProvider } from "@/components/playlist/PlaylistDndProvider";
 import { NewPlaylistDialog } from "@/components/playlist/NewPlaylistDialog";
 import { usePlaylistStore } from "@/store/playlist";
 
@@ -20,6 +21,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <PlaylistActionsContext.Provider value={true}>
+    <PlaylistDndProvider>
     <div className="md:grid md:grid-cols-[240px_minmax(0,1fr)] min-h-screen bg-[var(--mrms-bg)]">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
@@ -46,6 +48,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <ArtistIntroModal />
       <NewPlaylistDialog />
     </div>
+    </PlaylistDndProvider>
     </PlaylistActionsContext.Provider>
   );
 }
