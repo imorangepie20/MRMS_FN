@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from mrms.api.admin_emp import router as admin_emp_router
+from mrms.api.admin_users import router as admin_users_router
 from mrms.api.albums import router as albums_router
 from mrms.api.artist import router as artist_router
 from mrms.api.artwork import router as artwork_router
@@ -66,6 +67,7 @@ app.include_router(albums_router)
 app.include_router(artist_router)
 app.include_router(artwork_router)
 app.include_router(admin_emp_router)
+app.include_router(admin_users_router)
 app.include_router(emp_browse_router)
 app.include_router(pgt_router)
 app.include_router(search_router)
