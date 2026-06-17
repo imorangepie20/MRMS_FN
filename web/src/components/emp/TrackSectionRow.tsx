@@ -187,7 +187,7 @@ function TrackCard({
       onClick={onPlay}
       disabled={!playable}
       style={{ containerType: "inline-size" }}
-      className="group w-full text-left bg-transparent border-0 p-0 cursor-pointer disabled:cursor-default"
+      className="group w-full text-left bg-transparent border-0 p-0 cursor-pointer disabled:cursor-default disabled:pointer-events-none"
     >
       {/* 커버 */}
       <div

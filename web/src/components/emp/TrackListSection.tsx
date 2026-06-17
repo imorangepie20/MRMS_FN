@@ -81,7 +81,7 @@ export function TrackListSection({
                 <button
                   onClick={() => playTracks(tracks, i)}
                   disabled={!playable}
-                  className="group w-full text-left grid grid-cols-[26px_36px_1fr_auto] gap-3 items-center py-1.5 border-b border-(--mrms-rule) last:border-b-0 bg-transparent border-x-0 border-t-0 cursor-pointer disabled:cursor-default disabled:opacity-45 hover:bg-(--mrms-paper)"
+                  className="group w-full text-left grid grid-cols-[26px_36px_1fr_auto] gap-3 items-center py-1.5 border-b border-(--mrms-rule) last:border-b-0 bg-transparent border-x-0 border-t-0 cursor-pointer disabled:cursor-default disabled:opacity-45 disabled:pointer-events-none hover:bg-(--mrms-paper)"
                 >
                   {/* 순위 / hover ▶ — 1~3위는 러스트 강조 */}
                   <span className="relative size-5 flex items-center justify-end">
