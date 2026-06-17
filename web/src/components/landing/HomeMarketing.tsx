@@ -5,7 +5,7 @@ import { LandingHero } from "./LandingHero";
 const FEATURES = [
   { n: "①", t: "추천", d: "임베딩 기반 취향 최근접 추천" },
   { n: "②", t: "무드 / 상황", d: "텍스트로 적으면 그 장면에 맞는 음악" },
-  { n: "③", t: "플레이리스트", d: "어디서나 드래그로 담고 공유" },
+  { n: "③", t: "플레이리스트", d: "플랫폼에 상관없어요" },
 ];
 
 export function HomeMarketing() {
