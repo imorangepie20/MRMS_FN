@@ -188,17 +188,23 @@ def test_share_requires_auth(db_conn):
     assert r.status_code == 401
 
 
-def _make_pl(db_conn, login, name="PL", n=2):
+def _make_pl(db_conn, login, cleanup, name="PL", n=2):
     user_id, session_id = login()
     tids = _pick_track_ids(db_conn, n)
     client.cookies.set("mrms_session", session_id)
     r = client.post("/api/user/playlists", json={"name": name, "track_ids": tids})
     pid = r.json()["playlist"]["id"]
+    # login()/create는 내부 commit이라 db_conn 롤백으로 보호 안 됨 → 명시적 정리.
+    # cleanup은 역순 실행 → 자식(PlaylistTrack/UserTrack) 먼저, 부모(Playlist/User) 나중.
+    cleanup('DELETE FROM "User" WHERE id = %s', (user_id,))
+    cleanup('DELETE FROM "Playlist" WHERE "userId" = %s', (user_id,))
+    cleanup('DELETE FROM "UserTrack" WHERE "userId" = %s', (user_id,))
+    cleanup('DELETE FROM "PlaylistTrack" WHERE "playlistId" = %s', (pid,))
     return user_id, session_id, pid, tids
 
 
-def test_add_tracks_endpoint(db_conn, login):
-    uid, sid, pid, tids = _make_pl(db_conn, login, n=2)
+def test_add_tracks_endpoint(db_conn, login, cleanup):
+    uid, sid, pid, tids = _make_pl(db_conn, login, cleanup, n=2)
     more = _pick_track_ids(db_conn, 4)
     r = client.post(f"/api/playlists/{pid}/tracks", json={"track_ids": more})
     assert r.status_code == 200, r.text
@@ -207,8 +213,8 @@ def test_add_tracks_endpoint(db_conn, login):
     client.cookies.clear()
 
 
-def test_remove_track_endpoint(db_conn, login):
-    uid, sid, pid, tids = _make_pl(db_conn, login, n=2)
+def test_remove_track_endpoint(db_conn, login, cleanup):
+    uid, sid, pid, tids = _make_pl(db_conn, login, cleanup, n=2)
     r = client.delete(f"/api/playlists/{pid}/tracks/{tids[0]}")
     assert r.status_code == 200, r.text
     t = client.get(f"/api/playlists/{pid}/tracks").json()["tracks"]
@@ -216,8 +222,8 @@ def test_remove_track_endpoint(db_conn, login):
     client.cookies.clear()
 
 
-def test_reorder_endpoint_and_mismatch(db_conn, login):
-    uid, sid, pid, tids = _make_pl(db_conn, login, n=2)
+def test_reorder_endpoint_and_mismatch(db_conn, login, cleanup):
+    uid, sid, pid, tids = _make_pl(db_conn, login, cleanup, n=2)
     r = client.patch(f"/api/playlists/{pid}/tracks/order", json={"track_ids": [tids[1], tids[0]]})
     assert r.status_code == 200, r.text
     order = [x["track_id"] for x in client.get(f"/api/playlists/{pid}/tracks").json()["tracks"]]
@@ -227,8 +233,8 @@ def test_reorder_endpoint_and_mismatch(db_conn, login):
     client.cookies.clear()
 
 
-def test_update_and_delete_endpoint(db_conn, login):
-    uid, sid, pid, tids = _make_pl(db_conn, login, n=1)
+def test_update_and_delete_endpoint(db_conn, login, cleanup):
+    uid, sid, pid, tids = _make_pl(db_conn, login, cleanup, n=1)
     r = client.patch(f"/api/playlists/{pid}", json={"name": "renamed", "description": "d"})
     assert r.status_code == 200 and r.json()["playlist"]["name"] == "renamed"
     d = client.delete(f"/api/playlists/{pid}")
@@ -237,10 +243,11 @@ def test_update_and_delete_endpoint(db_conn, login):
     client.cookies.clear()
 
 
-def test_ownership_forbidden(db_conn, login):
-    uid, sid, pid, tids = _make_pl(db_conn, login, n=1)
+def test_ownership_forbidden(db_conn, login, cleanup):
+    uid, sid, pid, tids = _make_pl(db_conn, login, cleanup, n=1)
     client.cookies.clear()
-    _, other_sid = login("other-owner@test.com")
+    other_uid, other_sid = login("other-owner@test.com")
+    cleanup('DELETE FROM "User" WHERE id = %s', (other_uid,))
     client.cookies.set("mrms_session", other_sid)
     r = client.delete(f"/api/playlists/{pid}")
     assert r.status_code == 403

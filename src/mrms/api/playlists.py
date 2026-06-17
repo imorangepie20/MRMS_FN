@@ -171,7 +171,11 @@ def update_playlist_endpoint(
     name = (body.name if body.name is not None else pl["name"]).strip()
     if not name:
         raise HTTPException(400, "name required")
-    description = body.description if body.description is not None else pl["description"]
+    # 명시적 null은 설명 비우기, 필드 생략은 기존 설명 유지 (둘을 구분).
+    if "description" in body.model_fields_set:
+        description = body.description
+    else:
+        description = pl["description"]
     update_playlist_meta(conn, playlist_id, name, description)
     return {"playlist": get_playlist(conn, playlist_id)}
 
