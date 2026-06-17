@@ -16,8 +16,8 @@ interface PlaylistState {
   load: () => Promise<void>;
   create: (name: string, trackIds?: string[]) => Promise<PlaylistMeta | null>;
   addTrack: (playlistId: string, trackId: string) => Promise<void>;
-  rename: (id: string, name: string, description?: string | null) => Promise<void>;
-  remove: (id: string) => Promise<void>;
+  rename: (id: string, name: string, description?: string | null) => Promise<boolean>;
+  remove: (id: string) => Promise<boolean>;
   bumpCount: (id: string, delta: number) => void;
 }
 
@@ -76,9 +76,11 @@ export const usePlaylistStore = create<PlaylistState>((set, get) => ({
         name,
         ...(description !== undefined ? { description } : {}),
       });
+      return true;
     } catch (e) {
       set({ playlists: prev });
       toast.error((e as Error).message);
+      return false;
     }
   },
 
@@ -88,9 +90,11 @@ export const usePlaylistStore = create<PlaylistState>((set, get) => ({
     try {
       await deletePlaylist(id);
       toast.success("삭제됨");
+      return true;
     } catch (e) {
       set({ playlists: prev });
       toast.error((e as Error).message);
+      return false;
     }
   },
 

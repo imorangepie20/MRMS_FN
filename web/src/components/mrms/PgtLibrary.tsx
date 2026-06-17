@@ -82,7 +82,15 @@ const TABS: { id: Tab; label: string }[] = [
 
 // ── PgtTrackRow — mirrors MrtDashboard's TrackRow exactly ───────────────────
 
-function PgtTrackRow({ track }: { track: PgtTrack }) {
+function PgtTrackRow({
+  track,
+  dragHandle,
+  onRemove,
+}: {
+  track: PgtTrack;
+  dragHandle?: React.ReactNode;
+  onRemove?: () => void;
+}) {
   const [liked, setLiked] = useState(track.liked);
   const [pct, setPct] = useState(track.pct);
 
@@ -125,7 +133,14 @@ function PgtTrackRow({ track }: { track: PgtTrack }) {
   };
 
   return (
-    <div className="group grid grid-cols-[48px_1fr_60px] md:grid-cols-[56px_1fr_60px_80px] gap-2 md:gap-3 py-2.5 border-b border-[var(--mrms-rule)] items-center hover:bg-[var(--mrms-paper)] transition-colors">
+    <div
+      className={`group grid ${
+        dragHandle
+          ? "grid-cols-[20px_48px_1fr_60px] md:grid-cols-[20px_56px_1fr_60px_80px]"
+          : "grid-cols-[48px_1fr_60px] md:grid-cols-[56px_1fr_60px_80px]"
+      } gap-2 md:gap-3 py-2.5 border-b border-[var(--mrms-rule)] items-center hover:bg-[var(--mrms-paper)] transition-colors`}
+    >
+      {dragHandle}
       <button
         onClick={playOne}
         aria-label="play track"
@@ -189,6 +204,15 @@ function PgtTrackRow({ track }: { track: PgtTrack }) {
             stroke={pct ? "var(--mrms-rust)" : "var(--mrms-ink-mute)"}
           />
         </button>
+        {onRemove && (
+          <button
+            onClick={onRemove}
+            aria-label="곡 제거"
+            className="bg-transparent border-0 cursor-pointer p-1 text-[var(--mrms-ink-mute)] hover:text-[#d9534f]"
+          >
+            <X className="size-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -303,27 +327,22 @@ function SortableTrackRow({ track, onRemove }: { track: PgtTrack; onRemove: () =
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`group flex items-center gap-2 py-2.5 border-b border-[var(--mrms-rule)] ${isDragging ? "opacity-50 bg-[var(--mrms-paper)]" : ""}`}
+      className={isDragging ? "opacity-50" : ""}
     >
-      <button
-        {...listeners}
-        {...attributes}
-        aria-label="순서 변경"
-        className="cursor-grab active:cursor-grabbing bg-transparent border-0 p-1 text-(--mrms-ink-mute) touch-none"
-      >
-        <GripVertical className="size-4" />
-      </button>
-      <div className="flex-1 min-w-0">
-        <div className="text-[13px] text-(--mrms-ink) truncate">{track.title}</div>
-        <div className="text-[11px] text-(--mrms-ink-soft) truncate">{track.artist}</div>
-      </div>
-      <button
-        onClick={onRemove}
-        aria-label="곡 제거"
-        className="bg-transparent border-0 p-1 cursor-pointer text-(--mrms-ink-mute) hover:text-[#d9534f] opacity-0 group-hover:opacity-100"
-      >
-        <X className="size-3.5" />
-      </button>
+      <PgtTrackRow
+        track={track}
+        onRemove={onRemove}
+        dragHandle={
+          <button
+            {...listeners}
+            {...attributes}
+            aria-label="순서 변경"
+            className="flex items-center justify-center cursor-grab active:cursor-grabbing bg-transparent border-0 p-0 text-[var(--mrms-ink-mute)] touch-none"
+          >
+            <GripVertical className="size-4" />
+          </button>
+        }
+      />
     </div>
   );
 }
@@ -724,14 +743,26 @@ function PlaylistsTab({
                 onChange={(e) => setDraftName(e.target.value)}
                 onBlur={() => {
                   const n = draftName.trim();
-                  if (n && n !== selected.pl.name) {
-                    renamePl(selected.pl.id, n);
-                    setUserPlaylists((ps) =>
-                      ps.map((p) => (p.id === selected.pl.id ? { ...p, name: n } : p)),
-                    );
-                    setSelected({ kind: "user", pl: { ...selected.pl, name: n } });
-                  }
                   setEditingName(false);
+                  if (!n || n === selected.pl.name) return;
+                  const id = selected.pl.id;
+                  const prevName = selected.pl.name;
+                  setUserPlaylists((ps) =>
+                    ps.map((p) => (p.id === id ? { ...p, name: n } : p)),
+                  );
+                  setSelected({ kind: "user", pl: { ...selected.pl, name: n } });
+                  void renamePl(id, n).then((ok) => {
+                    if (ok) return;
+                    // 서버 실패 → 로컬도 롤백(사이드바 store와 일치 유지)
+                    setUserPlaylists((ps) =>
+                      ps.map((p) => (p.id === id ? { ...p, name: prevName } : p)),
+                    );
+                    setSelected((s) =>
+                      s && s.kind === "user" && s.pl.id === id
+                        ? { kind: "user", pl: { ...s.pl, name: prevName } }
+                        : s,
+                    );
+                  });
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -762,13 +793,18 @@ function PlaylistsTab({
             {selected.kind === "user" && (
               <button
                 onClick={() => {
-                  if (confirm(`'${selected.pl.name}' 삭제할까요?`)) {
-                    const deletedId = selected.pl.id;
-                    removePl(deletedId);
-                    setUserPlaylists((ps) => ps.filter((p) => p.id !== deletedId));
-                    setSelected(null);
-                    setTracks([]);
-                  }
+                  if (!confirm(`'${selected.pl.name}' 삭제할까요?`)) return;
+                  const deletedId = selected.pl.id;
+                  const removed = userPlaylists.find((p) => p.id === deletedId);
+                  setUserPlaylists((ps) => ps.filter((p) => p.id !== deletedId));
+                  setSelected(null);
+                  setTracks([]);
+                  void removePl(deletedId).then((ok) => {
+                    if (!ok && removed) {
+                      // 서버 실패 → 로컬 목록 복원(사이드바 store와 일치)
+                      setUserPlaylists((ps) => [removed, ...ps]);
+                    }
+                  });
                 }}
                 className="shrink-0 bg-transparent border-0 p-1 cursor-pointer text-(--mrms-ink-mute) hover:text-[#d9534f]"
                 aria-label="플레이리스트 삭제"
