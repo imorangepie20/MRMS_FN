@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { navGroups } from "@/lib/nav";
+import { useUser } from "@/lib/hooks/use-user";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -21,9 +22,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+const ROLE_RANK: Record<string, number> = { user: 0, admin: 1, superadmin: 2 };
+
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const router = useRouter();
+  const { user } = useUser();
+  // 사이드바와 동일한 역할 게이팅 — admin 메뉴를 권한 없는 유저에게 노출하지 않음
+  const myRank = ROLE_RANK[user?.role ?? "user"] ?? 0;
+  const visibleGroups = navGroups
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((i) => !i.minRole || myRank >= ROLE_RANK[i.minRole]),
+    }))
+    .filter((g) => g.items.length > 0);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -62,7 +74,7 @@ export function CommandPalette() {
             <CommandInput placeholder="Type a page name…" />
             <CommandList>
               <CommandEmpty>No results found.</CommandEmpty>
-              {navGroups.map((group) => (
+              {visibleGroups.map((group) => (
                 <CommandGroup key={group.label} heading={group.label}>
                   {group.items.map((item) => (
                     <CommandItem
