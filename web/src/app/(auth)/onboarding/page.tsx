@@ -147,7 +147,7 @@ export default function OnboardingPage() {
         title="음악 플랫폼을 먼저 연결하세요"
         description="추천을 만들려면 음악 플랫폼 연결 또는 플레이리스트 import가 필요합니다."
       >
-        <Button onClick={() => router.push("/login")} className="w-full">
+        <Button onClick={() => router.push("/connect")} className="w-full">
           음악 플랫폼 연결하기
         </Button>
       </AuthCard>
