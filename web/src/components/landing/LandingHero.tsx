@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Play, SkipForward } from "lucide-react";
+import { Play, Square, SkipForward } from "lucide-react";
 
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { fetchPreviewTracks, type PreviewTrack } from "@/lib/api/landing";
@@ -32,6 +32,14 @@ export function LandingHero() {
   const next = () => {
     if (tracks.length < 2) return;
     setIdx((i) => (i + 1) % tracks.length);
+  };
+  const stop = () => {
+    const el = audioRef.current;
+    if (el) {
+      el.pause();
+      el.currentTime = 0;
+    }
+    setPlaying(false);
   };
 
   // 곡 전환(재생 중일 때만 자동 이어 재생)
@@ -80,12 +88,21 @@ export function LandingHero() {
               <Play className="size-3.5 fill-current" /> 플레이 허용
             </button>
           ) : (
-            <button
-              onClick={next}
-              className="inline-flex items-center gap-2 bg-(--mrms-paper)/15 text-(--mrms-paper) px-4 py-2 font-mono text-[11px] tracking-editorial uppercase border border-(--mrms-paper)/30 cursor-pointer hover:bg-(--mrms-paper)/25"
-            >
-              <SkipForward className="size-3.5" /> 다음 곡
-            </button>
+            <>
+              <button
+                onClick={stop}
+                aria-label="정지"
+                className="inline-flex items-center gap-2 bg-(--mrms-paper)/15 text-(--mrms-paper) px-4 py-2 font-mono text-[11px] tracking-editorial uppercase border border-(--mrms-paper)/30 cursor-pointer hover:bg-(--mrms-paper)/25"
+              >
+                <Square className="size-3.5 fill-current" /> 정지
+              </button>
+              <button
+                onClick={next}
+                className="inline-flex items-center gap-2 bg-(--mrms-paper)/15 text-(--mrms-paper) px-4 py-2 font-mono text-[11px] tracking-editorial uppercase border border-(--mrms-paper)/30 cursor-pointer hover:bg-(--mrms-paper)/25"
+              >
+                <SkipForward className="size-3.5" /> 다음 곡
+              </button>
+            </>
           )}
         </div>
       </div>

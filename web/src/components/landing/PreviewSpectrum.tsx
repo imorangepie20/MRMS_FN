@@ -21,7 +21,15 @@ export function PreviewSpectrum({
   const ctxRef = useRef<Ctx | null>(null);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active) {
+      // 정지 시 막대 평탄화(직전 프레임에서 얼지 않게)
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const b = barRefs.current[i];
+        if (b) b.style.height = `${MIN_VISIBLE_PCT}%`;
+      }
+      heightsRef.current = Array.from({ length: BAR_COUNT }, () => 0);
+      return;
+    }
     const el = audioRef.current;
     if (!el) return;
 
