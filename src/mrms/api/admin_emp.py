@@ -8,7 +8,8 @@ import psycopg
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
-from mrms.api.deps import db_conn, get_current_user_id
+from mrms.api.deps import db_conn
+from mrms.auth.roles import require_admin
 from mrms.db.emp import (
     count_runs,
     delete_run,
@@ -27,23 +28,11 @@ from mrms.emp.youtube import SOURCES_SETTING_KEY as YOUTUBE_SOURCES_SETTING_KEY
 router = APIRouter(prefix="/api/admin/emp", tags=["admin_emp"])
 
 
-def _require_admin(conn: psycopg.Connection, user_id: str) -> None:
-    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-    if not admin_email:
-        raise HTTPException(403, "admin not configured")
-    with conn.cursor() as cur:
-        cur.execute('SELECT email FROM "User" WHERE id = %s', (user_id,))
-        row = cur.fetchone()
-    if not row or (row[0] or "").strip().lower() != admin_email:
-        raise HTTPException(403, "not admin")
-
-
 @router.get("/stats")
 def admin_stats(
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_admin),
     conn: psycopg.Connection = Depends(db_conn),
 ):
-    _require_admin(conn, user_id)
     stats = get_emp_stats(conn)
     runs = list_recent_runs(conn, limit=1)
     stats["last_run"] = runs[0] if runs else None
@@ -52,11 +41,10 @@ def admin_stats(
 
 @router.get("/users")
 def admin_users(
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_admin),
     conn: psycopg.Connection = Depends(db_conn),
 ):
     """추천 실행 대상 선택용 사용자 목록 (track_count 내림차순 — 라이브러리 보유 우선)."""
-    _require_admin(conn, user_id)
     with conn.cursor() as cur:
         cur.execute(
             '''SELECT u.email, u."displayName", count(ut."trackId") AS track_count
@@ -77,10 +65,9 @@ def admin_users(
 def admin_runs(
     limit: int = 20,
     offset: int = 0,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_admin),
     conn: psycopg.Connection = Depends(db_conn),
 ):
-    _require_admin(conn, user_id)
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
     return {
@@ -94,10 +81,9 @@ def admin_runs(
 @router.delete("/runs/{run_id}")
 def admin_delete_run(
     run_id: str,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_admin),
     conn: psycopg.Connection = Depends(db_conn),
 ):
-    _require_admin(conn, user_id)
     if not delete_run(conn, run_id):
         raise HTTPException(404, "run not found or still running")
     return {"deleted": run_id}
@@ -110,11 +96,10 @@ class PruneBody(BaseModel):
 @router.post("/runs/prune")
 def admin_prune_runs(
     body: PruneBody,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_admin),
     conn: psycopg.Connection = Depends(db_conn),
 ):
     """최근 keep개를 제외한 run 일괄 삭제 (진행 중 제외)."""
-    _require_admin(conn, user_id)
     keep = max(1, body.keep)
     deleted = delete_runs_older_than(conn, keep=keep)
     return {"deleted": deleted, "kept": keep}
@@ -137,10 +122,9 @@ MASKED_KEYS: set[str] = {TOKEN_SETTING_KEY}
 
 @router.get("/settings")
 def admin_get_settings(
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_admin),
     conn: psycopg.Connection = Depends(db_conn),
 ):
-    _require_admin(conn, user_id)
     values = list_settings(conn, ALLOWED_SETTING_KEYS)
     out: dict[str, dict] = {}
     for k, v in values.items():
@@ -163,10 +147,9 @@ class SettingUpdate(BaseModel):
 @router.put("/settings")
 def admin_put_setting(
     body: SettingUpdate,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_admin),
     conn: psycopg.Connection = Depends(db_conn),
 ):
-    _require_admin(conn, user_id)
     if body.key not in ALLOWED_SETTING_KEYS:
         raise HTTPException(400, f"key not allowed: {body.key}")
     set_setting(conn, body.key, body.value or None)
@@ -242,11 +225,10 @@ def _regenerate_all_mrt() -> None:
 def admin_run_mrt(
     req: RunMrtRequest,
     background: BackgroundTasks,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_admin),
     conn: psycopg.Connection = Depends(db_conn),
 ):
     """MRT(persona+discovery) 강제 재생성. target='user'(sync) | 'all'(백그라운드)."""
-    _require_admin(conn, user_id)
     from mrms.recsys.mrt import MODEL_VERSION
 
     if req.target == "all":
@@ -302,7 +284,7 @@ def admin_run_mrt(
 
 @router.post("/trigger")
 def admin_trigger(
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_admin),
     conn: psycopg.Connection = Depends(db_conn),
 ):
     """EMP 파이프라인 수동 트리거.
@@ -310,7 +292,6 @@ def admin_trigger(
     mrms-emp-import.service는 항상 전체 파이프라인(platform='all')을 실행 —
     platform 선택은 지원하지 않음 (run_emp_pipeline.py가 'all' 고정).
     """
-    _require_admin(conn, user_id)
     try:
         subprocess.Popen(
             ["sudo", "systemctl", "start", "mrms-emp-import.service"],

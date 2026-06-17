@@ -150,3 +150,16 @@ def test_admin_settings_disallowed_key(login, monkeypatch):
         assert r.status_code == 400
     finally:
         client.cookies.clear()
+
+
+def test_admin_emp_stats_forbidden_for_non_admin(login, monkeypatch):
+    """ADMIN_EMAIL과 다른 이메일(일반 유저)은 EMP stats 403."""
+    user_email = "plain_user_emp@example.com"
+    _, session_id = login(user_email)
+    monkeypatch.setenv("ADMIN_EMAIL", "different_admin@example.com")
+    client.cookies.set("mrms_session", session_id)
+    try:
+        r = client.get("/api/admin/emp/stats")
+        assert r.status_code == 403
+    finally:
+        client.cookies.clear()
