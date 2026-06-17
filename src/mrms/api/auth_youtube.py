@@ -20,7 +20,7 @@ from fastapi.responses import RedirectResponse
 
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.auth.youtube import YouTubeOAuthClient, YouTubeOAuthError, gen_pkce
-from mrms.db.user_track import get_oauth, get_or_create_user, upsert_oauth
+from mrms.db.user_track import get_oauth, upsert_oauth
 from mrms.sync.youtube_importer import YouTubeImporter, import_all
 
 router = APIRouter(prefix="/api/auth/youtube", tags=["auth"])
@@ -141,85 +141,42 @@ async def callback(
         resp.delete_cookie(OAUTH_VERIFIER_COOKIE)
         return resp
 
-    google_id = profile.get("id")
-    email = profile.get("email") or f"youtube-{google_id}@auto.local"
     display_name = profile.get("name")
 
-    # 기존 세션 사용자가 있으면 그 user에 youtube를 연결 (auth_spotify 미러 패턴).
-    existing_user_id: str | None = None
+    # 링크 모드 — 현재 세션 유저에 youtube 연결(유저/세션 생성 안 함).
+    user_id: str | None = None
     session_id_cookie = request.cookies.get(SESSION_COOKIE_NAME)
     if session_id_cookie:
         with conn.cursor() as cur:
-            cur.execute(
-                'SELECT "userId", "expiresAt" FROM "AuthSession" WHERE id = %s',
-                (session_id_cookie,),
-            )
-            row = cur.fetchone()
-        if row:
-            sess_user_id, sess_expires = row
-            if sess_expires is not None and sess_expires.tzinfo is None:
-                sess_expires = sess_expires.replace(tzinfo=timezone.utc)
-            if sess_expires is None or sess_expires >= datetime.now(timezone.utc):
-                existing_user_id = sess_user_id
+            cur.execute('SELECT "userId", "expiresAt" FROM "AuthSession" WHERE id = %s',
+                        (session_id_cookie,))
+            srow = cur.fetchone()
+        if srow:
+            su, se = srow
+            if se is not None and se.tzinfo is None:
+                se = se.replace(tzinfo=timezone.utc)
+            if se is None or se >= datetime.now(timezone.utc):
+                user_id = su
+    if user_id is None:
+        resp = RedirectResponse(url="/login?error=youtube_login_required", status_code=307)
+        resp.delete_cookie(OAUTH_STATE_COOKIE)
+        resp.delete_cookie(OAUTH_VERIFIER_COOKIE)
+        return resp
 
-    if existing_user_id:
-        user_id = existing_user_id
-    else:
-        user_id = get_or_create_user(conn, email)
-
-    # NOTE: primary는 이제 읽을 때 resolve_primary_platform로 계산하므로
-    # 아래 primaryPlatform CASE 세팅은 vestigial(무해). 남겨도 무방.
     with conn.cursor() as cur:
-        cur.execute(
-            '''UPDATE "User" SET
-                 "displayName" = COALESCE("displayName", %s),
-                 "primaryPlatform" = CASE
-                   WHEN "primaryPlatform" = 'tidal'
-                        AND NOT EXISTS (
-                          SELECT 1 FROM "UserOAuth"
-                          WHERE "userId" = %s AND platform = 'tidal'
-                        )
-                   THEN %s
-                   ELSE "primaryPlatform"
-                 END
-               WHERE id = %s''',
-            (display_name, user_id, "youtube", user_id),
-        )
+        cur.execute('UPDATE "User" SET "displayName" = COALESCE("displayName", %s) WHERE id = %s',
+                    (display_name, user_id))
     conn.commit()
 
-    # UserOAuth upsert
     token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
     upsert_oauth(
         conn, user_id=user_id, platform="youtube",
         access_token=access_token, refresh_token=refresh_token,
         expires_at=token_expires_at, scopes=granted,
     )
-
-    # AuthSession 생성 (단일 세션 정책 — 기존 세션 삭제)
-    session_id = uuid.uuid4().hex
-    session_expires = datetime.now(timezone.utc) + timedelta(seconds=SESSION_MAX_AGE)
-    with conn.cursor() as cur:
-        cur.execute('DELETE FROM "AuthSession" WHERE "userId" = %s', (user_id,))
-        cur.execute(
-            'INSERT INTO "AuthSession" (id, "userId", "expiresAt", "userAgent") VALUES (%s, %s, %s, %s)',
-            (session_id, user_id, session_expires, request.headers.get("user-agent")),
-        )
-
-    with conn.cursor() as cur:
-        cur.execute('SELECT COUNT(*) FROM "PlaylistHistory" WHERE "userId" = %s', (user_id,))
-        has_mrt = cur.fetchone()[0] > 0
     conn.commit()
 
-    target = "/mrt" if has_mrt else "/onboarding"
-    resp = RedirectResponse(url=target, status_code=307)
-    resp.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=session_id,
-        httponly=True,
-        samesite="lax",
-        max_age=SESSION_MAX_AGE,
-        secure=False,
-    )
+    resp = RedirectResponse(url="/onboarding", status_code=307)
     resp.delete_cookie(OAUTH_STATE_COOKIE)
     resp.delete_cookie(OAUTH_VERIFIER_COOKIE)
     return resp

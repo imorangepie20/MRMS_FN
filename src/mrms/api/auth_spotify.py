@@ -13,7 +13,7 @@ from fastapi.responses import RedirectResponse
 
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.auth.spotify import SpotifyOAuthClient, SpotifyOAuthError
-from mrms.db.user_track import get_oauth, get_or_create_user, upsert_oauth
+from mrms.db.user_track import get_oauth, upsert_oauth
 
 router = APIRouter(prefix="/api/auth/spotify", tags=["auth"])
 
@@ -140,75 +140,48 @@ async def callback(
         resp.delete_cookie(OAUTH_STATE_COOKIE)
         return resp
     me = me_r.json()
-    email = me.get("email") or f"spotify-{me.get('id')}@auto.local"
+    # 링크 모드 — 현재 세션 유저에 spotify 연결(유저/세션 생성 안 함).
+    session_id_cookie = request.cookies.get(SESSION_COOKIE_NAME)
+    user_id: str | None = None
+    if session_id_cookie:
+        with conn.cursor() as cur:
+            cur.execute('SELECT "userId", "expiresAt" FROM "AuthSession" WHERE id = %s',
+                        (session_id_cookie,))
+            srow = cur.fetchone()
+        if srow:
+            su, se = srow
+            if se is not None and se.tzinfo is None:
+                se = se.replace(tzinfo=timezone.utc)
+            if se is None or se >= datetime.now(timezone.utc):
+                user_id = su
+    if user_id is None:
+        resp = RedirectResponse(url="/login?error=spotify_login_required", status_code=307)
+        resp.delete_cookie(OAUTH_STATE_COOKIE)
+        resp.delete_cookie(OAUTH_NEXT_COOKIE)
+        return resp
+
     display_name = me.get("display_name")
     country = me.get("country")
-
-    # User upsert
-    # primaryPlatform: 새 user (UserOAuth(tidal) 없음)면 'spotify'로 설정,
-    # 기존 Tidal 사용자가 같은 email로 들어온 경우 primaryPlatform 그대로 유지.
-    # NOTE: primary는 이제 읽을 때 resolve_primary_platform로 계산하므로
-    # 이 저장값 세팅은 vestigial(무해). 남겨도 무방.
-    user_id = get_or_create_user(conn, email)
     with conn.cursor() as cur:
         cur.execute(
-            '''UPDATE "User" SET
-                 "displayName" = COALESCE("displayName", %s),
-                 country = COALESCE(country, %s),
-                 "primaryPlatform" = CASE
-                   WHEN "primaryPlatform" = 'tidal'
-                        AND NOT EXISTS (
-                          SELECT 1 FROM "UserOAuth"
-                          WHERE "userId" = %s AND platform = 'tidal'
-                        )
-                   THEN %s
-                   ELSE "primaryPlatform"
-                 END
-               WHERE id = %s''',
-            (display_name, country, user_id, "spotify", user_id),
+            'UPDATE "User" SET "displayName" = COALESCE("displayName", %s), '
+            'country = COALESCE(country, %s) WHERE id = %s',
+            (display_name, country, user_id),
         )
     conn.commit()
 
-    # UserOAuth upsert
     token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
     upsert_oauth(
         conn, user_id=user_id, platform="spotify",
         access_token=access_token, refresh_token=refresh_token,
         expires_at=token_expires_at, scopes=granted,
     )
-
-    # AuthSession 생성 (기존 세션은 단일 세션 정책상 삭제)
-    session_id = uuid.uuid4().hex
-    session_expires = datetime.now(timezone.utc) + timedelta(seconds=SESSION_MAX_AGE)
-    with conn.cursor() as cur:
-        cur.execute(
-            'DELETE FROM "AuthSession" WHERE "userId" = %s',
-            (user_id,),
-        )
-        cur.execute(
-            'INSERT INTO "AuthSession" (id, "userId", "expiresAt", "userAgent") VALUES (%s, %s, %s, %s)',
-            (session_id, user_id, session_expires, request.headers.get("user-agent")),
-        )
-
-    # has_mrt 체크
-    with conn.cursor() as cur:
-        cur.execute('SELECT COUNT(*) FROM "PlaylistHistory" WHERE "userId" = %s', (user_id,))
-        has_mrt = cur.fetchone()[0] > 0
     conn.commit()
 
-    # next 쿠키가 있으면 그 페이지로 복귀(공유 페이지 등), 없으면 기존 기본 목적지.
     next_cookie = request.cookies.get(OAUTH_NEXT_COOKIE)
     next_target = _safe_next(unquote(next_cookie)) if next_cookie else None
-    target = next_target or ("/mrt" if has_mrt else "/onboarding")
+    target = next_target or "/onboarding"
     resp = RedirectResponse(url=target, status_code=307)
-    resp.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=session_id,
-        httponly=True,
-        samesite="lax",
-        max_age=SESSION_MAX_AGE,
-        secure=False,
-    )
     resp.delete_cookie(OAUTH_STATE_COOKIE)
     resp.delete_cookie(OAUTH_NEXT_COOKIE)
     return resp

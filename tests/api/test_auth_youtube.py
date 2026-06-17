@@ -66,71 +66,46 @@ def test_callback_denied_redirects_to_login_with_error(db_conn):
     assert "youtube_denied" in loc
 
 
-def test_callback_success_creates_session_and_redirects(db_conn):
-    """code 교환 + userinfo → User+UserOAuth+AuthSession + redirect."""
-    token_response = MagicMock()
-    token_response.status_code = 200
-    token_response.json = MagicMock(return_value={
-        "access_token": "AT_yt",
-        "refresh_token": "RT_yt",
-        "expires_in": 3600,
-        "scope": "https://www.googleapis.com/auth/youtube.readonly",
-        "token_type": "Bearer",
-    })
-    userinfo_response = MagicMock()
-    userinfo_response.status_code = 200
-    userinfo_response.json = MagicMock(return_value={
-        "id": "g_user_12345",
-        "email": "bob_yt@example.com",
-        "name": "Bob YT",
-    })
+def test_callback_links_youtube_to_current_user(db_conn, cleanup):
+    """유효 세션 + code/userinfo → 현재 유저에 youtube 연결, /onboarding(새 유저 X)."""
+    import uuid as _u
+    from mrms.db.user_track import get_or_create_user
 
+    email = f"yt-link-{_u.uuid4().hex[:8]}@example.com"
+    cleanup('DELETE FROM "User" WHERE email = %s', (email,))
+    user_id = get_or_create_user(db_conn, email)
+    session_id = _u.uuid4().hex
+    with db_conn.cursor() as cur:
+        cur.execute('INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
+                    (session_id, user_id, datetime.now(timezone.utc) + timedelta(days=30)))
+    db_conn.commit()
+
+    token_response = MagicMock(); token_response.status_code = 200
+    token_response.json = MagicMock(return_value={"access_token": "AT_yt", "refresh_token": "RT_yt",
+        "expires_in": 3600, "scope": "https://www.googleapis.com/auth/youtube.readonly", "token_type": "Bearer"})
+    userinfo_response = MagicMock(); userinfo_response.status_code = 200
+    userinfo_response.json = MagicMock(return_value={"id": "g_user_12345", "email": "bob_yt@example.com", "name": "Bob YT"})
     fake_client = MagicMock()
     fake_client.__aenter__ = AsyncMock(return_value=fake_client)
     fake_client.__aexit__ = AsyncMock(return_value=None)
     fake_client.post = AsyncMock(return_value=token_response)
     fake_client.get = AsyncMock(return_value=userinfo_response)
 
+    client.cookies.set("mrms_session", session_id)
     client.cookies.set("mrms_yt_oauth_state", "S2")
     client.cookies.set("mrms_yt_pkce_verifier", "VERIFIER_S2")
     with patch("httpx.AsyncClient", return_value=fake_client):
-        r = client.get(
-            "/api/auth/youtube/callback?code=CODE_XYZ&state=S2",
-            follow_redirects=False,
-        )
+        r = client.get("/api/auth/youtube/callback?code=CODE_XYZ&state=S2", follow_redirects=False)
     client.cookies.clear()
     assert r.status_code in (302, 307)
-    assert r.headers["location"] in ("/onboarding", "/mrt")
-    assert "mrms_session" in r.cookies
-
-    # token 교환 body에 code_verifier 전달됐는지
+    assert r.headers["location"] == "/onboarding"
     _, kwargs = fake_client.post.call_args
     assert kwargs["data"]["code_verifier"] == "VERIFIER_S2"
-
-    # DB 검증
     with db_conn.cursor() as cur:
-        cur.execute(
-            'SELECT id, "primaryPlatform" FROM "User" WHERE email = %s',
-            ("bob_yt@example.com",),
-        )
-        user_row = cur.fetchone()
-        assert user_row is not None
-        user_id, primary = user_row
-        assert primary == "youtube"
-        cur.execute(
-            'SELECT COUNT(*) FROM "UserOAuth" WHERE "userId" = %s AND platform = %s',
-            (user_id, "youtube"),
-        )
+        cur.execute('SELECT COUNT(*) FROM "UserOAuth" WHERE "userId"=%s AND platform=%s', (user_id, "youtube"))
         assert cur.fetchone()[0] == 1
-        cur.execute('SELECT COUNT(*) FROM "AuthSession" WHERE "userId" = %s', (user_id,))
-        assert cur.fetchone()[0] >= 1
-
-    # cleanup (헬퍼들이 내부 commit하므로 잔여물 제거)
-    with db_conn.cursor() as cur:
-        cur.execute('DELETE FROM "AuthSession" WHERE "userId" = %s', (user_id,))
-        cur.execute('DELETE FROM "UserOAuth" WHERE "userId" = %s', (user_id,))
-        cur.execute('DELETE FROM "User" WHERE id = %s', (user_id,))
-    db_conn.commit()
+        cur.execute('SELECT COUNT(*) FROM "User" WHERE email=%s', ("bob_yt@example.com",))
+        assert cur.fetchone()[0] == 0
 
 
 def test_token_returns_access_token_with_valid_session(db_conn):

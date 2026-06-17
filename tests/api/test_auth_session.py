@@ -114,43 +114,54 @@ def test_device_code_poll_pending_returns_pending(db_conn):
     assert r.json()["status"] == "pending"
 
 
-def test_device_code_poll_success_creates_session(db_conn):
-    """성공 응답 → User+UserOAuth+AuthSession 생성 + cookie set."""
+def test_device_code_poll_links_to_current_user(db_conn, cleanup):
+    """세션 있으면 그 유저에 tidal 연결(새 유저/세션 생성 안 함)."""
+    from mrms.db.user_track import get_or_create_user
+    import uuid as _u
+
+    email = f"link-{_u.uuid4().hex[:8]}@example.com"
+    cleanup('DELETE FROM "User" WHERE email = %s', (email,))
+    user_id = get_or_create_user(db_conn, email)
+    session_id = _u.uuid4().hex
+    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+    with db_conn.cursor() as cur:
+        cur.execute('INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
+                    (session_id, user_id, expires_at))
+    db_conn.commit()
+
     jwt = _make_tidal_jwt(uid=12345)
     fake_response = AsyncMock()
     fake_response.status_code = 200
-    fake_response.json = lambda: {
-        "access_token": jwt,
-        "refresh_token": "refresh_xyz",
-        "expires_in": 86400,
-    }
+    fake_response.json = lambda: {"access_token": jwt, "refresh_token": "rx", "expires_in": 86400}
+    client.cookies.set("mrms_session", session_id)
     with patch("httpx.AsyncClient.post", return_value=fake_response):
-        r = client.post(
-            "/api/auth/tidal/device-code/poll",
-            json={"device_code": "DEVICE_XYZ"},
-        )
-    assert r.status_code == 200
-    body = r.json()
-    assert body["status"] == "success"
-    assert body["has_mrt"] is False
-    assert "mrms_session" in r.cookies
-
-    # DB 검증
-    with db_conn.cursor() as cur:
-        cur.execute('SELECT id FROM "User" WHERE email = %s', ("tidal-12345@auto.local",))
-        user_row = cur.fetchone()
-        assert user_row is not None
-        user_id = user_row[0]
-        cur.execute('SELECT COUNT(*) FROM "AuthSession" WHERE "userId" = %s', (user_id,))
-        assert cur.fetchone()[0] == 1
-        cur.execute(
-            'SELECT "accessToken" FROM "UserOAuth" WHERE "userId" = %s AND platform = %s',
-            (user_id, "tidal"),
-        )
-        token_row = cur.fetchone()
-        assert token_row is not None
-        assert token_row[0] == jwt
+        r = client.post("/api/auth/tidal/device-code/poll", json={"device_code": "DEVICE_XYZ"})
     client.cookies.clear()
+    assert r.status_code == 200
+    assert r.json()["status"] == "success"
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT "accessToken" FROM "UserOAuth" WHERE "userId"=%s AND platform=%s',
+                    (user_id, "tidal"))
+        assert cur.fetchone()[0] == jwt
+        # tidal-12345@auto.local 새 유저가 생기지 않았다
+        cur.execute('SELECT COUNT(*) FROM "User" WHERE email=%s', ("tidal-12345@auto.local",))
+        assert cur.fetchone()[0] == 0
+
+
+def test_device_code_poll_without_session_rejected(db_conn):
+    """세션 없으면 연결 거부(error/login_required) — 새 유저 생성 안 함."""
+    jwt = _make_tidal_jwt(uid=55555)
+    fake_response = AsyncMock()
+    fake_response.status_code = 200
+    fake_response.json = lambda: {"access_token": jwt, "refresh_token": "rx", "expires_in": 86400}
+    client.cookies.clear()
+    with patch("httpx.AsyncClient.post", return_value=fake_response):
+        r = client.post("/api/auth/tidal/device-code/poll", json={"device_code": "DEVICE_XYZ"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "error"
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT COUNT(*) FROM "User" WHERE email=%s', ("tidal-55555@auto.local",))
+        assert cur.fetchone()[0] == 0
 
 
 def test_device_code_poll_expired_returns_expired(db_conn):

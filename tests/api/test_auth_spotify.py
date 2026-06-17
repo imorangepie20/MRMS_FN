@@ -45,55 +45,45 @@ def test_callback_denied_redirects_to_login_with_error(db_conn):
     assert "spotify_denied" in r.headers.get("location", "")
 
 
-def test_callback_success_creates_session_and_redirects(db_conn):
-    """code 교환 + /me → User+UserOAuth+AuthSession + 302 to /onboarding."""
-    token_response = MagicMock()
-    token_response.status_code = 200
-    token_response.json = MagicMock(return_value={
-        "access_token": "AT_xyz",
-        "refresh_token": "RT_xyz",
-        "expires_in": 3600,
-        "scope": "user-read-email user-library-read",
-        "token_type": "Bearer",
-    })
-    me_response = MagicMock()
-    me_response.status_code = 200
-    me_response.json = MagicMock(return_value={
-        "id": "sp_user_12345",
-        "email": "alice@example.com",
-        "display_name": "Alice",
-        "country": "KR",
-        "product": "premium",
-    })
+def test_callback_links_spotify_to_current_user(db_conn, cleanup):
+    """유효 세션 + code/me → 현재 유저에 spotify 연결, /onboarding redirect(새 유저 X)."""
+    import uuid as _u
+    from mrms.db.user_track import get_or_create_user
 
+    email = f"sp-link-{_u.uuid4().hex[:8]}@example.com"
+    cleanup('DELETE FROM "User" WHERE email = %s', (email,))
+    user_id = get_or_create_user(db_conn, email)
+    session_id = _u.uuid4().hex
+    with db_conn.cursor() as cur:
+        cur.execute('INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
+                    (session_id, user_id, datetime.now(timezone.utc) + timedelta(days=30)))
+    db_conn.commit()
+
+    token_response = MagicMock(); token_response.status_code = 200
+    token_response.json = MagicMock(return_value={
+        "access_token": "AT_xyz", "refresh_token": "RT_xyz", "expires_in": 3600,
+        "scope": "user-read-email", "token_type": "Bearer"})
+    me_response = MagicMock(); me_response.status_code = 200
+    me_response.json = MagicMock(return_value={"id": "sp_user_12345", "email": "alice@example.com",
+        "display_name": "Alice", "country": "KR", "product": "premium"})
     fake_client = MagicMock()
     fake_client.__aenter__ = AsyncMock(return_value=fake_client)
     fake_client.__aexit__ = AsyncMock(return_value=None)
     fake_client.post = AsyncMock(return_value=token_response)
     fake_client.get = AsyncMock(return_value=me_response)
 
+    client.cookies.set("mrms_session", session_id)
     client.cookies.set("mrms_oauth_state", "S2")
     with patch("httpx.AsyncClient", return_value=fake_client):
-        r = client.get(
-            "/api/auth/spotify/callback?code=CODE_XYZ&state=S2",
-            follow_redirects=False,
-        )
+        r = client.get("/api/auth/spotify/callback?code=CODE_XYZ&state=S2", follow_redirects=False)
     client.cookies.clear()
     assert r.status_code in (302, 307)
-    assert r.headers["location"] in ("/onboarding", "/mrt")
-    assert "mrms_session" in r.cookies
-
-    # DB 검증
+    assert r.headers["location"] == "/onboarding"
     with db_conn.cursor() as cur:
-        cur.execute('SELECT id, "primaryPlatform" FROM "User" WHERE email = %s', ("alice@example.com",))
-        user_row = cur.fetchone()
-        assert user_row is not None
-        user_id, primary = user_row
-        assert primary == "spotify"
-        cur.execute('SELECT COUNT(*) FROM "UserOAuth" WHERE "userId" = %s AND platform = %s', (user_id, "spotify"))
+        cur.execute('SELECT COUNT(*) FROM "UserOAuth" WHERE "userId"=%s AND platform=%s', (user_id, "spotify"))
         assert cur.fetchone()[0] == 1
-        cur.execute('SELECT COUNT(*) FROM "AuthSession" WHERE "userId" = %s', (user_id,))
-        assert cur.fetchone()[0] >= 1
+        cur.execute('SELECT COUNT(*) FROM "User" WHERE email=%s', ("alice@example.com",))
+        assert cur.fetchone()[0] == 0  # me email로 새 유저 생성 안 됨
 
 
 def test_authorize_sets_next_cookie_for_safe_path(db_conn):
@@ -116,37 +106,40 @@ def test_authorize_ignores_unsafe_next(db_conn):
     assert "mrms_oauth_next" not in r.cookies
 
 
-def test_callback_redirects_to_next_when_set(db_conn):
-    """next 쿠키가 있으면 콜백이 그 페이지로 복귀(공유 페이지 퍼널)."""
-    token_response = MagicMock()
-    token_response.status_code = 200
-    token_response.json = MagicMock(return_value={
-        "access_token": "AT_next", "refresh_token": "RT_next",
-        "expires_in": 3600, "scope": "user-read-email", "token_type": "Bearer",
-    })
-    me_response = MagicMock()
-    me_response.status_code = 200
-    me_response.json = MagicMock(return_value={
-        "id": "sp_next_1", "email": "bob_next@example.com",
-        "display_name": "Bob", "country": "KR", "product": "premium",
-    })
+def test_callback_redirects_to_next_when_set(db_conn, cleanup):
+    """유효 세션 + next 쿠키 → 콜백이 그 페이지로 복귀(링크 모드)."""
+    import uuid as _u
+    from mrms.db.user_track import get_or_create_user
+
+    email = f"sp-next-{_u.uuid4().hex[:8]}@example.com"
+    cleanup('DELETE FROM "User" WHERE email = %s', (email,))
+    user_id = get_or_create_user(db_conn, email)
+    session_id = _u.uuid4().hex
+    with db_conn.cursor() as cur:
+        cur.execute('INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
+                    (session_id, user_id, datetime.now(timezone.utc) + timedelta(days=30)))
+    db_conn.commit()
+
+    token_response = MagicMock(); token_response.status_code = 200
+    token_response.json = MagicMock(return_value={"access_token": "AT_next", "refresh_token": "RT_next",
+        "expires_in": 3600, "scope": "user-read-email", "token_type": "Bearer"})
+    me_response = MagicMock(); me_response.status_code = 200
+    me_response.json = MagicMock(return_value={"id": "sp_next_1", "email": "bob_next@example.com",
+        "display_name": "Bob", "country": "KR", "product": "premium"})
     fake_client = MagicMock()
     fake_client.__aenter__ = AsyncMock(return_value=fake_client)
     fake_client.__aexit__ = AsyncMock(return_value=None)
     fake_client.post = AsyncMock(return_value=token_response)
     fake_client.get = AsyncMock(return_value=me_response)
 
+    client.cookies.set("mrms_session", session_id)
     client.cookies.set("mrms_oauth_state", "S_NEXT")
     client.cookies.set("mrms_oauth_next", "/p/share-token-xyz")
     with patch("httpx.AsyncClient", return_value=fake_client):
-        r = client.get(
-            "/api/auth/spotify/callback?code=CODE_XYZ&state=S_NEXT",
-            follow_redirects=False,
-        )
+        r = client.get("/api/auth/spotify/callback?code=CODE_XYZ&state=S_NEXT", follow_redirects=False)
     client.cookies.clear()
     assert r.status_code in (302, 307)
     assert r.headers["location"] == "/p/share-token-xyz"
-    assert "mrms_session" in r.cookies
 
 
 def test_spotify_token_returns_access_token_with_valid_session(db_conn):

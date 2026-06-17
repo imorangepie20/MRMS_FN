@@ -1,10 +1,7 @@
 """Tidal Device Code OAuth → AuthSession cookie."""
 from __future__ import annotations
 
-import base64
-import json
 import os
-import uuid
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -12,9 +9,8 @@ import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from mrms.api.deps import db_conn, get_current_user_id
-from mrms.db.user_track import get_or_create_user, resolve_primary_platform, upsert_oauth
-
+from mrms.api.deps import db_conn, get_current_user_id, get_current_user_id_optional
+from mrms.db.user_track import resolve_primary_platform, upsert_oauth
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -62,11 +58,10 @@ async def device_code_init() -> dict:
 @router.post("/tidal/device-code/poll")
 async def device_code_poll(
     body: DeviceCodePollRequest,
-    request: Request,
-    response: Response,
+    user_id: str | None = Depends(get_current_user_id_optional),
     conn: psycopg.Connection = Depends(db_conn),
 ) -> dict:
-    """Tidal token endpoint 폴링. 성공 시 AuthSession 생성 + cookie set."""
+    """Tidal token endpoint 폴링. 성공 시 현재 세션 유저에 tidal 연결(링크 모드)."""
     client_id = os.environ["TIDAL_CLIENT_ID"]
     client_secret = os.environ["TIDAL_CLIENT_SECRET"]
 
@@ -93,56 +88,25 @@ async def device_code_poll(
     if r.status_code != 200:
         raise HTTPException(r.status_code, f"Tidal token exchange failed: {r.text[:200]}")
 
+    if user_id is None:
+        return {"status": "error", "detail": "login_required"}
+
     tokens = r.json()
     access_token = tokens["access_token"]
     refresh_token = tokens.get("refresh_token", "")
     expires_in = tokens.get("expires_in", 86400)
 
-    # JWT payload에서 Tidal uid 추출
-    parts = access_token.split(".")
-    payload_b64 = parts[1] + "=" * (4 - len(parts[1]) % 4)
-    payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-    tidal_uid = str(payload["uid"])
-    email = f"tidal-{tidal_uid}@auto.local"
-
-    user_id = get_or_create_user(conn, email)
-    conn.commit()
-
     token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
     upsert_oauth(
-        conn,
-        user_id=user_id,
-        platform="tidal",
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_at=token_expires_at,
-        scopes=TIDAL_SCOPES.split(),
+        conn, user_id=user_id, platform="tidal",
+        access_token=access_token, refresh_token=refresh_token,
+        expires_at=token_expires_at, scopes=TIDAL_SCOPES.split(),
     )
 
-    # AuthSession 생성 — 기존 세션 모두 제거 후 신규 1개
-    session_id = uuid.uuid4().hex
-    session_expires = datetime.now(timezone.utc) + timedelta(seconds=SESSION_MAX_AGE)
-    with conn.cursor() as cur:
-        cur.execute('DELETE FROM "AuthSession" WHERE "userId" = %s', (user_id,))
-        cur.execute(
-            'INSERT INTO "AuthSession" (id, "userId", "expiresAt", "userAgent") VALUES (%s, %s, %s, %s)',
-            (session_id, user_id, session_expires, request.headers.get("user-agent")),
-        )
-
-    # has_mrt 체크 (기존 PlaylistHistory rows)
     with conn.cursor() as cur:
         cur.execute('SELECT COUNT(*) FROM "PlaylistHistory" WHERE "userId" = %s', (user_id,))
         has_mrt = cur.fetchone()[0] > 0
     conn.commit()
-
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=session_id,
-        httponly=True,
-        samesite="lax",
-        max_age=SESSION_MAX_AGE,
-        secure=False,  # production은 True
-    )
     return {"status": "success", "has_mrt": has_mrt}
 
 
