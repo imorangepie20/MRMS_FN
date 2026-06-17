@@ -37,6 +37,7 @@
 
 설계 스펙은 [superpowers/specs/](superpowers/specs/), 구현 계획은 [superpowers/plans/](superpowers/plans/)에 날짜 prefix로 누적.
 
+- [superpowers/specs/2026-06-17-playlist-management-design.md](superpowers/specs/2026-06-17-playlist-management-design.md): 플레이리스트 관리(DnD) — 트랙 감상 가능한 모든 페이지에서 생성/추가/편집(이름·설명·곡 순서·제거)/삭제. 데스크탑 좌측 사이드바 드롭(A) + 모든 트랙 행 ＋메뉴 폴백(모바일 바텀시트), `dnd-kit`. 기존 `Playlist`/`PlaylistTrack` 모델 무변경 + 신규 5 엔드포인트(add/remove/reorder/rename/delete, 소유권 체크), 담기=curated `UserTrack`(ADR-002). 공용 `ModalTrackList` 행에 grip+＋메뉴 적용
 - [superpowers/specs/2026-06-14-search-emp-expansion-design.md](superpowers/specs/2026-06-14-search-emp-expansion-design.md): 검색 → EMP 확장 상세 설계 ([ADR-005](decisions/ADR-005-search-emp-expansion.md)의 근거 문서)
 - [superpowers/specs/2026-06-14-search-page-editorial-polish-design.md](superpowers/specs/2026-06-14-search-page-editorial-polish-design.md): 검색 페이지 editorial 폴리시(헤더·input·스켈레톤·empty/idle, shadcn 룩 전환 없음)
 - [superpowers/specs/2026-06-14-wellness-mood-recommendation-design.md](superpowers/specs/2026-06-14-wellness-mood-recommendation-design.md): Wellness 무드 추천 상세 설계(실데이터 검증·보강판 — inEmp 제거·소프트 무드스코어·취향 결합) ([ADR-006](decisions/ADR-006-wellness-recommendation.md))
