@@ -2,6 +2,7 @@ export interface UserInfo {
   user_id: string;
   email: string;
   nickname: string | null;
+  role: "user" | "admin" | "superadmin";
   displayName: string | null;
   country: string | null;
   personas_count: number;
