@@ -1,21 +1,21 @@
-"""랜딩 preview 풀 — 전역 최신곡(new_release) 중 real-ISRC 랜덤 후보 + previewUrl write."""
+"""랜딩 preview 풀 — 전역 카탈로그의 real-ISRC 랜덤 후보."""
 from __future__ import annotations
 
 import psycopg
 
 
-def pick_preview_candidates(conn: psycopg.Connection, limit: int = 15) -> list[dict]:
-    """전역 new_release 풀에서 real-ISRC 트랙 랜덤 후보(메타+previewUrl 현재값). 부족하면 적게."""
+def pick_preview_candidates(conn: psycopg.Connection, limit: int = 10) -> list[dict]:
+    """전역 카탈로그에서 real-ISRC 트랙 랜덤 후보(메타). 부족하면 적게.
+
+    new_release EMPSource는 전역엔 비어 있어(per-user 생성) 풀을 전체 real-ISRC로 잡는다.
+    (synthetic 'emp_' ISRC·길이≠12 제외 → Deezer/iTunes resolve 가능한 실 ISRC만.)"""
     with conn.cursor() as cur:
         cur.execute(
             '''WITH pool AS (
-                 SELECT t.id
-                 FROM "Track" t
-                 JOIN "EMPSource" e ON e."trackId" = t.id AND e.source_type = 'new_release'
-                 WHERE t.isrc IS NOT NULL
-                   AND t.isrc NOT LIKE 'emp\\_%%' ESCAPE '\\'
-                   AND length(t.isrc) = 12
-                 GROUP BY t.id
+                 SELECT id FROM "Track"
+                 WHERE isrc IS NOT NULL
+                   AND isrc NOT LIKE 'emp\\_%%' ESCAPE '\\'
+                   AND length(isrc) = 12
                  ORDER BY random() LIMIT %s
                )
                SELECT t.id, t.title, ar.name, t."albumId", alb.title,
@@ -42,10 +42,3 @@ def pick_preview_candidates(conn: psycopg.Connection, limit: int = 15) -> list[d
         "youtube_track_id": r[7], "duration_ms": r[8], "isrc": r[9],
         "preview_url": r[10], "album_cover": r[11],
     } for r in rows]
-
-
-def set_track_preview_url(conn: psycopg.Connection, track_id: str, url: str) -> None:
-    """resolve된 preview URL을 Track에 캐시(write-through). 자체 commit."""
-    with conn.cursor() as cur:
-        cur.execute('UPDATE "Track" SET "previewUrl"=%s WHERE id=%s', (url, track_id))
-    conn.commit()
