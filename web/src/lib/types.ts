@@ -1,6 +1,7 @@
 export interface UserInfo {
   user_id: string;
   email: string;
+  nickname: string | null;
   displayName: string | null;
   country: string | null;
   personas_count: number;
