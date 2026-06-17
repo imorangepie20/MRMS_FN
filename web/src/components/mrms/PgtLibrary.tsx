@@ -137,7 +137,7 @@ function PgtTrackRow({
       data-track-id={track.track_id}
       className={`group grid ${
         dragHandle
-          ? "grid-cols-[20px_48px_1fr_60px] md:grid-cols-[20px_56px_1fr_60px_80px]"
+          ? "grid-cols-[20px_48px_1fr_76px] md:grid-cols-[20px_56px_1fr_60px_80px]"
           : "grid-cols-[48px_1fr_60px] md:grid-cols-[56px_1fr_60px_80px]"
       } gap-2 md:gap-3 py-2.5 border-b border-[var(--mrms-rule)] items-center hover:bg-[var(--mrms-paper)] transition-colors`}
     >

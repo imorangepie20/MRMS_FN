@@ -109,7 +109,7 @@ export function ModalTrackList({ tracks }: { tracks: ModalTrack[] }) {
   if (!tracks.length) return null;
   return (
     <div>
-      <div className="grid grid-cols-[28px_minmax(0,1fr)_44px_56px] sm:grid-cols-[28px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_44px_56px] gap-2 sm:gap-3 py-1.5 border-b border-(--mrms-ink) font-mono text-[9px] tracking-editorial uppercase text-(--mrms-ink-mute) items-center">
+      <div className="grid grid-cols-[28px_minmax(0,1fr)_44px_80px] sm:grid-cols-[28px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_44px_80px] gap-2 sm:gap-3 py-1.5 border-b border-(--mrms-ink) font-mono text-[9px] tracking-editorial uppercase text-(--mrms-ink-mute) items-center">
         <span className="text-right">#</span>
         <span>Title</span>
         <span className="hidden sm:block">Artist</span>
@@ -174,7 +174,7 @@ function ModalTrackRow({
   return (
     <div
       data-track-id={track.track_id}
-      className="group grid grid-cols-[28px_minmax(0,1fr)_44px_56px] sm:grid-cols-[28px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_44px_56px] gap-2 sm:gap-3 py-2 border-b border-(--mrms-rule) items-center hover:bg-(--mrms-bg) transition-colors"
+      className="group grid grid-cols-[28px_minmax(0,1fr)_44px_80px] sm:grid-cols-[28px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_44px_80px] gap-2 sm:gap-3 py-2 border-b border-(--mrms-rule) items-center hover:bg-(--mrms-bg) transition-colors"
     >
       <div className="relative h-7 flex items-center justify-end">
         <span className="font-mono text-[11px] text-(--mrms-ink-mute) group-hover:opacity-0">
