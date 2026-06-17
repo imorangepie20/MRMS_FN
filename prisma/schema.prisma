@@ -165,6 +165,7 @@ model User {
   email       String   @unique
   nickname    String?  @unique
   passwordHash String?
+  role        String   @default("user")
   displayName String?
   country     String?  // 'KR' — region 가용성 체크
   primaryPlatform String   @default("tidal")  // 'tidal' | 'spotify'
