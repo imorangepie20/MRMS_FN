@@ -46,7 +46,10 @@ export default async function Image({
           height: "100%",
           background: BG,
           color: INK,
-          padding: "52px 64px",
+          // 가로 패딩을 넉넉히(104px) — 네이버 카페/블로그 카드가 1200×630을 자기
+          // 비율에 cover로 맞추며 좌우 ~70px를 크롭해 로고/커버가 잘리던 문제 대비
+          // 안전 영역. 다른 플랫폼은 풀로 보여 무해.
+          padding: "52px 104px",
           fontFamily: "sans-serif",
         }}
       >
@@ -126,7 +129,7 @@ export default async function Image({
           )}
 
           <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-            <div style={{ display: "flex", fontSize: 64, fontWeight: 800, lineHeight: 1.05 }}>
+            <div style={{ display: "flex", fontSize: 52, fontWeight: 800, lineHeight: 1.05 }}>
               {title}
             </div>
             <div
