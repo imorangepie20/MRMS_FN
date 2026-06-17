@@ -17,7 +17,7 @@ function Grip({ trackId }: { trackId: string }) {
       {...attributes}
       aria-label="드래그해서 플레이리스트에 추가"
       onClick={(e) => e.stopPropagation()}
-      className={`hidden sm:flex items-center cursor-grab active:cursor-grabbing bg-transparent border-0 p-0 text-(--mrms-ink-mute) touch-none ${
+      className={`absolute left-0 top-0 bottom-0 z-10 hidden sm:flex items-center cursor-grab active:cursor-grabbing bg-transparent border-0 p-0 text-(--mrms-ink-mute) touch-none ${
         isDragging ? "opacity-40" : "opacity-0 group-hover:opacity-100"
       } transition-opacity`}
     >
