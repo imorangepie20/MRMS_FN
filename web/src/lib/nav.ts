@@ -10,6 +10,7 @@ export type NavItem = {
   full?: string;        // 약자(title)의 원래 메뉴명 — 사이드바에 부제로 표시
   badge?: string;       // 우측 카운트/상태
   children?: NavSubItem[];  // 사이드바 서브메뉴
+  minRole?: "admin" | "superadmin";  // 이 역할 이상만 사이드바 노출
 };
 
 export type NavGroup = {
@@ -51,8 +52,9 @@ export const navGroups: NavGroup[] = [
     items: [
       { title: "Connections", href: "/settings/connections", num: "S1", badge: "2/2" },
       { title: "Preferences", href: "/settings/preferences", num: "S2", badge: "·" },
-      { title: "EMP admin", href: "/admin/emp", num: "S3", badge: "·" },
-      { title: "About", href: "/about", num: "S4", badge: "v0.7" },
+      { title: "EMP admin", href: "/admin/emp", num: "S3", badge: "·", minRole: "admin" },
+      { title: "회원 관리", href: "/admin/users", num: "S4", badge: "·", minRole: "superadmin" },
+      { title: "About", href: "/about", num: "S5", badge: "v0.7" },
     ],
   },
 ];

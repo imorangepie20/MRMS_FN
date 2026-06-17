@@ -6,10 +6,19 @@ import { navGroups } from "@/lib/nav";
 import { useUser } from "@/lib/hooks/use-user";
 import { PlaylistNavSection } from "@/components/playlist/PlaylistNavSection";
 
+const ROLE_RANK: Record<string, number> = { user: 0, admin: 1, superadmin: 2 };
+
 
 export function AppSidebar() {
   const pathname = usePathname();
   const { user } = useUser();
+  const myRank = ROLE_RANK[user?.role ?? "user"] ?? 0;
+  const visibleGroups = navGroups
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((i) => !i.minRole || myRank >= ROLE_RANK[i.minRole]),
+    }))
+    .filter((g) => g.items.length > 0);
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, ".").slice(2);
 
   return (
@@ -28,7 +37,7 @@ export function AppSidebar() {
 
       {/* Scrollable nav */}
       <nav className="flex-1 overflow-y-auto px-6 py-4 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-[var(--mrms-rule)]">
-        {navGroups.map((group) => (
+        {visibleGroups.map((group) => (
           <div key={group.label} className="mb-5 last:mb-0">
             <div className="flex justify-between items-baseline pb-1.5 mb-1.5 border-b border-[var(--mrms-rule)]">
               <span className="font-mono text-[9px] tracking-editorial-wide uppercase text-[var(--mrms-ink-mute)]">
