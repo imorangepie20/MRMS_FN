@@ -17,6 +17,7 @@ from mrms.api.auth_youtube import router as auth_youtube_router
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.api.emp_browse import router as emp_browse_router
 from mrms.api.import_url import router as import_url_router
+from mrms.api.landing import router as landing_router
 from mrms.api.onboarding_api import router as onboarding_router
 from mrms.api.pgt import router as pgt_router
 from mrms.api.playback_resolve import router as playback_resolve_router
@@ -69,6 +70,7 @@ app.include_router(search_router)
 app.include_router(import_url_router)
 app.include_router(wellness_router)
 app.include_router(situation_router)
+app.include_router(landing_router)
 
 
 @app.get("/api/health")
