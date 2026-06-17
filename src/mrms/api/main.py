@@ -9,6 +9,7 @@ from mrms.api.admin_emp import router as admin_emp_router
 from mrms.api.albums import router as albums_router
 from mrms.api.artist import router as artist_router
 from mrms.api.artwork import router as artwork_router
+from mrms.api.auth_account import router as auth_account_router
 from mrms.api.auth_session import router as auth_session_router
 from mrms.api.auth_spotify import router as auth_spotify_router
 from mrms.api.auth_tidal import playback_router as tidal_playback_router
@@ -53,6 +54,7 @@ app.add_middleware(
 app.include_router(tidal_router)
 app.include_router(tidal_playback_router)
 app.include_router(playback_resolve_router)
+app.include_router(auth_account_router)
 app.include_router(auth_session_router)
 app.include_router(auth_spotify_router)
 app.include_router(auth_youtube_router)

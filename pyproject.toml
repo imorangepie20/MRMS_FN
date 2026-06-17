@@ -41,6 +41,7 @@ dependencies = [
     "ytmusicapi>=1.12",
     "yt-dlp>=2026.6",
     "bcrypt>=4",
+    "email-validator>=2",
 
     # Utilities
     "python-dotenv>=1.0",
