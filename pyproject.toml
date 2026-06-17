@@ -68,6 +68,20 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "B"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI 의존성 주입 관용구: 인자 기본값의 Depends()/Query()/Path()/Header()/Cookie()는
+# B008(함수 호출 기본값 금지)의 오탐 — 프레임워크 설계상 정상. 불변 호출로 허용.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.Form",
+    "fastapi.File",
+    "fastapi.Body",
+]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
