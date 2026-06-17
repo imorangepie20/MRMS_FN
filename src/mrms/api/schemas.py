@@ -9,6 +9,7 @@ from pydantic import BaseModel
 class UserInfo(BaseModel):
     user_id: str
     email: str
+    nickname: str | None = None
     displayName: str | None = None
     country: str | None = None
     personas_count: int

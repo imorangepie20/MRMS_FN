@@ -247,3 +247,29 @@ def test_me_response_includes_primary_platform(db_conn):
     assert r.status_code == 200
     body = r.json()
     assert body["primary_platform"] == "spotify"
+
+
+def test_me_includes_nickname(db_conn, cleanup):
+    """signup으로 만든 계정의 /me·/api/user에 nickname 포함."""
+    import uuid as _u
+    from mrms.db.account import create_account
+    from mrms.auth.password import hash_password
+
+    email = f"nick-{_u.uuid4().hex[:8]}@example.com"
+    nick = f"NK_{_u.uuid4().hex[:6]}"
+    cleanup('DELETE FROM "User" WHERE email = %s', (email.lower(),))
+    user_id = create_account(db_conn, nickname=nick, email=email,
+                             password_hash=hash_password("pw12345678"))
+    session_id = _u.uuid4().hex
+    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+    with db_conn.cursor() as cur:
+        cur.execute('INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
+                    (session_id, user_id, expires_at))
+    db_conn.commit()
+
+    client.cookies.set("mrms_session", session_id)
+    r1 = client.get("/api/auth/me")
+    r2 = client.get("/api/user")
+    client.cookies.clear()
+    assert r1.json()["nickname"] == nick
+    assert r2.json()["nickname"] == nick
