@@ -10,6 +10,7 @@ class UserInfo(BaseModel):
     user_id: str
     email: str
     nickname: str | None = None
+    role: str = "user"
     displayName: str | None = None
     country: str | None = None
     personas_count: int

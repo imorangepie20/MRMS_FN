@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from mrms.api.deps import db_conn, get_current_user_id, get_current_user_id_optional
+from mrms.auth.roles import get_effective_role
 from mrms.db.user_track import resolve_primary_platform, upsert_oauth
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -136,6 +137,7 @@ def me(
         "user_id": user_id,
         "email": email,
         "nickname": nickname,
+        "role": get_effective_role(conn, user_id),
         "displayName": display_name,
         "country": country,
         "personas_count": personas_count,

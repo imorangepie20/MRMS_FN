@@ -284,3 +284,18 @@ def test_me_includes_nickname(db_conn, cleanup):
     client.cookies.clear()
     assert r1.json()["nickname"] == nick
     assert r2.json()["nickname"] == nick
+
+
+def test_me_includes_role(login, monkeypatch, cleanup):
+    """env 루트는 /me·/api/user에서 role='superadmin'."""
+    import uuid as _u
+    email = f"role-{_u.uuid4().hex[:8]}@example.com"
+    uid, sid = login(email)
+    cleanup('DELETE FROM "User" WHERE id = %s', (uid,))
+    monkeypatch.setenv("ADMIN_EMAIL", email)
+    client.cookies.set("mrms_session", sid)
+    try:
+        assert client.get("/api/auth/me").json()["role"] == "superadmin"
+        assert client.get("/api/user").json()["role"] == "superadmin"
+    finally:
+        client.cookies.clear()

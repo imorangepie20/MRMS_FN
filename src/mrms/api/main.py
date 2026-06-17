@@ -38,6 +38,7 @@ from mrms.api.shared import router as shared_router
 from mrms.api.situation import router as situation_router
 from mrms.api.user_tracks import router as user_tracks_router
 from mrms.api.wellness import router as wellness_router
+from mrms.auth.roles import get_effective_role
 from mrms.db.user_embedding import fetch_latest_playlists
 from mrms.db.user_track import resolve_primary_platform
 from mrms.recsys.discover import blend_recsys, read_discovery
@@ -112,11 +113,13 @@ def user(
     # primary는 저장값 대신 현재 연결된 플랫폼에서 계산 (구독 연결/해제 자동 반영).
     # 미연결이면 None — UserInfo.primary_platform 타입에 맞춰 폴백.
     primary_platform = resolve_primary_platform(conn, user_id)
+    role = get_effective_role(conn, user_id)
 
     return UserInfo(
         user_id=user_id,
         email=email,
         nickname=nickname,
+        role=role,
         displayName=display_name,
         country=country,
         personas_count=personas_count,
