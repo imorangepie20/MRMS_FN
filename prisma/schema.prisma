@@ -163,6 +163,8 @@ model TrackLyrics {
 model User {
   id          String   @id @default(cuid())
   email       String   @unique
+  nickname    String?  @unique
+  passwordHash String?
   displayName String?
   country     String?  // 'KR' — region 가용성 체크
   primaryPlatform String   @default("tidal")  // 'tidal' | 'spotify'
