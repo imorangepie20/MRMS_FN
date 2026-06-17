@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Heart, Play, Sparkles } from "lucide-react";
 
 import { ArtistLink } from "@/components/artist/ArtistLink";
+import { AddToPlaylistMenu } from "@/components/playlist/AddToPlaylistMenu";
 import { loadAndPlay, realYoutubeId } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
 import type { QueueTrack } from "@/store/player";
@@ -248,6 +249,7 @@ function ModalTrackRow({
             stroke={pct ? "var(--mrms-rust)" : "var(--mrms-ink-mute)"}
           />
         </button>
+        <AddToPlaylistMenu trackId={track.track_id} />
       </div>
     </div>
   );

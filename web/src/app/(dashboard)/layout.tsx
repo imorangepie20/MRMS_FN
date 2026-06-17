@@ -1,17 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ArtistIntroModal } from "@/components/artist/ArtistIntroModal";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
 import { PlayerBar } from "@/components/player/PlayerBar";
+import { PlaylistActionsContext } from "@/components/playlist/playlist-actions-context";
+import { NewPlaylistDialog } from "@/components/playlist/NewPlaylistDialog";
+import { usePlaylistStore } from "@/store/playlist";
 
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const loadPlaylists = usePlaylistStore((s) => s.load);
+  useEffect(() => {
+    loadPlaylists();
+  }, [loadPlaylists]);
 
   return (
+    <PlaylistActionsContext.Provider value={true}>
     <div className="md:grid md:grid-cols-[240px_minmax(0,1fr)] min-h-screen bg-[var(--mrms-bg)]">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
@@ -36,6 +44,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
       <PlayerBar />
       <ArtistIntroModal />
+      <NewPlaylistDialog />
     </div>
+    </PlaylistActionsContext.Provider>
   );
 }
