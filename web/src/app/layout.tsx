@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { IBM_Plex_Sans, IBM_Plex_Mono, Fraunces } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/layout/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
@@ -13,6 +13,12 @@ const plexMono = IBM_Plex_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
   weight: ["400", "500"],
+});
+const fraunces = Fraunces({
+  variable: "--font-serif-base",
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  style: ["normal", "italic"],
 });
 
 export const metadata: Metadata = {
@@ -28,7 +34,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko" suppressHydrationWarning>
-      <body className={`${plexSans.variable} ${plexMono.variable} antialiased`}>
+      <body className={`${plexSans.variable} ${plexMono.variable} ${fraunces.variable} antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
           {children}
           <Toaster richColors closeButton />
