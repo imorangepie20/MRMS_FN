@@ -8,8 +8,8 @@ import { collectAlbum, dislikeAlbum, dislikeTrack, dismissAlbum, dismissTrack } 
 import { AlbumDetailModal } from "@/components/album/AlbumDetailModal";
 import { ArtistLink } from "@/components/artist/ArtistLink";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
-import { CreatePlaylistModal } from "@/components/playlist/CreatePlaylistModal";
 import { PlaylistDetailModal } from "@/components/playlist/PlaylistDetailModal";
+import { TrackListPlaylistMenu } from "@/components/playlist/TrackListPlaylistMenu";
 import { loadAndPlay, realYoutubeId } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
 import type { MrtLatestResponse, RecommendedTrack, UserInfo } from "@/lib/types";
@@ -38,7 +38,6 @@ interface Props {
 
 export function MrtDashboard({ user, mrt }: Props) {
   const [selectedTracks, setSelectedTracks] = useState<Set<string>>(new Set());
-  const [createOpen, setCreateOpen] = useState(false);
   const [albumModal, setAlbumModal] = useState<string | null>(null);
   const [playlistModal, setPlaylistModal] = useState<string | null>(null);
   const [collectingAlbum, setCollectingAlbum] = useState<string | null>(null);
@@ -162,13 +161,13 @@ export function MrtDashboard({ user, mrt }: Props) {
             <Play className="size-3 fill-current" />
             Play all
           </button>
-          <button
-            disabled={selectedTracks.size === 0}
-            onClick={() => setCreateOpen(true)}
-            className="bg-[var(--mrms-rust)] text-[var(--mrms-paper)] border-0 px-3.5 py-1.5 font-mono text-[10px] tracking-editorial uppercase cursor-pointer disabled:bg-[var(--mrms-ink-mute)] disabled:cursor-default"
-          >
-            + playlist
-          </button>
+          <TrackListPlaylistMenu
+            trackIds={
+              selectedTracks.size > 0
+                ? [...selectedTracks]
+                : mrt.recommended_tracks.map((t) => t.track_id)
+            }
+          />
         </div>
       </div>
       <div className="hidden md:grid grid-cols-[18px_56px_1fr_140px_80px_60px_120px] gap-3 px-0 py-1.5 border-b border-[var(--mrms-ink)] font-mono text-[9px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
@@ -365,15 +364,6 @@ export function MrtDashboard({ user, mrt }: Props) {
         )}
       </div>
 
-      <CreatePlaylistModal
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        trackIds={Array.from(selectedTracks)}
-        onCreated={() => {
-          setSelectedTracks(new Set());
-          window.location.reload();
-        }}
-      />
       <AlbumDetailModal
         open={albumModal !== null}
         onOpenChange={(v) => !v && setAlbumModal(null)}
