@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Play, Square, SkipForward } from "lucide-react";
 
-import { AlbumArt } from "@/components/mrms/AlbumArt";
+import { PhotoBackdrop } from "@/components/visual/PhotoBackdrop";
 import { fetchPreviewTracks, type PreviewTrack } from "@/lib/api/landing";
 import { PreviewSpectrum } from "./PreviewSpectrum";
 
@@ -49,18 +49,8 @@ export function LandingHero() {
   }, [idx]);
 
   return (
-    <section className="relative h-[clamp(300px,46vh,460px)] overflow-hidden border-b border-(--mrms-ink) bg-(--mrms-ink)">
-      {current && (
-        <div className="absolute inset-0 opacity-60">
-          <AlbumArt
-            artist={current.artist}
-            album={null}
-            initialUrl={current.album_cover}
-            className="w-full h-full object-cover scale-110 blur-md"
-          />
-        </div>
-      )}
-      <div className="absolute inset-0 bg-gradient-to-t from-(--mrms-ink) via-(--mrms-ink)/55 to-(--mrms-ink)/20" />
+    <section className="relative h-[clamp(380px,56vh,560px)] overflow-hidden border-b border-(--mrms-ink) bg-(--mrms-bg)">
+      <PhotoBackdrop variant="hero" src="/visuals/hero-1.jpg" />
 
       {/* 스펙트럼(하단) */}
       <div className="absolute left-0 right-0 bottom-0 h-24 px-6 md:px-14 opacity-90">
@@ -68,14 +58,14 @@ export function LandingHero() {
       </div>
 
       {/* 메타 + 컨트롤 */}
-      <div className="absolute left-6 md:left-14 bottom-8 right-6 text-(--mrms-paper)">
-        <div className="font-mono text-[10px] tracking-editorial uppercase opacity-80">
+      <div className="absolute left-6 md:left-14 bottom-8 right-6 text-(--mrms-ink)">
+        <div className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-rust) opacity-100">
           Featured today
         </div>
         <div className="font-display font-bold text-[clamp(28px,5vw,48px)] leading-[1.02] mt-1 truncate">
           {current?.title ?? "MRMS"}
         </div>
-        <div className="font-mono text-[12px] opacity-85 mt-1 truncate">
+        <div className="font-mono text-[12px] text-(--mrms-ink-soft) mt-1 truncate">
           {current?.artist ?? "music recommendation, reimagined"}
         </div>
         <div className="mt-4 flex items-center gap-3">
@@ -92,13 +82,13 @@ export function LandingHero() {
               <button
                 onClick={stop}
                 aria-label="정지"
-                className="inline-flex items-center gap-2 bg-(--mrms-paper)/15 text-(--mrms-paper) px-4 py-2 font-mono text-[11px] tracking-editorial uppercase border border-(--mrms-paper)/30 cursor-pointer hover:bg-(--mrms-paper)/25"
+                className="inline-flex items-center gap-2 bg-(--mrms-ink)/8 text-(--mrms-ink) px-4 py-2 font-mono text-[11px] tracking-editorial uppercase border border-(--mrms-ink)/20 cursor-pointer hover:bg-(--mrms-ink)/15"
               >
                 <Square className="size-3.5 fill-current" /> 정지
               </button>
               <button
                 onClick={next}
-                className="inline-flex items-center gap-2 bg-(--mrms-paper)/15 text-(--mrms-paper) px-4 py-2 font-mono text-[11px] tracking-editorial uppercase border border-(--mrms-paper)/30 cursor-pointer hover:bg-(--mrms-paper)/25"
+                className="inline-flex items-center gap-2 bg-(--mrms-ink)/8 text-(--mrms-ink) px-4 py-2 font-mono text-[11px] tracking-editorial uppercase border border-(--mrms-ink)/20 cursor-pointer hover:bg-(--mrms-ink)/15"
               >
                 <SkipForward className="size-3.5" /> 다음 곡
               </button>
