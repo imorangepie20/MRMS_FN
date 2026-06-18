@@ -15,7 +15,6 @@ interface PlaylistState {
   loaded: boolean;
   load: () => Promise<void>;
   create: (name: string, trackIds?: string[]) => Promise<PlaylistMeta | null>;
-  addTrack: (playlistId: string, trackId: string) => Promise<void>;
   addTracks: (playlistId: string, trackIds: string[]) => Promise<{ added: number; skipped: number }>;
   rename: (id: string, name: string, description?: string | null) => Promise<boolean>;
   remove: (id: string) => Promise<boolean>;
@@ -46,22 +45,6 @@ export const usePlaylistStore = create<PlaylistState>((set, get) => ({
     } catch (e) {
       toast.error((e as Error).message);
       return null;
-    }
-  },
-
-  addTrack: async (playlistId, trackId) => {
-    const pl = get().playlists.find((p) => p.id === playlistId);
-    const label = pl?.name ?? "플레이리스트";
-    try {
-      const { added, skipped } = await addTracksToPlaylist(playlistId, [trackId]);
-      if (added > 0) {
-        get().bumpCount(playlistId, added);
-        toast.success(`'${label}'에 추가`);
-      } else if (skipped > 0) {
-        toast(`이미 '${label}'에 있어요`);
-      }
-    } catch (e) {
-      toast.error((e as Error).message);
     }
   },
 

@@ -39,7 +39,7 @@ export function AddToPlaylistMenu({ trackId }: { trackId: string }) {
           onClick={(e) => e.stopPropagation()}
           className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-auto sm:right-0 sm:top-7 sm:bottom-auto sm:w-44 border border-(--mrms-ink) bg-(--mrms-paper) shadow-xl max-h-[50vh] overflow-y-auto"
         >
-          <PlaylistMenuContent trackId={trackId} onClose={() => setOpen(false)} />
+          <PlaylistMenuContent trackIds={[trackId]} onClose={() => setOpen(false)} />
         </div>
       )}
     </div>

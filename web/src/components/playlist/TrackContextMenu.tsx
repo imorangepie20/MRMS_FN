@@ -65,7 +65,7 @@ export function TrackContextMenu() {
       style={{ left, top }}
       className="fixed z-[60] w-48 border border-(--mrms-ink) bg-(--mrms-paper) shadow-xl max-h-[60vh] overflow-y-auto"
     >
-      <PlaylistMenuContent trackId={trackId} onClose={close} />
+      <PlaylistMenuContent trackIds={[trackId]} onClose={close} />
     </div>
   );
 }
