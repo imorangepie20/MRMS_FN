@@ -2,6 +2,8 @@
 
 import type { ReactNode } from "react";
 
+import { TrackListPlaylistMenu } from "@/components/playlist/TrackListPlaylistMenu";
+
 import {
   type ModalTrack,
   PlayAllButton,
@@ -55,6 +57,7 @@ export function TrackModalMasthead({
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <PlayAllButton tracks={tracks} />
+            <TrackListPlaylistMenu trackIds={tracks.map((t) => t.track_id)} />
             {trailing}
           </div>
         </div>
