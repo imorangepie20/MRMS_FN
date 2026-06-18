@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { allNavItems } from "@/lib/nav";
+import { Wordmark } from "@/components/visual/Wordmark";
 
 
 function findNavItem(pathname: string) {
@@ -48,7 +49,7 @@ export function AppHeader({
               </span>
             </>
           ) : (
-            "MRMS"
+            <Wordmark className="text-[13px]" />
           )}
         </span>
         <div className="flex gap-6 items-center">

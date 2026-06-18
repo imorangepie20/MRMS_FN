@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { navGroups } from "@/lib/nav";
 import { useUser } from "@/lib/hooks/use-user";
 import { PlaylistNavSection } from "@/components/playlist/PlaylistNavSection";
+import { Wordmark } from "@/components/visual/Wordmark";
 
 const ROLE_RANK: Record<string, number> = { user: 0, admin: 1, superadmin: 2 };
 
@@ -26,9 +27,7 @@ export function AppSidebar() {
       {/* Brand head */}
       <div className="px-6 pt-7 pb-5 border-b border-[var(--mrms-rule)]">
         <Link href="/mrt" className="block">
-          <div className="font-display font-bold text-[20px] leading-none text-[var(--mrms-ink)] mb-1.5">
-            MRMS
-          </div>
+          <Wordmark className="text-[22px] leading-none block mb-1.5" />
           <div className="font-mono text-[9px] tracking-editorial-wide uppercase text-[var(--mrms-ink-mute)]">
             Music Rec · {today}
           </div>

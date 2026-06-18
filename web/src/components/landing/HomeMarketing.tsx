@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { Wordmark } from "@/components/visual/Wordmark";
+
 import { LandingHero } from "./LandingHero";
 
 const FEATURES = [
@@ -12,7 +14,7 @@ export function HomeMarketing() {
   return (
     <div className="min-h-screen bg-(--mrms-bg)">
       <header className="flex justify-between items-baseline px-6 md:px-14 py-3 border-b border-(--mrms-ink)">
-        <span className="font-display font-bold text-[15px] text-(--mrms-ink)">MRMS</span>
+        <Wordmark className="text-[17px]" />
         <Link
           href="/login"
           className="font-mono text-[10px] tracking-editorial uppercase bg-(--mrms-rust) text-(--mrms-paper) px-3 py-1.5 no-underline"
