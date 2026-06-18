@@ -10,6 +10,7 @@ import { ArtistLink } from "@/components/artist/ArtistLink";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { PlaylistDetailModal } from "@/components/playlist/PlaylistDetailModal";
 import { TrackListPlaylistMenu } from "@/components/playlist/TrackListPlaylistMenu";
+import { PhotoBackdrop } from "@/components/visual/PhotoBackdrop";
 import { loadAndPlay, realYoutubeId } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
 import type { MrtLatestResponse, RecommendedTrack, UserInfo } from "@/lib/types";
@@ -403,8 +404,9 @@ function SectionHeader({
   meta?: string;
 }) {
   return (
-    <div className="flex justify-between items-baseline pb-2.5 border-b border-[var(--mrms-ink)] mb-6">
-      <div>
+    <div className="relative overflow-hidden flex justify-between items-baseline pb-2.5 px-3 -mx-3 border-b border-[var(--mrms-ink)] mb-6">
+      <PhotoBackdrop variant="band" src="/visuals/band.jpg" />
+      <div className="relative">
         <span className="font-mono text-[10px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
           {num}
         </span>
@@ -414,9 +416,7 @@ function SectionHeader({
         </span>
       </div>
       {meta && (
-        <span className="font-mono text-[11px] text-[var(--mrms-ink-soft)]">
-          {meta}
-        </span>
+        <span className="relative font-mono text-[11px] text-[var(--mrms-ink-soft)]">{meta}</span>
       )}
     </div>
   );
