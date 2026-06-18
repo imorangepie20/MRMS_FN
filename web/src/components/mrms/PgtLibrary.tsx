@@ -452,6 +452,7 @@ function AlbumsTab({ count }: { count: number }) {
 
   const selectAlbum = async (album: PgtAlbumGroup) => {
     setSelected(album);
+    setTracks([]); // 재선택 시 케밥이 이전 선택 트랙을 가리키지 않도록 먼저 비움
     setTracksLoading(true);
     try {
       const r = await getPgtAlbumTracks(album.album_id);
@@ -547,6 +548,7 @@ function ArtistsTab({ count }: { count: number }) {
 
   const selectArtist = async (artist: PgtArtistGroup) => {
     setSelected(artist);
+    setTracks([]); // 재선택 시 케밥이 이전 선택 트랙을 가리키지 않도록 먼저 비움
     setTracksLoading(true);
     try {
       const r = await getPgtArtistTracks(artist.artist_id);
