@@ -37,8 +37,10 @@ function NowPlaying() {
   const queue = usePlayerStore((s) => s.queue);
   const currentIdx = usePlayerStore((s) => s.currentIdx);
   const isPreview = usePlayerStore((s) => s.isPreview);
+  const activePlatform = usePlayerStore((s) => s.activePlatform);
   const track = queue[currentIdx];
-  const platform = track ? getPlatformForTrack(track) : null;
+  // 실제 재생 중인 플랫폼을 우선 표시(폴백 시 youtube로 정직하게). 재생 전이면 명목 플랫폼.
+  const platform = activePlatform ?? (track ? getPlatformForTrack(track) : null);
 
   if (!track) {
     return (
