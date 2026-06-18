@@ -22,14 +22,20 @@ export function ConnectToPlay() {
         재생하려면 연결하세요
       </div>
       <p className="mt-1 text-(--mrms-ink-soft) text-sm">
-        본인 Spotify 또는 Tidal 계정으로 MRMS에서 바로 들으세요.
+        본인 Tidal 계정으로 MRMS에서 바로 들으세요.
       </p>
       <div className="mt-3 flex gap-2">
         <Button onClick={() => setTidalOpen(true)} size="sm">
           Tidal로 연결
         </Button>
-        <Button onClick={connectSpotify} variant="outline" size="sm">
-          Spotify로 연결
+        <Button
+          onClick={connectSpotify}
+          variant="outline"
+          size="sm"
+          disabled
+          title="Spotify 연결은 준비 중입니다"
+        >
+          Spotify로 연결 (준비 중)
         </Button>
       </div>
       <TidalConnectModal open={tidalOpen} onOpenChange={setTidalOpen} stayOnPage />
