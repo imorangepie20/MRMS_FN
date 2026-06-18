@@ -422,6 +422,73 @@ function PctTab({ count }: { count: number }) {
 
 // ── Albums tab ───────────────────────────────────────────────────────────────
 
+// ── TrackListModal — 앨범/아티스트 클릭 시 트랙목록을 모달로(페이지 하단 X) ─────────
+//    EMP·검색의 ItemTracksModal과 동일한 오버레이 패턴.
+function TrackListModal({
+  title,
+  subtitle,
+  cover,
+  tracks,
+  loading,
+  onClose,
+}: {
+  title: string;
+  subtitle?: ReactNode;
+  cover?: { artist: string; album: string };
+  tracks: PgtTrack[];
+  loading: boolean;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 bg-(--mrms-ink)/70 z-50 flex items-center justify-center p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-(--mrms-paper) max-w-3xl w-full max-h-[82vh] overflow-y-auto p-6 border border-(--mrms-rule)"
+      >
+        <div className="flex items-center gap-3 pb-3 mb-4 border-b border-(--mrms-ink)">
+          {cover && (
+            <AlbumArt artist={cover.artist} album={cover.album} className="size-12 shrink-0" />
+          )}
+          <div className="min-w-0 flex-1">
+            <div
+              className="font-display font-semibold text-[18px] leading-tight truncate"
+              title={title}
+            >
+              {title}
+            </div>
+            {subtitle && (
+              <div className="font-mono text-[11px] text-(--mrms-ink-soft) truncate mt-0.5">
+                {subtitle}
+              </div>
+            )}
+          </div>
+          <TrackListPlaylistMenu trackIds={tracks.map((t) => t.track_id)} />
+          <button
+            onClick={onClose}
+            aria-label="close"
+            className="bg-transparent border border-(--mrms-rule) cursor-pointer text-(--mrms-ink-soft) size-7 flex items-center justify-center hover:bg-(--mrms-bg) shrink-0"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+        <TrackList tracks={tracks} loading={loading} />
+      </div>
+    </div>
+  );
+}
+
+
 function AlbumsTab({ count }: { count: number }) {
   const [albums, setAlbums] = useState<PgtAlbumGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -490,26 +557,18 @@ function AlbumsTab({ count }: { count: number }) {
         </div>
       )}
       {selected && (
-        <div>
-          <div className="flex items-baseline gap-3 pb-2 mb-4 border-b border-[var(--mrms-ink)]">
-            <button
-              onClick={() => { setSelected(null); setTracks([]); }}
-              className="bg-transparent border-0 p-0 cursor-pointer font-mono text-[10px] tracking-editorial uppercase text-[var(--mrms-ink-mute)] hover:text-[var(--mrms-rust)]"
-            >
-              ← back
-            </button>
-            <span className="font-display font-semibold text-[18px] leading-tight truncate">
-              {selected.title}
-            </span>
-            <span className="font-mono text-[11px] text-[var(--mrms-ink-soft)]">
-              <ArtistLink name={selected.artist} />
-            </span>
-            <div className="ml-auto">
-              <TrackListPlaylistMenu trackIds={tracks.map((t) => t.track_id)} />
-            </div>
-          </div>
-          <TrackList tracks={tracks} loading={tracksLoading} />
-        </div>
+        <TrackListModal
+          title={selected.title}
+          subtitle={
+            <>
+              <ArtistLink name={selected.artist} /> · {selected.track_count} tracks
+            </>
+          }
+          cover={{ artist: selected.artist, album: selected.title }}
+          tracks={tracks}
+          loading={tracksLoading}
+          onClose={() => { setSelected(null); setTracks([]); }}
+        />
       )}
     </div>
   );
@@ -572,23 +631,13 @@ function ArtistsTab({ count }: { count: number }) {
         </div>
       )}
       {selected && (
-        <div>
-          <div className="flex items-baseline gap-3 pb-2 mb-4 border-b border-[var(--mrms-ink)]">
-            <button
-              onClick={() => { setSelected(null); setTracks([]); }}
-              className="bg-transparent border-0 p-0 cursor-pointer font-mono text-[10px] tracking-editorial uppercase text-[var(--mrms-ink-mute)] hover:text-[var(--mrms-rust)]"
-            >
-              ← back
-            </button>
-            <span className="font-display font-semibold text-[18px] leading-tight">
-              {selected.name}
-            </span>
-            <div className="ml-auto">
-              <TrackListPlaylistMenu trackIds={tracks.map((t) => t.track_id)} />
-            </div>
-          </div>
-          <TrackList tracks={tracks} loading={tracksLoading} />
-        </div>
+        <TrackListModal
+          title={selected.name}
+          subtitle={`${selected.track_count} tracks`}
+          tracks={tracks}
+          loading={tracksLoading}
+          onClose={() => { setSelected(null); setTracks([]); }}
+        />
       )}
     </div>
   );
