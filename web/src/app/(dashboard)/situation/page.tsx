@@ -36,7 +36,7 @@ export default function SituationPage() {
         className="mb-6"
         kicker="D5 · Situation"
         title="situation desk"
-        meta="상황을 적으면 그 장면에 맞는 곡을 — LLM이 읽고 해석"
+        meta="상상하세요! 어디에서 음악을 듣고 싶으세요?"
         imageKey="situation desk"
       />
 
