@@ -86,6 +86,43 @@ def test_callback_links_spotify_to_current_user(db_conn, cleanup):
         assert cur.fetchone()[0] == 0  # me email로 새 유저 생성 안 됨
 
 
+def test_callback_creates_guest_when_no_session(db_conn, cleanup):
+    """세션 없으면(비회원) spotify id 기반 합성 이메일 게스트 + 세션 + 연결, next로 복귀."""
+    cleanup('DELETE FROM "User" WHERE email = %s', ("spotify-sp_guest_1@auto.local",))
+
+    token_response = MagicMock(); token_response.status_code = 200
+    token_response.json = MagicMock(return_value={
+        "access_token": "AT_g", "refresh_token": "RT_g", "expires_in": 3600,
+        "scope": "user-read-email", "token_type": "Bearer"})
+    me_response = MagicMock(); me_response.status_code = 200
+    me_response.json = MagicMock(return_value={"id": "sp_guest_1", "email": "bob@example.com",
+        "display_name": "Bob", "country": "KR", "product": "premium"})
+    fake_client = MagicMock()
+    fake_client.__aenter__ = AsyncMock(return_value=fake_client)
+    fake_client.__aexit__ = AsyncMock(return_value=None)
+    fake_client.post = AsyncMock(return_value=token_response)
+    fake_client.get = AsyncMock(return_value=me_response)
+
+    client.cookies.clear()
+    client.cookies.set("mrms_oauth_state", "SG")
+    client.cookies.set("mrms_oauth_next", "/p/share-xyz")  # 공유페이지 복귀
+    with patch("httpx.AsyncClient", return_value=fake_client):
+        r = client.get("/api/auth/spotify/callback?code=CODE&state=SG", follow_redirects=False)
+    client.cookies.clear()
+    assert r.status_code in (302, 307)
+    assert r.headers["location"] == "/p/share-xyz"  # next로 복귀
+    assert "mrms_session" in r.cookies  # 게스트 세션 발급 → 즉시 재생
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT id FROM "User" WHERE email=%s', ("spotify-sp_guest_1@auto.local",))
+        row = cur.fetchone()
+        assert row is not None  # 합성 이메일 게스트
+        uid = row[0]
+        cur.execute('SELECT COUNT(*) FROM "User" WHERE email=%s', ("bob@example.com",))
+        assert cur.fetchone()[0] == 0  # 실 이메일 계정과 병합/생성 안 함(가로채기 방지)
+        cur.execute('SELECT COUNT(*) FROM "UserOAuth" WHERE "userId"=%s AND platform=%s', (uid, "spotify"))
+        assert cur.fetchone()[0] == 1
+
+
 def test_authorize_sets_next_cookie_for_safe_path(db_conn):
     """?next=/p/... 안전한 내부 경로면 mrms_oauth_next 쿠키 설정 (URL-encoded)."""
     from urllib.parse import unquote

@@ -13,7 +13,7 @@ from fastapi.responses import RedirectResponse
 
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.auth.spotify import SpotifyOAuthClient, SpotifyOAuthError
-from mrms.db.user_track import get_oauth, upsert_oauth
+from mrms.db.user_track import get_oauth, get_or_create_user, upsert_oauth
 
 router = APIRouter(prefix="/api/auth/spotify", tags=["auth"])
 
@@ -154,11 +154,12 @@ async def callback(
                 se = se.replace(tzinfo=timezone.utc)
             if se is None or se >= datetime.now(timezone.utc):
                 user_id = su
-    if user_id is None:
-        resp = RedirectResponse(url="/login?error=spotify_login_required", status_code=307)
-        resp.delete_cookie(OAUTH_STATE_COOKIE)
-        resp.delete_cookie(OAUTH_NEXT_COOKIE)
-        return resp
+    # 세션 없으면(비회원) 플랫폼 uid 기반 합성 이메일로 게스트 계정 생성(이메일/비번 계정과
+    # 분리 — 가로채기 방지) 후 세션 발급해 즉시 재생. 세션 있으면 그 계정에 링크.
+    guest = user_id is None
+    if guest:
+        user_id = get_or_create_user(conn, f"spotify-{me.get('id')}@auto.local")
+        conn.commit()
 
     display_name = me.get("display_name")
     country = me.get("country")
@@ -182,6 +183,21 @@ async def callback(
     next_target = _safe_next(unquote(next_cookie)) if next_cookie else None
     target = next_target or "/onboarding"
     resp = RedirectResponse(url=target, status_code=307)
+    if guest:
+        session_id = uuid.uuid4().hex
+        session_expires = datetime.now(timezone.utc) + timedelta(seconds=SESSION_MAX_AGE)
+        with conn.cursor() as cur:
+            cur.execute('DELETE FROM "AuthSession" WHERE "userId" = %s', (user_id,))
+            cur.execute(
+                'INSERT INTO "AuthSession" (id, "userId", "expiresAt", "userAgent") '
+                'VALUES (%s, %s, %s, %s)',
+                (session_id, user_id, session_expires, request.headers.get("user-agent")),
+            )
+        conn.commit()
+        resp.set_cookie(
+            key=SESSION_COOKIE_NAME, value=session_id, httponly=True,
+            samesite="lax", max_age=SESSION_MAX_AGE, secure=False,
+        )
     resp.delete_cookie(OAUTH_STATE_COOKIE)
     resp.delete_cookie(OAUTH_NEXT_COOKIE)
     return resp

@@ -148,8 +148,9 @@ def test_device_code_poll_links_to_current_user(db_conn, cleanup):
         assert cur.fetchone()[0] == 0
 
 
-def test_device_code_poll_without_session_rejected(db_conn):
-    """세션 없으면 연결 거부(error/login_required) — 새 유저 생성 안 함."""
+def test_device_code_poll_creates_guest_when_no_session(db_conn, cleanup):
+    """세션 없으면(비회원) Tidal uid 기반 게스트 계정 + 세션 + tidal 연결 → 즉시 재생."""
+    cleanup('DELETE FROM "User" WHERE email = %s', ("tidal-55555@auto.local",))
     jwt = _make_tidal_jwt(uid=55555)
     fake_response = AsyncMock()
     fake_response.status_code = 200
@@ -157,11 +158,19 @@ def test_device_code_poll_without_session_rejected(db_conn):
     client.cookies.clear()
     with patch("httpx.AsyncClient.post", return_value=fake_response):
         r = client.post("/api/auth/tidal/device-code/poll", json={"device_code": "DEVICE_XYZ"})
+    client.cookies.clear()
     assert r.status_code == 200
-    assert r.json()["status"] == "error"
+    assert r.json()["status"] == "success"
+    assert "mrms_session" in r.cookies  # 게스트 세션 쿠키 발급
     with db_conn.cursor() as cur:
-        cur.execute('SELECT COUNT(*) FROM "User" WHERE email=%s', ("tidal-55555@auto.local",))
-        assert cur.fetchone()[0] == 0
+        cur.execute('SELECT id FROM "User" WHERE email=%s', ("tidal-55555@auto.local",))
+        row = cur.fetchone()
+        assert row is not None  # 게스트 계정 생성됨
+        uid = row[0]
+        cur.execute('SELECT COUNT(*) FROM "UserOAuth" WHERE "userId"=%s AND platform=%s', (uid, "tidal"))
+        assert cur.fetchone()[0] == 1
+        cur.execute('SELECT COUNT(*) FROM "AuthSession" WHERE "userId"=%s', (uid,))
+        assert cur.fetchone()[0] == 1
 
 
 def test_device_code_poll_expired_returns_expired(db_conn):

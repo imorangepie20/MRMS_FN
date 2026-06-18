@@ -20,7 +20,7 @@ from fastapi.responses import RedirectResponse
 
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.auth.youtube import YouTubeOAuthClient, YouTubeOAuthError, gen_pkce
-from mrms.db.user_track import get_oauth, upsert_oauth
+from mrms.db.user_track import get_oauth, get_or_create_user, upsert_oauth
 from mrms.sync.youtube_importer import YouTubeImporter, import_all
 
 router = APIRouter(prefix="/api/auth/youtube", tags=["auth"])
@@ -157,11 +157,12 @@ async def callback(
                 se = se.replace(tzinfo=timezone.utc)
             if se is None or se >= datetime.now(timezone.utc):
                 user_id = su
-    if user_id is None:
-        resp = RedirectResponse(url="/login?error=youtube_login_required", status_code=307)
-        resp.delete_cookie(OAUTH_STATE_COOKIE)
-        resp.delete_cookie(OAUTH_VERIFIER_COOKIE)
-        return resp
+    # 세션 없으면(비회원) 플랫폼 uid 기반 합성 이메일로 게스트 계정 생성(이메일/비번 계정과
+    # 분리 — 가로채기 방지) 후 세션 발급. 세션 있으면 그 계정에 링크.
+    guest = user_id is None
+    if guest:
+        user_id = get_or_create_user(conn, f"youtube-{profile.get('id')}@auto.local")
+        conn.commit()
 
     with conn.cursor() as cur:
         cur.execute('UPDATE "User" SET "displayName" = COALESCE("displayName", %s) WHERE id = %s',
@@ -177,6 +178,21 @@ async def callback(
     conn.commit()
 
     resp = RedirectResponse(url="/onboarding", status_code=307)
+    if guest:
+        session_id = uuid.uuid4().hex
+        session_expires = datetime.now(timezone.utc) + timedelta(seconds=SESSION_MAX_AGE)
+        with conn.cursor() as cur:
+            cur.execute('DELETE FROM "AuthSession" WHERE "userId" = %s', (user_id,))
+            cur.execute(
+                'INSERT INTO "AuthSession" (id, "userId", "expiresAt", "userAgent") '
+                'VALUES (%s, %s, %s, %s)',
+                (session_id, user_id, session_expires, request.headers.get("user-agent")),
+            )
+        conn.commit()
+        resp.set_cookie(
+            key=SESSION_COOKIE_NAME, value=session_id, httponly=True,
+            samesite="lax", max_age=SESSION_MAX_AGE, secure=False,
+        )
     resp.delete_cookie(OAUTH_STATE_COOKIE)
     resp.delete_cookie(OAUTH_VERIFIER_COOKIE)
     return resp

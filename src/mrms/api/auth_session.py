@@ -1,7 +1,10 @@
 """Tidal Device Code OAuth → AuthSession cookie."""
 from __future__ import annotations
 
+import base64
+import json
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -11,7 +14,7 @@ from pydantic import BaseModel
 
 from mrms.api.deps import db_conn, get_current_user_id, get_current_user_id_optional
 from mrms.auth.roles import get_effective_role
-from mrms.db.user_track import resolve_primary_platform, upsert_oauth
+from mrms.db.user_track import get_or_create_user, resolve_primary_platform, upsert_oauth
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -19,6 +22,7 @@ TIDAL_DEVICE_AUTH_URL = "https://auth.tidal.com/v1/oauth2/device_authorization"
 TIDAL_TOKEN_URL = "https://auth.tidal.com/v1/oauth2/token"
 TIDAL_SCOPES = "r_usr w_usr w_sub"
 SESSION_COOKIE_NAME = "mrms_session"
+SESSION_MAX_AGE = 30 * 24 * 60 * 60  # 30 days
 
 
 class DeviceCodePollRequest(BaseModel):
@@ -58,10 +62,11 @@ async def device_code_init() -> dict:
 @router.post("/tidal/device-code/poll")
 async def device_code_poll(
     body: DeviceCodePollRequest,
+    response: Response,
     user_id: str | None = Depends(get_current_user_id_optional),
     conn: psycopg.Connection = Depends(db_conn),
 ) -> dict:
-    """Tidal token endpoint 폴링. 성공 시 현재 세션 유저에 tidal 연결(링크 모드)."""
+    """Tidal token 폴링. 세션 있으면 그 유저에 tidal 링크, 없으면(비회원) 게스트 계정+세션 발급."""
     client_id = os.environ["TIDAL_CLIENT_ID"]
     client_secret = os.environ["TIDAL_CLIENT_SECRET"]
 
@@ -88,13 +93,20 @@ async def device_code_poll(
     if r.status_code != 200:
         raise HTTPException(r.status_code, f"Tidal token exchange failed: {r.text[:200]}")
 
-    if user_id is None:
-        return {"status": "error", "detail": "login_required"}
-
     tokens = r.json()
     access_token = tokens["access_token"]
     refresh_token = tokens.get("refresh_token", "")
     expires_in = tokens.get("expires_in", 86400)
+
+    # 세션 없으면(비회원) Tidal JWT의 uid 기반 합성 이메일로 게스트 계정 생성(이메일/비번 계정과
+    # 분리 — 가로채기 방지) 후 세션 발급. 세션 있으면 그 계정에 링크.
+    guest = user_id is None
+    if guest:
+        parts = access_token.split(".")
+        payload_b64 = parts[1] + "=" * (4 - len(parts[1]) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        user_id = get_or_create_user(conn, f"tidal-{payload['uid']}@auto.local")
+        conn.commit()
 
     token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
     upsert_oauth(
@@ -102,6 +114,21 @@ async def device_code_poll(
         access_token=access_token, refresh_token=refresh_token,
         expires_at=token_expires_at, scopes=TIDAL_SCOPES.split(),
     )
+
+    if guest:
+        session_id = uuid.uuid4().hex
+        session_expires = datetime.now(timezone.utc) + timedelta(seconds=SESSION_MAX_AGE)
+        with conn.cursor() as cur:
+            cur.execute('DELETE FROM "AuthSession" WHERE "userId" = %s', (user_id,))
+            cur.execute(
+                'INSERT INTO "AuthSession" (id, "userId", "expiresAt") VALUES (%s, %s, %s)',
+                (session_id, user_id, session_expires),
+            )
+        conn.commit()
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME, value=session_id, httponly=True,
+            samesite="lax", max_age=SESSION_MAX_AGE, secure=False,
+        )
 
     with conn.cursor() as cur:
         cur.execute('SELECT COUNT(*) FROM "PlaylistHistory" WHERE "userId" = %s', (user_id,))

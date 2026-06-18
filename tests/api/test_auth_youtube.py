@@ -108,6 +108,40 @@ def test_callback_links_youtube_to_current_user(db_conn, cleanup):
         assert cur.fetchone()[0] == 0
 
 
+def test_callback_creates_guest_when_no_session(db_conn, cleanup):
+    """세션 없으면(비회원) google id 기반 합성 이메일 게스트 + 세션 + youtube 연결."""
+    cleanup('DELETE FROM "User" WHERE email = %s', ("youtube-g_guest_1@auto.local",))
+
+    token_response = MagicMock(); token_response.status_code = 200
+    token_response.json = MagicMock(return_value={"access_token": "AT_g", "refresh_token": "RT_g",
+        "expires_in": 3600, "scope": "https://www.googleapis.com/auth/youtube.readonly", "token_type": "Bearer"})
+    userinfo_response = MagicMock(); userinfo_response.status_code = 200
+    userinfo_response.json = MagicMock(return_value={"id": "g_guest_1", "email": "guest@example.com", "name": "Guest"})
+    fake_client = MagicMock()
+    fake_client.__aenter__ = AsyncMock(return_value=fake_client)
+    fake_client.__aexit__ = AsyncMock(return_value=None)
+    fake_client.post = AsyncMock(return_value=token_response)
+    fake_client.get = AsyncMock(return_value=userinfo_response)
+
+    client.cookies.clear()
+    client.cookies.set("mrms_yt_oauth_state", "SG")
+    client.cookies.set("mrms_yt_pkce_verifier", "VG")
+    with patch("httpx.AsyncClient", return_value=fake_client):
+        r = client.get("/api/auth/youtube/callback?code=CODE&state=SG", follow_redirects=False)
+    client.cookies.clear()
+    assert r.status_code in (302, 307)
+    assert "mrms_session" in r.cookies  # 게스트 세션 발급
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT id FROM "User" WHERE email=%s', ("youtube-g_guest_1@auto.local",))
+        row = cur.fetchone()
+        assert row is not None  # 합성 이메일 게스트
+        uid = row[0]
+        cur.execute('SELECT COUNT(*) FROM "User" WHERE email=%s', ("guest@example.com",))
+        assert cur.fetchone()[0] == 0  # 실 이메일과 병합 안 함
+        cur.execute('SELECT COUNT(*) FROM "UserOAuth" WHERE "userId"=%s AND platform=%s', (uid, "youtube"))
+        assert cur.fetchone()[0] == 1
+
+
 def test_token_returns_access_token_with_valid_session(db_conn):
     """/token → 유효 cookie + youtube UserOAuth → access_token 반환."""
     import uuid as _u
