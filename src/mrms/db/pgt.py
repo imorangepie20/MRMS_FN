@@ -37,14 +37,22 @@ def section_pct(conn: psycopg.Connection, user_id: str) -> list[dict]:
 
 def section_albums(conn: psycopg.Connection, user_id: str) -> list[dict]:
     with conn.cursor() as cur:
-        cur.execute('''SELECT al.id, al.title, a.name AS artist, COUNT(*) AS track_count
+        # 앨범 커버는 저장하지 않으므로, 그 앨범 트랙 중 커버 있는 것 하나를 대표로 끌어온다
+        # (EMPSource.cover_url). 없으면 None → 프론트가 iTunes 조회 후 placeholder.
+        cur.execute('''SELECT al.id, al.title, a.name AS artist, COUNT(*) AS track_count,
+                              (SELECT ec.cover_url
+                                 FROM "Track" t2
+                                 JOIN "EMPSource" ec ON ec."trackId"=t2.id
+                                WHERE t2."albumId"=al.id AND ec.cover_url IS NOT NULL
+                                LIMIT 1) AS album_cover
                        FROM "UserTrack" ut
                        JOIN "Track" t ON t.id=ut."trackId"
                        JOIN "Album" al ON al.id=t."albumId"
                        JOIN "Artist" a ON a.id=al."artistId"
                        WHERE ut."userId"=%s GROUP BY al.id, al.title, a.name
                        ORDER BY track_count DESC''', (user_id,))
-        return [{"album_id": r[0], "title": r[1], "artist": r[2], "track_count": r[3]}
+        return [{"album_id": r[0], "title": r[1], "artist": r[2],
+                 "track_count": r[3], "album_cover": r[4]}
                 for r in cur.fetchall()]
 
 

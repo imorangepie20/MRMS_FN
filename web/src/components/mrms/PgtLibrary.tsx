@@ -534,6 +534,7 @@ function AlbumsTab({ count }: { count: number }) {
               <AlbumArt
                 artist={a.artist}
                 album={a.title}
+                initialUrl={a.album_cover}
                 className="aspect-square mb-2.5"
               />
               <div

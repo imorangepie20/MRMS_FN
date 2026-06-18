@@ -252,6 +252,8 @@ export interface PgtAlbumGroup {
   title: string;
   artist: string;
   track_count: number;
+  // 앨범 트랙 중 하나에서 끌어온 대표 커버(EMPSource). 없으면 iTunes 조회 후 placeholder.
+  album_cover?: string | null;
 }
 
 export interface PgtArtistGroup {

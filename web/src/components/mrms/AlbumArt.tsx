@@ -21,6 +21,22 @@ function initial(s: string): string {
 }
 
 
+/** 커버 없을 때의 "Warm Duotone Glow" 폴백 배경 — artist|album 해시로 따뜻한 톤 결정적 배정.
+ *  hue는 14–80° 따뜻 영역에만 머물러 어떤 입력도 칙칙/차갑게 빠지지 않는다. */
+function duotone(artist: string, album?: string | null): { background: string; boxShadow: string } {
+  const key = `${artist}|${album ?? ""}`;
+  let h = 5381;
+  for (let i = 0; i < key.length; i++) h = ((h << 5) + h + key.charCodeAt(i)) >>> 0;
+  const hue1 = 14 + (h % 36); // 14–49° terracotta→clay→mustard
+  const hue2 = hue1 + 18 + ((h >>> 8) % 14); // +18–31° toward amber/gold
+  const sat = 58 + ((h >>> 16) % 14); // 58–71% (고급, 네온 X)
+  const light = 46 + ((h >>> 20) % 10); // 46–55%
+  const linear = `linear-gradient(135deg, hsl(${hue1} ${sat}% ${light}%) 0%, hsl(${hue2} ${sat + 6}% ${light + 8}%) 100%)`;
+  const glow = `radial-gradient(120% 120% at 18% 14%, hsl(${hue2} ${sat + 10}% ${light + 14}% / .55), transparent 60%)`;
+  return { background: `${glow}, ${linear}`, boxShadow: "inset 0 0 0 1.5px rgba(250,242,233,.22)" };
+}
+
+
 /** 아트워크 표시 — initialUrl 우선, 없으면 iTunes Search. 실패 시 첫 글자 fallback. */
 export function AlbumArt({ artist, album, initialUrl, className = "" }: Props) {
   const [url, setUrl] = useState<string | null>(initialUrl ?? null);
@@ -63,7 +79,7 @@ export function AlbumArt({ artist, album, initialUrl, className = "" }: Props) {
   return (
     <div
       className={`bg-[var(--mrms-paper)] border border-[var(--mrms-rule)] relative overflow-hidden flex items-center justify-center ${className}`}
-      style={{ containerType: "size" }}
+      style={{ containerType: "size", ...(showFallback ? duotone(artist, album) : null) }}
     >
       {url && !failed && (
         <img
@@ -76,8 +92,8 @@ export function AlbumArt({ artist, album, initialUrl, className = "" }: Props) {
       )}
       {showFallback && (
         <span
-          className="font-display font-bold text-[var(--mrms-ink-mute)] leading-none select-none"
-          style={{ fontSize: "60cqw" }}
+          className="font-serif font-bold text-[var(--mrms-paper)] leading-none select-none"
+          style={{ fontSize: "58cqw", textShadow: "0 2px 10px rgba(31,26,22,.32)" }}
         >
           {letter}
         </span>
