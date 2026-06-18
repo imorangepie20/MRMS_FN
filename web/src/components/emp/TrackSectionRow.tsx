@@ -7,22 +7,7 @@ import { ArtistLink } from "@/components/artist/ArtistLink";
 import { fetchEmpItemTracks } from "@/lib/api/emp";
 import type { EmpItemTrack, EmpSection } from "@/lib/types";
 import { PlayAllButton, formatDuration, isPlayable, playTracks } from "@/components/track/ModalTrackList";
-
-
-// 커버 없는 트랙용 결정적 색조 (EmpItemCard와 동일 톤)
-const TINTS = [
-  "from-[#2a2622] to-[#4a4038]",
-  "from-[#3a2620] to-[#5b3a2c]",
-  "from-[#2a2e2a] to-[#42463c]",
-  "from-[#322833] to-[#4e3e4a]",
-  "from-[#2c2a26] to-[#4a4640]",
-];
-
-function tintFor(seed: string): string {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return TINTS[h % TINTS.length];
-}
+import { duotoneStyle, coverInitial } from "@/lib/cover-art";
 
 
 /** 트랙 모음 섹션(chart 등) — 컨테이너 카드 대신 트랙을 직접 가로 캐러셀로 노출.
@@ -203,13 +188,14 @@ function TrackCard({
           />
         ) : (
           <div
-            className={`absolute inset-0 flex items-center justify-center bg-linear-to-br ${tintFor(track.title)}`}
+            className="absolute inset-0 flex items-center justify-center"
+            style={duotoneStyle(track.title)}
           >
             <span
-              className="font-display font-bold text-(--mrms-paper)/85"
-              style={{ fontSize: "40cqw" }}
+              className="font-serif font-bold text-(--mrms-paper) leading-none"
+              style={{ fontSize: "40cqw", textShadow: "0 2px 10px rgba(31,26,22,.32)" }}
             >
-              {track.title.trim().charAt(0).toUpperCase() || "·"}
+              {coverInitial(track.title)}
             </span>
           </div>
         )}

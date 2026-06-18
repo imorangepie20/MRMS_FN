@@ -6,6 +6,7 @@ import { Play } from "lucide-react";
 import { ArtistLink } from "@/components/artist/ArtistLink";
 import { fetchEmpItemTracks } from "@/lib/api/emp";
 import type { EmpItemTrack, EmpSection } from "@/lib/types";
+import { duotoneStyle, coverInitial } from "@/lib/cover-art";
 import {
   PlayAllButton,
   formatDuration,
@@ -111,8 +112,11 @@ export function TrackListSection({
                         className="absolute inset-0 size-full object-cover"
                       />
                     ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-(--mrms-ink-mute) font-display font-bold text-[13px]">
-                        {t.title.trim().charAt(0).toUpperCase() || "·"}
+                      <div
+                        className="absolute inset-0 flex items-center justify-center font-serif font-bold text-[13px] text-(--mrms-paper) leading-none"
+                        style={{ ...duotoneStyle(t.title), textShadow: "0 1px 5px rgba(31,26,22,.35)" }}
+                      >
+                        {coverInitial(t.title)}
                       </div>
                     )}
                   </div>
