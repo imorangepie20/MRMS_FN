@@ -8,6 +8,7 @@ import type { EmpSectionItem } from "@/lib/types";
 import { ModalTrackList } from "@/components/track/ModalTrackList";
 import { EmpItemCard } from "@/components/emp/EmpItemCard";
 import { ItemTracksModal } from "@/components/emp/ItemTracksModal";
+import { TrackListPlaylistMenu } from "@/components/playlist/TrackListPlaylistMenu";
 
 
 /** Map a SearchContainer to the EmpSectionItem shape that EmpItemCard + ItemTracksModal expect. */
@@ -73,7 +74,10 @@ export function SearchResults({ data }: { data: SearchResponse }) {
       {/* Tracks */}
       {data.tracks.length > 0 && (
         <div className="mb-8">
-          <SectionHeading>Tracks — {data.tracks.length}</SectionHeading>
+          <div className="flex items-center justify-between">
+            <SectionHeading>Tracks — {data.tracks.length}</SectionHeading>
+            <TrackListPlaylistMenu trackIds={data.tracks.map((t) => t.track_id)} />
+          </div>
           <ModalTrackList tracks={data.tracks} />
         </div>
       )}
