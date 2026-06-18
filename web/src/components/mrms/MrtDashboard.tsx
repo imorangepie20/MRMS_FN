@@ -10,7 +10,6 @@ import { ArtistLink } from "@/components/artist/ArtistLink";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { PlaylistDetailModal } from "@/components/playlist/PlaylistDetailModal";
 import { TrackListPlaylistMenu } from "@/components/playlist/TrackListPlaylistMenu";
-import { PhotoMosaic } from "@/components/visual/PhotoMosaic";
 import { SectionMasthead } from "@/components/visual/SectionMasthead";
 import { loadAndPlay, realYoutubeId } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
@@ -95,8 +94,7 @@ export function MrtDashboard({ user, mrt }: Props) {
             inform this week's picks: {mrt.recommended_tracks.length} tracks,
             {" "}{mrt.recommended_albums.length} albums,
             {" "}{mrt.recommended_playlists?.length ?? mrt.personas.length} playlists.
-            Tap a persona below to filter. Multi-select tracks to save them as a
-            new playlist.
+            Multi-select tracks to save them as a new playlist.
           </p>
         </div>
 
@@ -108,22 +106,9 @@ export function MrtDashboard({ user, mrt }: Props) {
         </div>
       </div>
 
-      {/* === PERSONAS === */}
-      <SectionHeader
-        num="PT 01"
-        title="Your personas"
-        meta={`${mrt.personas.length} clusters`}
-      />
-      <PhotoMosaic
-        items={mrt.personas.map((p) => ({
-          title: p.label ?? `Persona ${p.persona_idx + 1}`,
-          meta: `P–${String(p.persona_idx + 1).padStart(2, "0")} · ${p.track_count} tracks`,
-        }))}
-      />
-
       {/* === TRACKS === */}
       <SectionHeader
-        num="PT 02"
+        num="PT 01"
         title="For your ears, this week"
         meta={`${mrt.recommended_tracks.length} tracks`}
       />
@@ -319,7 +304,7 @@ export function MrtDashboard({ user, mrt }: Props) {
       {/* === NEW RELEASES (취향 맞춤 신보) === */}
       <div className="mt-10">
         <SectionHeader
-          num="PT 04"
+          num="PT 02"
           title="New releases, for you"
           meta={`${mrt.recommended_new_releases?.length ?? 0} tracks`}
         />
