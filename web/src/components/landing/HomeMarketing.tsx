@@ -50,6 +50,10 @@ export function HomeMarketing() {
           ))}
         </div>
       </section>
+
+      <footer className="px-6 md:px-14 py-6 border-t border-(--mrms-rule) font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute)">
+        Photos · Unsplash — Timothy Barlin, Fernando Hernandez, Priscilla Du Preez
+      </footer>
     </div>
   );
 }
