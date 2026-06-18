@@ -9,7 +9,6 @@ import { PlayerBar } from "@/components/player/PlayerBar";
 import { PlaylistActionsContext } from "@/components/playlist/playlist-actions-context";
 import { NewPlaylistDialog } from "@/components/playlist/NewPlaylistDialog";
 import { TrackContextMenu } from "@/components/playlist/TrackContextMenu";
-import { PhotoBackdrop } from "@/components/visual/PhotoBackdrop";
 import { usePlaylistStore } from "@/store/playlist";
 
 /** 앱 크롬(사이드바·헤더·플레이어 + 플레이리스트 컨텍스트/다이얼로그/우클릭메뉴).
@@ -23,11 +22,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
   return (
     <PlaylistActionsContext.Provider value={true}>
-      {/* 전체 배경 텍스처 — 크림 베이스 + 옅은 카페 사진(콘텐츠 뒤로 비침) */}
-      <div aria-hidden className="fixed inset-0 -z-10" style={{ background: "var(--mrms-bg)" }}>
-        <PhotoBackdrop variant="texture" src="/visuals/texture.jpg" />
-      </div>
-      <div className="md:grid md:grid-cols-[240px_minmax(0,1fr)] min-h-screen">
+      <div className="md:grid md:grid-cols-[240px_minmax(0,1fr)] min-h-screen bg-[var(--mrms-bg)]">
         {/* Mobile sidebar overlay */}
         {sidebarOpen && (
           <div

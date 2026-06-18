@@ -62,8 +62,8 @@ export function LandingHero() {
         <div className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-rust) opacity-100">
           Featured today
         </div>
-        <div className="font-display font-bold text-[clamp(28px,5vw,48px)] leading-[1.02] mt-1 truncate">
-          {current?.title ?? "MRMS"}
+        <div className="font-serif font-bold text-[clamp(30px,5vw,52px)] leading-[1.02] mt-1 truncate">
+          {current?.title ?? "MRMS."}
         </div>
         <div className="font-mono text-[12px] text-(--mrms-ink-soft) mt-1 truncate">
           {current?.artist ?? "music recommendation, reimagined"}
