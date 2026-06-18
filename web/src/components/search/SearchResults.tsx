@@ -25,8 +25,9 @@ function toEmpItem(c: SearchContainer): EmpSectionItem {
 }
 
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <SectionMasthead title={children} />;
+function SectionHeading({ name, count }: { name: string; count: number }) {
+  // imageKey=name(안정) → 결과 수가 바뀌어도 마스트헤드 사진 고정.
+  return <SectionMasthead title={`${name} — ${count}`} imageKey={name} />;
 }
 
 
@@ -72,7 +73,7 @@ export function SearchResults({ data }: { data: SearchResponse }) {
       {data.tracks.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center justify-between">
-            <SectionHeading>Tracks — {data.tracks.length}</SectionHeading>
+            <SectionHeading name="Tracks" count={data.tracks.length} />
             <TrackListPlaylistMenu trackIds={data.tracks.map((t) => t.track_id)} />
           </div>
           <ModalTrackList tracks={data.tracks} />
@@ -82,7 +83,7 @@ export function SearchResults({ data }: { data: SearchResponse }) {
       {/* Albums */}
       {data.albums.length > 0 && (
         <div className="mb-8">
-          <SectionHeading>Albums — {data.albums.length}</SectionHeading>
+          <SectionHeading name="Albums" count={data.albums.length} />
           <ContainerGrid containers={data.albums} onCardClick={handleCardClick} />
         </div>
       )}
@@ -90,7 +91,7 @@ export function SearchResults({ data }: { data: SearchResponse }) {
       {/* Playlists */}
       {data.playlists.length > 0 && (
         <div className="mb-8">
-          <SectionHeading>Playlists — {data.playlists.length}</SectionHeading>
+          <SectionHeading name="Playlists" count={data.playlists.length} />
           <ContainerGrid containers={data.playlists} onCardClick={handleCardClick} />
         </div>
       )}

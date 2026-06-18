@@ -4,22 +4,25 @@ import { useState, type ReactNode } from "react";
 
 import { pickVisual, hashIndex } from "@/lib/visuals";
 
-/** 분리된 사진 제목 블록. 사진은 title 해시로 일관 배정, 좌→우 피치 그라데로 제목 가독성. */
+/** 분리된 사진 제목 블록. 사진은 imageKey(없으면 title) 해시로 일관 배정, 좌→우 피치 그라데로 제목 가독성.
+ *  imageKey: 카운트 등 가변값이 섞인 title(예: "Tracks — 8")에서 안정 키를 따로 넘겨 이미지 흔들림 방지. */
 export function SectionMasthead({
   kicker,
   title,
   meta,
   action,
+  imageKey,
 }: {
   kicker?: ReactNode;
   title: ReactNode;
   meta?: ReactNode;
   action?: ReactNode;
+  imageKey?: string;
 }) {
-  const src = pickVisual(hashIndex(String(title)));
+  const src = pickVisual(hashIndex(imageKey ?? String(title)));
   const [failed, setFailed] = useState(false);
   return (
-    <div className="relative overflow-hidden border border-(--mrms-ink) mb-5 min-h-[132px] flex items-end px-5 py-4">
+    <div className="relative overflow-hidden border border-(--mrms-ink) mt-8 mb-5 min-h-[132px] flex items-end px-5 py-4">
       {!failed && (
         <img
           src={src}
