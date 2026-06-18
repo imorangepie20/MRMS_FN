@@ -10,6 +10,7 @@ import { ArtistLink } from "@/components/artist/ArtistLink";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { PlaylistDetailModal } from "@/components/playlist/PlaylistDetailModal";
 import { TrackListPlaylistMenu } from "@/components/playlist/TrackListPlaylistMenu";
+import { PhotoMosaic } from "@/components/visual/PhotoMosaic";
 import { SectionMasthead } from "@/components/visual/SectionMasthead";
 import { loadAndPlay, realYoutubeId } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
@@ -113,21 +114,12 @@ export function MrtDashboard({ user, mrt }: Props) {
         title="Your personas"
         meta={`${mrt.personas.length} clusters`}
       />
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-[var(--mrms-rule)] border-y border-[var(--mrms-rule)] mb-10">
-        {mrt.personas.map((p) => (
-          <div
-            key={p.persona_idx}
-            className="bg-[var(--mrms-bg)] p-4 sm:p-5 pb-4 text-[var(--mrms-ink)]"
-          >
-            <div className="font-mono text-[10px] tracking-editorial mb-2 text-[var(--mrms-ink-mute)]">
-              P–{String(p.persona_idx + 1).padStart(2, "0")} · {p.track_count} tracks
-            </div>
-            <div className="font-display font-semibold text-[18px] leading-[1.2]">
-              {p.label ?? `Persona ${p.persona_idx + 1}`}
-            </div>
-          </div>
-        ))}
-      </div>
+      <PhotoMosaic
+        items={mrt.personas.map((p) => ({
+          title: p.label ?? `Persona ${p.persona_idx + 1}`,
+          meta: `P–${String(p.persona_idx + 1).padStart(2, "0")} · ${p.track_count} tracks`,
+        }))}
+      />
 
       {/* === TRACKS === */}
       <SectionHeader
