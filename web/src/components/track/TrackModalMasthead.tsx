@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { TrackListPlaylistMenu } from "@/components/playlist/TrackListPlaylistMenu";
+import { duotoneStyle, coverInitial } from "@/lib/cover-art";
 
 import {
   type ModalTrack,
@@ -42,8 +43,16 @@ export function TrackModalMasthead({
           <img src={cover} alt="" className="size-full object-cover" />
         ) : (
           coverFallback ?? (
-            <div className="size-full bg-(--mrms-ink) flex items-center justify-center font-mono text-[9px] tracking-editorial uppercase text-(--mrms-paper)">
-              {kicker}
+            <div
+              className="size-full flex items-center justify-center"
+              style={duotoneStyle(title)}
+            >
+              <span
+                className="font-serif font-bold text-(--mrms-paper) leading-none"
+                style={{ fontSize: "48px", textShadow: "0 2px 10px rgba(31,26,22,.32)" }}
+              >
+                {coverInitial(title)}
+              </span>
             </div>
           )
         )}

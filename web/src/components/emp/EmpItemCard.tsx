@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { ArrowUpRight } from "lucide-react";
 
 import type { EmpItemType, EmpSectionItem } from "@/lib/types";
+import { duotoneStyle, coverInitial } from "@/lib/cover-art";
 
 
 // type별 라벨 톤 — Editorial 절제 안에서 위계만. rust는 큐레이션성(플리/스테이션),
@@ -17,21 +18,6 @@ const TYPE_TONE: Record<EmpItemType, string> = {
   mix: "text-(--mrms-ink-mute) border-(--mrms-ink-mute)",
   chart: "text-(--mrms-ink-mute) border-(--mrms-ink-mute)",
 };
-
-// 커버 없을 때 이니셜 배경 — 제목 해시로 결정적 색조 (단조로운 회색 박스 탈피)
-const PLACEHOLDER_TINTS = [
-  "from-[#2a2622] to-[#4a4038]",
-  "from-[#3a2620] to-[#5b3a2c]",
-  "from-[#2a2e2a] to-[#42463c]",
-  "from-[#322833] to-[#4e3e4a]",
-  "from-[#2c2a26] to-[#4a4640]",
-];
-
-function tintFor(seed: string): string {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return PLACEHOLDER_TINTS[h % PLACEHOLDER_TINTS.length];
-}
 
 
 /** EMP 아이템 카드: cover + hover 오버레이 + type 칩 + 제목.
@@ -75,13 +61,14 @@ export function EmpItemCard({
           />
         ) : (
           <div
-            className={`absolute inset-0 flex items-center justify-center bg-linear-to-br ${tintFor(label)}`}
+            className="absolute inset-0 flex items-center justify-center"
+            style={duotoneStyle(label)}
           >
             <span
-              className="font-display font-bold text-(--mrms-paper)/85"
-              style={{ fontSize: "40cqw" }}
+              className="font-serif font-bold text-(--mrms-paper) leading-none"
+              style={{ fontSize: "40cqw", textShadow: "0 2px 10px rgba(31,26,22,.32)" }}
             >
-              {label.trim().charAt(0).toUpperCase() || "·"}
+              {coverInitial(label)}
             </span>
           </div>
         )}
