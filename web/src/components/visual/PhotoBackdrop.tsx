@@ -34,6 +34,10 @@ export function PhotoBackdrop({
           src={src}
           alt=""
           onError={() => setFailed(true)}
+          decoding="async"
+          // 히어로는 above-the-fold LCP 후보 → 우선 로드. 헤더 밴드는 대체로 fold 아래 → lazy.
+          {...(variant === "hero" ? { fetchPriority: "high" as const } : {})}
+          {...(variant === "band" ? { loading: "lazy" as const } : {})}
           className="w-full h-full object-cover"
           style={{
             objectPosition: "center 40%",
