@@ -5,6 +5,7 @@ import { useState } from "react";
 import { importUrl } from "@/lib/api/import";
 import type { ImportResult } from "@/lib/types";
 import { ModalTrackList, PlayAllButton } from "@/components/track/ModalTrackList";
+import { SectionMasthead } from "@/components/visual/SectionMasthead";
 
 export default function ImportPage() {
   const [url, setUrl] = useState("");
@@ -31,14 +32,13 @@ export default function ImportPage() {
 
   return (
     <div className="px-6 py-8 md:px-14">
-      <header className="mb-6 border-b border-(--mrms-rule) pb-4">
-        <div className="font-display text-[28px] font-bold leading-none text-(--mrms-ink)">
-          Eat The Shared
-        </div>
-        <div className="mt-1.5 font-mono text-[10px] uppercase tracking-editorial-wide text-(--mrms-ink-mute)">
-          공유 링크 붙여넣고 바로 듣기 — Tidal · Spotify (track · playlist · album)
-        </div>
-      </header>
+      <SectionMasthead
+        className="mb-6"
+        kicker="D6 · Import"
+        title="Eat The Shared"
+        meta="공유 링크 붙여넣고 바로 듣기 — Tidal · Spotify (track · playlist · album)"
+        imageKey="Eat The Shared"
+      />
 
       <div className="mb-8 flex gap-2">
         <input

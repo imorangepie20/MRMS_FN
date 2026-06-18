@@ -12,17 +12,20 @@ export function SectionMasthead({
   meta,
   action,
   imageKey,
+  className = "mt-8 mb-5",
 }: {
   kicker?: ReactNode;
   title: ReactNode;
   meta?: ReactNode;
   action?: ReactNode;
   imageKey?: string;
+  /** 바깥 여백 등 오버라이드(기본 mt-8 mb-5). 페이지 최상단에선 "mb-6"처럼 상단 여백 제거. */
+  className?: string;
 }) {
   const src = pickVisual(hashIndex(imageKey ?? String(title)));
   const [failed, setFailed] = useState(false);
   return (
-    <div className="relative overflow-hidden border border-(--mrms-ink) mt-8 mb-5 min-h-[132px] flex items-end px-5 py-4">
+    <div className={`relative overflow-hidden border border-(--mrms-ink) ${className} min-h-[132px] flex items-end px-5 py-4`}>
       {!failed && (
         <img
           src={src}
@@ -31,12 +34,13 @@ export function SectionMasthead({
           onError={() => setFailed(true)}
           decoding="async"
           className="absolute inset-0 w-full h-full object-cover"
-          style={{ objectPosition: "center 42%", filter: "saturate(1.5) contrast(1.07) brightness(1.02)" }}
+          style={{ objectPosition: "center 45%", filter: "saturate(1.6) contrast(1.12) brightness(1.0)" }}
         />
       )}
-      <div aria-hidden className="absolute inset-0" style={{ background: "rgba(214,138,66,0.18)", mixBlendMode: "soft-light" }} />
-      <div aria-hidden className="absolute inset-0" style={{ background: "linear-gradient(105deg, rgba(243,230,216,.93) 24%, rgba(243,230,216,.5) 50%, rgba(243,230,216,.05) 82%)" }} />
-      <div className="relative flex-1 min-w-0">
+      <div aria-hidden className="absolute inset-0" style={{ background: "rgba(214,138,66,0.16)", mixBlendMode: "soft-light" }} />
+      {/* 사진을 살리되 좌측 제목 영역만 은은히 받쳐줌(우측 ~50%는 사진 그대로 노출) */}
+      <div aria-hidden className="absolute inset-0" style={{ background: "linear-gradient(100deg, rgba(243,230,216,.92) 1%, rgba(243,230,216,.42) 28%, rgba(243,230,216,.04) 55%, rgba(243,230,216,0) 78%)" }} />
+      <div className="relative flex-1 min-w-0" style={{ textShadow: "0 1px 10px rgba(243,230,216,.55)" }}>
         {kicker && (
           <div className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-rust)">{kicker}</div>
         )}

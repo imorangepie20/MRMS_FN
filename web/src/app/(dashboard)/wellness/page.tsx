@@ -5,6 +5,7 @@ import { useState } from "react";
 import { fetchWellness } from "@/lib/api/wellness";
 import type { WellnessTrack } from "@/lib/types";
 import { ModalTrackList, PlayAllButton } from "@/components/track/ModalTrackList";
+import { SectionMasthead } from "@/components/visual/SectionMasthead";
 
 const MOODS: { key: string; label: string; sub: string }[] = [
   { key: "calm", label: "이완", sub: "Calm" },
@@ -35,14 +36,13 @@ export default function WellnessPage() {
 
   return (
     <div className="px-6 py-8 md:px-14">
-      <header className="mb-6 border-b border-(--mrms-rule) pb-4">
-        <div className="font-display text-[28px] font-bold leading-none text-(--mrms-ink)">
-          chicken soup clinic
-        </div>
-        <div className="mt-1.5 font-mono text-[10px] uppercase tracking-editorial-wide text-(--mrms-ink-mute)">
-          무드를 고르면 그 정서에 맞는 곡을 취향 순으로 — 기분 전환 · 이완 · 집중
-        </div>
-      </header>
+      <SectionMasthead
+        className="mb-6"
+        kicker="D4 · Wellness"
+        title="chicken soup clinic"
+        meta="무드를 고르면 그 정서에 맞는 곡을 취향 순으로 — 기분 전환 · 이완 · 집중"
+        imageKey="chicken soup clinic"
+      />
 
       <div className="mb-8 flex flex-wrap gap-2">
         {MOODS.map((m) => (

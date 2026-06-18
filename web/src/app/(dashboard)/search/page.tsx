@@ -11,6 +11,7 @@ import {
   SearchIdle,
   SearchSkeleton,
 } from "@/components/search/SearchStates";
+import { SectionMasthead } from "@/components/visual/SectionMasthead";
 
 export default function SearchPage() {
   const [q, setQ] = useState("");
@@ -48,14 +49,13 @@ export default function SearchPage() {
   return (
     <div className="px-6 py-8 md:px-14">
       {/* masthead */}
-      <header className="mb-6 border-b border-(--mrms-rule) pb-4">
-        <div className="font-display text-[28px] font-bold leading-none text-(--mrms-ink)">
-          SEARCH
-        </div>
-        <div className="mt-1.5 font-mono text-[10px] uppercase tracking-editorial-wide text-(--mrms-ink-mute)">
-          Tidal · Spotify 라이브 검색 → EMP 확장
-        </div>
-      </header>
+      <SectionMasthead
+        className="mb-6"
+        kicker="D1 · Search"
+        title="SEARCH"
+        meta="Tidal · Spotify 라이브 검색 → EMP 확장"
+        imageKey="SEARCH"
+      />
 
       {/* input */}
       <form onSubmit={onSubmit} className="mb-8">

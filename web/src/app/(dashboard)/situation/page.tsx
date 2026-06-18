@@ -5,6 +5,7 @@ import { useState } from "react";
 import { fetchSituation } from "@/lib/api/situation";
 import type { SituationResponse } from "@/lib/types";
 import { ModalTrackList, PlayAllButton } from "@/components/track/ModalTrackList";
+import { SectionMasthead } from "@/components/visual/SectionMasthead";
 
 export default function SituationPage() {
   const [text, setText] = useState("");
@@ -31,14 +32,13 @@ export default function SituationPage() {
 
   return (
     <div className="px-6 py-8 md:px-14">
-      <header className="mb-6 border-b border-(--mrms-rule) pb-4">
-        <div className="font-display text-[28px] font-bold leading-none text-(--mrms-ink)">
-          situation desk
-        </div>
-        <div className="mt-1.5 font-mono text-[10px] uppercase tracking-editorial-wide text-(--mrms-ink-mute)">
-          상황을 적으면 그 장면에 맞는 곡을 — LLM이 읽고 해석
-        </div>
-      </header>
+      <SectionMasthead
+        className="mb-6"
+        kicker="D5 · Situation"
+        title="situation desk"
+        meta="상황을 적으면 그 장면에 맞는 곡을 — LLM이 읽고 해석"
+        imageKey="situation desk"
+      />
 
       <div className="mb-8">
         <textarea

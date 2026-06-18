@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchEmpSections } from "@/lib/api/emp";
 import type { EmpSection, EmpSectionItem } from "@/lib/types";
 
+import { SectionMasthead } from "@/components/visual/SectionMasthead";
+
 import { SectionRow } from "./SectionRow";
 import { TrackSectionRow } from "./TrackSectionRow";
 import { ItemTracksModal } from "./ItemTracksModal";
@@ -109,22 +111,20 @@ export function EmpBrowse() {
         <span className="shrink-0 hidden sm:inline">Synced {syncedLabel}</span>
       </div>
 
-      {/* === HERO — data forward === */}
+      {/* === HERO — photo masthead + data forward === */}
+      <SectionMasthead
+        className="mb-5"
+        kicker="§ 02 · External Music Pool"
+        title="External pool"
+        imageKey="External pool"
+      />
       <div className="flex flex-col gap-6 mb-6 lg:grid lg:grid-cols-[1fr_320px] lg:gap-10 lg:items-start">
-        <div>
-          <div className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) mb-2">
-            Section 02 / EMP — External Music Pool
-          </div>
-          <h1 className="font-display font-bold text-[32px] md:text-[44px] leading-[1.05] tracking-[-0.015em] text-(--mrms-ink) mb-3">
-            External pool
-          </h1>
-          <p className="text-[14px] font-normal text-(--mrms-ink-soft) leading-relaxed max-w-[560px] border-l-2 border-(--mrms-rust) pl-3.5">
-            Editorial picks pulled from streaming platforms, refreshed nightly.
-            {" "}{sections.length} sections, {stats.total} items —
-            {" "}{stats.byType.playlist} playlists, {stats.byType.album} albums,
-            {" "}{stats.byType.mix} mixes. Click any cover to see its tracks.
-          </p>
-        </div>
+        <p className="text-[14px] font-normal text-(--mrms-ink-soft) leading-relaxed max-w-[560px] border-l-2 border-(--mrms-rust) pl-3.5">
+          Editorial picks pulled from streaming platforms, refreshed nightly.
+          {" "}{sections.length} sections, {stats.total} items —
+          {" "}{stats.byType.playlist} playlists, {stats.byType.album} albums,
+          {" "}{stats.byType.mix} mixes. Click any cover to see its tracks.
+        </p>
 
         <div className="grid grid-cols-4 lg:grid-cols-2 gap-px bg-(--mrms-rule) border border-(--mrms-rule)">
           <StatCell label="Sections" value={sections.length} />
