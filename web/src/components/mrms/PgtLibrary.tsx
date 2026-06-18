@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   DndContext,
@@ -22,6 +22,7 @@ import { GripVertical, Heart, Play, Sparkles, Trash2, X } from "lucide-react";
 import { ArtistLink } from "@/components/artist/ArtistLink";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { SharePlaylistButton } from "@/components/playlist/SharePlaylistButton";
+import { TrackListPlaylistMenu } from "@/components/playlist/TrackListPlaylistMenu";
 import { removeTrackFromPlaylist, reorderPlaylistTracks } from "@/lib/api/playlists";
 import { loadAndPlay } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
@@ -355,10 +356,12 @@ function SectionHeader({
   num,
   title,
   meta,
+  action,
 }: {
   num: string;
   title: string;
   meta?: string;
+  action?: ReactNode;
 }) {
   return (
     <div className="flex justify-between items-baseline pb-2.5 border-b border-[var(--mrms-ink)] mb-6">
@@ -369,9 +372,12 @@ function SectionHeader({
         &nbsp;&nbsp;
         <span className="font-display font-bold text-[20px]">{title}</span>
       </div>
-      {meta && (
-        <span className="font-mono text-[11px] text-[var(--mrms-ink-soft)]">{meta}</span>
-      )}
+      <div className="flex items-center gap-2">
+        {meta && (
+          <span className="font-mono text-[11px] text-[var(--mrms-ink-soft)]">{meta}</span>
+        )}
+        {action}
+      </div>
     </div>
   );
 }
@@ -391,7 +397,12 @@ function LikedTab({ count }: { count: number }) {
 
   return (
     <div>
-      <SectionHeader num="L1" title="Liked tracks" meta={`${count} tracks`} />
+      <SectionHeader
+        num="L1"
+        title="Liked tracks"
+        meta={`${count} tracks`}
+        action={<TrackListPlaylistMenu trackIds={tracks.map((t) => t.track_id)} />}
+      />
       <TrackList tracks={tracks} loading={loading} />
     </div>
   );
@@ -412,7 +423,12 @@ function PctTab({ count }: { count: number }) {
 
   return (
     <div>
-      <SectionHeader num="L5" title="PCT — 취향저격" meta={`${count} tracks`} />
+      <SectionHeader
+        num="L5"
+        title="PCT — 취향저격"
+        meta={`${count} tracks`}
+        action={<TrackListPlaylistMenu trackIds={tracks.map((t) => t.track_id)} />}
+      />
       <TrackList tracks={tracks} loading={loading} />
     </div>
   );
@@ -502,6 +518,9 @@ function AlbumsTab({ count }: { count: number }) {
             <span className="font-mono text-[11px] text-[var(--mrms-ink-soft)]">
               <ArtistLink name={selected.artist} />
             </span>
+            <div className="ml-auto">
+              <TrackListPlaylistMenu trackIds={tracks.map((t) => t.track_id)} />
+            </div>
           </div>
           <TrackList tracks={tracks} loading={tracksLoading} />
         </div>
@@ -577,6 +596,9 @@ function ArtistsTab({ count }: { count: number }) {
             <span className="font-display font-semibold text-[18px] leading-tight">
               {selected.name}
             </span>
+            <div className="ml-auto">
+              <TrackListPlaylistMenu trackIds={tracks.map((t) => t.track_id)} />
+            </div>
           </div>
           <TrackList tracks={tracks} loading={tracksLoading} />
         </div>
