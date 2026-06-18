@@ -23,7 +23,7 @@ import { ArtistLink } from "@/components/artist/ArtistLink";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { SharePlaylistButton } from "@/components/playlist/SharePlaylistButton";
 import { TrackListPlaylistMenu } from "@/components/playlist/TrackListPlaylistMenu";
-import { PhotoBackdrop } from "@/components/visual/PhotoBackdrop";
+import { SectionMasthead } from "@/components/visual/SectionMasthead";
 import { removeTrackFromPlaylist, reorderPlaylistTracks } from "@/lib/api/playlists";
 import { loadAndPlay } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
@@ -364,24 +364,7 @@ function SectionHeader({
   meta?: string;
   action?: ReactNode;
 }) {
-  return (
-    <div className="relative overflow-hidden flex justify-between items-baseline pb-2.5 px-3 -mx-3 border-b border-[var(--mrms-ink)] mb-6">
-      <PhotoBackdrop variant="band" src="/visuals/band.jpg" />
-      <div className="relative">
-        <span className="font-mono text-[10px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
-          {num}
-        </span>
-        &nbsp;&nbsp;
-        <span className="font-display font-bold text-[20px]">{title}</span>
-      </div>
-      <div className="relative flex items-center gap-2">
-        {meta && (
-          <span className="font-mono text-[11px] text-[var(--mrms-ink-soft)]">{meta}</span>
-        )}
-        {action}
-      </div>
-    </div>
-  );
+  return <SectionMasthead kicker={num} title={title} meta={meta} action={action} />;
 }
 
 

@@ -1,18 +1,12 @@
 import { getServerSideMrt, type UserInfo } from "@/lib/server/auth";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
-import { PhotoBackdrop } from "@/components/visual/PhotoBackdrop";
+import { SectionMasthead } from "@/components/visual/SectionMasthead";
 
 import { LandingHero } from "./LandingHero";
 import { HomeStats } from "./HomeStats";
 
 function SectionHeader({ kicker, title }: { kicker: string; title: string }) {
-  return (
-    <div className="relative overflow-hidden flex justify-between items-baseline pb-2 px-3 -mx-3 border-b border-(--mrms-ink) mb-4 mt-10">
-      <PhotoBackdrop variant="band" src="/visuals/band.jpg" />
-      <span className="relative font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute)">{kicker}</span>
-      <span className="relative font-display font-bold text-[18px] text-(--mrms-ink)">{title}</span>
-    </div>
-  );
+  return <SectionMasthead kicker={kicker} title={title} />;
 }
 
 export async function HomeLoggedIn({ user }: { user: UserInfo }) {

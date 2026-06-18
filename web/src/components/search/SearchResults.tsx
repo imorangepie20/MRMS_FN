@@ -9,7 +9,7 @@ import { ModalTrackList } from "@/components/track/ModalTrackList";
 import { EmpItemCard } from "@/components/emp/EmpItemCard";
 import { ItemTracksModal } from "@/components/emp/ItemTracksModal";
 import { TrackListPlaylistMenu } from "@/components/playlist/TrackListPlaylistMenu";
-import { PhotoBackdrop } from "@/components/visual/PhotoBackdrop";
+import { SectionMasthead } from "@/components/visual/SectionMasthead";
 
 
 /** Map a SearchContainer to the EmpSectionItem shape that EmpItemCard + ItemTracksModal expect. */
@@ -26,12 +26,7 @@ function toEmpItem(c: SearchContainer): EmpSectionItem {
 
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="relative overflow-hidden font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) border-b border-(--mrms-ink) pb-1 px-3 -mx-3 mb-4">
-      <PhotoBackdrop variant="band" src="/visuals/band.jpg" />
-      <span className="relative">{children}</span>
-    </div>
-  );
+  return <SectionMasthead title={children} />;
 }
 
 
