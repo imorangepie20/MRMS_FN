@@ -82,6 +82,14 @@ def _video_cover(image_id: str | None) -> str | None:
     return f"https://resources.tidal.com/images/{image_id.replace('-', '/')}/640x360.jpg"
 
 
+def _promo_cover(image_id: str | None) -> str | None:
+    """MULTIPLE_TOP_PROMOTIONS(Featured) 프로모 타일 imageId → CDN URL.
+    프로모 이미지는 비디오 썸네일(640x360)이 없고 550x400 버킷만 존재(2026-06 실측) — 그걸로."""
+    if not isinstance(image_id, str) or "-" not in image_id:
+        return None
+    return f"https://resources.tidal.com/images/{image_id.replace('-', '/')}/550x400.jpg"
+
+
 def _video_section_key(title: str) -> str:
     """비디오 모듈 제목 → 'video:<slug>' 섹션 키(영숫자 외 → '-'). EMP와 구분 + 안정 키."""
     slug = re.sub(r"[^a-z0-9]+", "-", title.strip().lower()).strip("-")
@@ -379,7 +387,7 @@ class TidalEMPImporter(EMPImporter):
             out.append({
                 "video_id": str(vid),
                 "title": title,
-                "cover_url": _video_cover(it.get("imageId")),
+                "cover_url": _promo_cover(it.get("imageId")),
             })
         return out
 

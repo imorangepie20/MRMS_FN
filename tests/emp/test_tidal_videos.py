@@ -18,6 +18,15 @@ def test_video_cover_url():
     assert _video_cover(None) is None
 
 
+def test_promo_cover_url():
+    # Featured 프로모 타일은 640x360이 없고 550x400만 존재
+    from mrms.emp.tidal import _promo_cover
+    assert _promo_cover("c6420d6e-4176-4893-a062-5a25a16fef02") == (
+        "https://resources.tidal.com/images/c6420d6e/4176/4893/a062/5a25a16fef02/550x400.jpg"
+    )
+    assert _promo_cover(None) is None
+
+
 def test_normalize_video():
     item = {
         "id": 529748781,
@@ -84,8 +93,10 @@ async def test_fetch_video_page_modules():
     ]
     assert len(secs[0]["items"]) == 1  # CATEGORY_PAGES 스킵
     assert secs[0]["items"][0]["video_id"] == "111"
+    assert secs[0]["items"][0]["cover_url"].endswith("/550x400.jpg")  # 프로모 타일 사이즈
     assert secs[1]["items"][0]["uuid"] == "pl-1"
     assert secs[2]["items"][0]["video_id"] == "222"
+    assert secs[2]["items"][0]["cover_url"].endswith("/640x360.jpg")  # 비디오 썸네일
 
 
 @pytest.mark.asyncio
