@@ -6,7 +6,7 @@
 
 1. Tidal home `videos` 페이지의 **장르 비디오 플레이리스트**(New Pop/Hip-Hop/K-Pop Videos…)를 인제스트.
 2. 새 **`/videos` 페이지**(사이드바 nav)에서 장르별 가로 캐러셀로 비디오 썸네일 브라우즈. EMP와 분리.
-3. 비디오 클릭 → **풀스크린 오버레이 플레이어**(`<video>` + HLS). 재생 중이던 오디오 큐는 일시정지, 닫으면 복귀.
+3. 비디오 클릭 → **오버레이 플레이어**(`<video>` + HLS), **극장(중앙 중간 크기) ↔ 풀스크린** 토글. 재생 중이던 오디오 큐는 일시정지, 닫으면 복귀.
 4. 인증: **연결된 Tidal 회원 = OAuth로 FULL MV**, **게스트/미연결 = x-tidal-token으로 30초 프리뷰**(가입 유도).
 
 ## 비목표 (v1)
@@ -22,7 +22,8 @@
 
 1. **서페이스**: 별도 `/videos` 페이지(사이드바 nav 신규). EMP와 분리 — 장르 10여 개×~50영상이라 EMP에 섞으면 과함.
 2. **소스**: Tidal `/v1/pages/videos` 의 비디오 플레이리스트(에디토리얼). "전용" = Tidal MV 카탈로그(유튜브 아님).
-3. **재생 UX**: 풀스크린 오버레이(영상+오디오). 열면 오디오 큐 일시정지, Esc/배경/닫기 → `/videos` 복귀.
+3. **재생 UX**: 오버레이 플레이어, **두 크기 모드** — ① **극장(theater)**: 화면 중앙 중간 크기 + 어두운 배경(기본), ② **풀스크린**: OS 전체화면. 토글 버튼으로 전환, 같은 `<video>`/hls.js 인스턴스 공유. 열면 오디오 큐 일시정지, Esc/배경/닫기 → `/videos` 복귀.
+6. **플레이어 모듈**: 플레인 `<video>` + **hls.js**(크롬/파폭/엣지 MSE) / **네이티브 HLS**(Safari·iOS). 트랜스포트는 네이티브 `controls`, 그 위에 닫기·극장↔풀스크린 토글만 오버레이. video.js/Plyr/Shaka 미사용(무거운 스킨이 디자인과 충돌, HLS attach만 필요).
 4. **화질/길이**: 연결 회원 OAuth → FULL(`assetpresentation=FULL`, postpaywall), 게스트 → x-tidal-token PREVIEW(30초). 오디오 재생과 동일한 인증 분기.
 5. **인제스트 범위**: 전체 장르 비디오 플레이리스트.
 
@@ -97,10 +98,11 @@
 - **라우트**: `web/src/app/(browse)/videos/page.tsx` — EMP(`/emp`)와 같은 `(browse)` 그룹(게스트 공개, 셸 재사용). `<VideosBrowse/>` 렌더.
 - **사이드바 nav**: `web/src/lib/nav.ts`에 `{ title: "Videos", href: "/videos", num: "§ 04", ... }` 추가(EMP 다음).
 - **`VideosBrowse`**(`web/src/components/videos/VideosBrowse.tsx`): `/api/videos/sections` fetch → 장르 섹션을 가로 캐러셀로. 셀 = `VideoCard`(썸네일 16:9 + 제목 + 아티스트, hover ▶). EMP `SectionRow`/`EmpItemCard` 패턴 차용(비디오용 16:9 카드).
-- **풀스크린 플레이어**(`web/src/components/videos/VideoPlayerOverlay.tsx`):
+- **비디오 플레이어 오버레이**(`web/src/components/videos/VideoPlayerOverlay.tsx`):
   - 비디오 클릭 → `getVideoPlaybackUrl(id)`(`/api/playback/tidal/video/{id}`) → m3u8.
-  - `<video>` + **hls.js**: `video.canPlayType('application/vnd.apple.mpegurl')`면 네이티브(Safari), 아니면 hls.js attach.
-  - 풀스크린 오버레이(fixed inset-0, 검은 배경). 열 때 `usePlayerStore` 오디오 일시정지(`pausePlayback`). Esc/닫기 → 오버레이 해제(+선택적으로 오디오 복귀 안 함, 그냥 정지 유지).
+  - `<video>` + **hls.js**: `video.canPlayType('application/vnd.apple.mpegurl')`면 네이티브(Safari), 아니면 `await import('hls.js')`로 attach(동적 import). 트랜스포트는 네이티브 `controls`.
+  - **두 크기 모드**: 기본 **극장**(fixed inset-0 어두운 배경 + 중앙 `max-w-[960px] aspect-video` 박스), 토글 시 **풀스크린**(`requestFullscreen()` on the video/container). 같은 video 인스턴스 유지(재생 끊김 없음). 우상단 오버레이 버튼: 극장↔풀스크린 토글 + 닫기(X).
+  - 열 때 `usePlayerStore` 오디오 일시정지(`pausePlayback`). Esc/배경클릭/닫기 → 오버레이 해제(오디오는 정지 유지).
   - 게스트(프리뷰)면 하단에 "가입하면 풀영상" CTA.
   - 게스트 게이팅: 재생 자체는 프리뷰로 허용(EMP "둘러보기"와 일관 — 비디오는 프리뷰가 곧 맛보기). 단 FULL은 회원만(서버가 자동 분기).
 - **`item_type='video'`**: 백엔드 `VALID_ITEM_TYPES`엔 video 엔드포인트가 따로라 불필요. 프론트 타입에 video shape 추가(`EmpItemType`에 'video' 또는 별도 `VideoItem` 타입).
