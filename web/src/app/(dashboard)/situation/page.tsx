@@ -5,6 +5,7 @@ import { useState } from "react";
 import { fetchSituation } from "@/lib/api/situation";
 import type { SituationResponse } from "@/lib/types";
 import { ModalTrackList, PlayAllButton } from "@/components/track/ModalTrackList";
+import { TrackListPlaylistMenu } from "@/components/playlist/TrackListPlaylistMenu";
 import { SectionMasthead } from "@/components/visual/SectionMasthead";
 
 export default function SituationPage() {
@@ -82,7 +83,10 @@ export default function SituationPage() {
                 <span className="font-mono text-[11px] uppercase tracking-editorial text-(--mrms-ink-mute)">
                   {tracks.length} tracks
                 </span>
-                <PlayAllButton tracks={tracks} />
+                <div className="flex items-center gap-2">
+                  <PlayAllButton tracks={tracks} />
+                  <TrackListPlaylistMenu trackIds={tracks.map((t) => t.track_id)} />
+                </div>
               </div>
               <ModalTrackList tracks={tracks} />
             </>
