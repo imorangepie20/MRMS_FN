@@ -6,6 +6,7 @@ import { Heart, Play, Sparkles } from "lucide-react";
 import { ArtistLink } from "@/components/artist/ArtistLink";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { AddToPlaylistMenu } from "@/components/playlist/AddToPlaylistMenu";
+import { useRequireAuth } from "@/lib/hooks/use-require-auth";
 import { loadAndPlay, realYoutubeId } from "@/lib/player";
 import { usePlayerStore } from "@/store/player";
 import type { QueueTrack } from "@/store/player";
@@ -88,11 +89,13 @@ export async function playTracks(
 }
 
 
-/** "Play All" button for modal headers — queues every track, plays the first. */
+/** "Play All" button for modal headers — queues every track, plays the first.
+ *  비회원이면 재생 대신 /login으로 유도. */
 export function PlayAllButton({ tracks }: { tracks: ModalTrack[] }) {
+  const { guard } = useRequireAuth();
   return (
     <button
-      onClick={() => playTracks(tracks, 0)}
+      onClick={guard(() => playTracks(tracks, 0))}
       disabled={!tracks.length}
       className="shrink-0 px-3 py-1.5 font-mono text-[10px] tracking-editorial uppercase border-0 bg-(--mrms-rust) text-(--mrms-paper) inline-flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-default"
     >
@@ -153,6 +156,7 @@ function ModalTrackRow({
   const [liked, setLiked] = useState(track.liked ?? false);
   const [pct, setPct] = useState(track.pct ?? false);
   const playable = isPlayable(track);
+  const { isGuest, guard } = useRequireAuth();
 
   const onLike = async () => {
     const prev = liked;
@@ -192,7 +196,7 @@ function ModalTrackRow({
           {index + 1}
         </span>
         <button
-          onClick={playable ? onPlay : undefined}
+          onClick={playable ? guard(onPlay) : undefined}
           disabled={!playable}
           aria-label={playable ? "play track" : "재생 불가"}
           title={playable ? undefined : "재생할 수 없는 트랙"}
@@ -249,31 +253,36 @@ function ModalTrackRow({
         {formatDuration(track.duration_ms)}
       </span>
       <div className="flex gap-1.5 justify-end items-center">
-        <button
-          onClick={onLike}
-          aria-label="좋아요"
-          className="bg-transparent border-0 cursor-pointer p-1"
-        >
-          <Heart
-            className="size-3.5"
-            strokeWidth={1.6}
-            fill={liked ? "var(--mrms-rust)" : "none"}
-            stroke={liked ? "var(--mrms-rust)" : "var(--mrms-ink-mute)"}
-          />
-        </button>
-        <button
-          onClick={onPct}
-          aria-label="취향저격"
-          className="bg-transparent border-0 cursor-pointer p-1"
-        >
-          <Sparkles
-            className="size-3.5"
-            strokeWidth={1.6}
-            fill={pct ? "var(--mrms-rust)" : "none"}
-            stroke={pct ? "var(--mrms-rust)" : "var(--mrms-ink-mute)"}
-          />
-        </button>
-        <AddToPlaylistMenu trackId={track.track_id} />
+        {/* 좋아요·취향저격·저장 — 계정 필요. 비회원에겐 숨김. */}
+        {!isGuest && (
+          <>
+            <button
+              onClick={onLike}
+              aria-label="좋아요"
+              className="bg-transparent border-0 cursor-pointer p-1"
+            >
+              <Heart
+                className="size-3.5"
+                strokeWidth={1.6}
+                fill={liked ? "var(--mrms-rust)" : "none"}
+                stroke={liked ? "var(--mrms-rust)" : "var(--mrms-ink-mute)"}
+              />
+            </button>
+            <button
+              onClick={onPct}
+              aria-label="취향저격"
+              className="bg-transparent border-0 cursor-pointer p-1"
+            >
+              <Sparkles
+                className="size-3.5"
+                strokeWidth={1.6}
+                fill={pct ? "var(--mrms-rust)" : "none"}
+                stroke={pct ? "var(--mrms-rust)" : "var(--mrms-ink-mute)"}
+              />
+            </button>
+            <AddToPlaylistMenu trackId={track.track_id} />
+          </>
+        )}
       </div>
     </div>
   );

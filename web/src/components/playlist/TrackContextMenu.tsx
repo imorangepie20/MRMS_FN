@@ -5,11 +5,15 @@ import { useEffect, useRef } from "react";
 import { usePlaylistActionsEnabled } from "./playlist-actions-context";
 import { PlaylistMenuContent } from "./PlaylistMenuContent";
 import { useTrackContextMenu } from "@/store/track-context-menu";
+import { useRequireAuth } from "@/lib/hooks/use-require-auth";
 
 /** 전역 단일 인스턴스(대시보드 레이아웃에 마운트). 모든 트랙 행(data-track-id) 위에서
  *  우클릭 시 브라우저 기본 메뉴 대신 add-to-playlist 메뉴를 커서 위치에 띄운다. */
 export function TrackContextMenu() {
-  const enabled = usePlaylistActionsEnabled();
+  const enabledCtx = usePlaylistActionsEnabled();
+  const { isGuest } = useRequireAuth();
+  // 비회원: 우클릭 플레이리스트 메뉴 비활성(공개 EMP 등에서 401 방지).
+  const enabled = enabledCtx && !isGuest;
   const open = useTrackContextMenu((s) => s.open);
   const x = useTrackContextMenu((s) => s.x);
   const y = useTrackContextMenu((s) => s.y);

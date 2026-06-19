@@ -8,6 +8,7 @@ import { fetchEmpItemTracks } from "@/lib/api/emp";
 import type { EmpItemTrack, EmpSection } from "@/lib/types";
 import { PlayAllButton, formatDuration, isPlayable, playTracks } from "@/components/track/ModalTrackList";
 import { duotoneStyle, coverInitial } from "@/lib/cover-art";
+import { useRequireAuth } from "@/lib/hooks/use-require-auth";
 
 
 /** 트랙 모음 섹션(chart 등) — 컨테이너 카드 대신 트랙을 직접 가로 캐러셀로 노출.
@@ -20,6 +21,7 @@ export function TrackSectionRow({
   index?: number;
 }) {
   const chartItem = section.items[0];
+  const { guard } = useRequireAuth();
   const [tracks, setTracks] = useState<EmpItemTrack[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -144,7 +146,7 @@ export function TrackSectionRow({
                 track={t}
                 rank={i + 1}
                 coverPx={itemPx}
-                onPlay={() => playTracks(tracks, i)}
+                onPlay={guard(() => playTracks(tracks, i))}
               />
             </div>
           ))}

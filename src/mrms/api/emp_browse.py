@@ -1,14 +1,12 @@
 """EMP browse API — section/item listing + per-item tracks. 사용자용."""
 from __future__ import annotations
 
+import psycopg
 from fastapi import APIRouter, Depends, HTTPException
 
-import psycopg
-
-from mrms.api.deps import db_conn, get_current_user_id
+from mrms.api.deps import db_conn, get_current_user_id_optional
 from mrms.db.emp_section import list_sections_with_items
 from mrms.db.user_track import get_user_track_states
-
 
 router = APIRouter(prefix="/api/emp", tags=["emp_browse"])
 
@@ -16,9 +14,9 @@ router = APIRouter(prefix="/api/emp", tags=["emp_browse"])
 @router.get("/sections")
 def get_sections(
     platform: str | None = None,
-    user_id: str = Depends(get_current_user_id),  # auth required
     conn: psycopg.Connection = Depends(db_conn),
 ):
+    # 공개 — 비회원도 브라우즈 가능(전역 에디토리얼 데이터, 유저별 아님).
     sections = list_sections_with_items(conn, platform=platform)
     return {"sections": sections}
 
@@ -33,7 +31,7 @@ def get_item_tracks(
     item_type: str,
     item_id: str,
     limit: int = 100,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str | None = Depends(get_current_user_id_optional),  # 공개 — 게스트 허용
     conn: psycopg.Connection = Depends(db_conn),
 ):
     if item_type not in VALID_ITEM_TYPES:
@@ -70,7 +68,8 @@ def get_item_tracks(
         )
         rows = cur.fetchall()
 
-    states = get_user_track_states(conn, user_id, [r[0] for r in rows])
+    # 게스트(user_id=None)면 liked/pct 없음 → 빈 상태.
+    states = get_user_track_states(conn, user_id, [r[0] for r in rows]) if user_id else {}
     tracks = [
         {
             "track_id": r[0],

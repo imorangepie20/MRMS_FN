@@ -3,12 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 
+import { useRequireAuth } from "@/lib/hooks/use-require-auth";
+
 import { usePlaylistActionsEnabled } from "./playlist-actions-context";
 import { PlaylistMenuContent } from "./PlaylistMenuContent";
 
 /** 트랙 목록 헤더용 "⋯" 케밥 — 목록 전체(trackIds)를 새 플레이리스트로 만들거나 추가. */
 export function TrackListPlaylistMenu({ trackIds }: { trackIds: string[] }) {
   const enabled = usePlaylistActionsEnabled();
+  const { isGuest } = useRequireAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -21,7 +24,7 @@ export function TrackListPlaylistMenu({ trackIds }: { trackIds: string[] }) {
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  if (!enabled) return null;
+  if (!enabled || isGuest) return null; // 비회원: 플레이리스트 저장 숨김
 
   return (
     <div ref={ref} className="relative">

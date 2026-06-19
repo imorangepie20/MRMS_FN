@@ -7,6 +7,7 @@ import { ArtistLink } from "@/components/artist/ArtistLink";
 import { fetchEmpItemTracks } from "@/lib/api/emp";
 import type { EmpItemTrack, EmpSection } from "@/lib/types";
 import { duotoneStyle, coverInitial } from "@/lib/cover-art";
+import { useRequireAuth } from "@/lib/hooks/use-require-auth";
 import {
   PlayAllButton,
   formatDuration,
@@ -26,6 +27,7 @@ export function TrackListSection({
 }) {
   const COLLAPSED = 10;
   const item = section.items[0];
+  const { guard } = useRequireAuth();
   const [tracks, setTracks] = useState<EmpItemTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
@@ -80,7 +82,7 @@ export function TrackListSection({
             return (
               <li key={t.track_id} data-track-id={t.track_id}>
                 <button
-                  onClick={() => playTracks(tracks, i)}
+                  onClick={guard(() => playTracks(tracks, i))}
                   disabled={!playable}
                   className="group w-full text-left grid grid-cols-[26px_36px_1fr_auto] gap-3 items-center py-1.5 border-b border-(--mrms-rule) last:border-b-0 bg-transparent border-x-0 border-t-0 cursor-pointer disabled:cursor-default disabled:opacity-45 disabled:pointer-events-none hover:bg-(--mrms-paper)"
                 >

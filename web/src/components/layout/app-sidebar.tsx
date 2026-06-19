@@ -114,32 +114,53 @@ export function AppSidebar() {
             Spotify
           </span>
         </div>
-        <div
-          className="font-display font-semibold text-[15px] text-[var(--mrms-ink)] leading-tight truncate"
-          title={user?.displayName || ""}
-        >
-          {user?.displayName || "—"}
-        </div>
-        <div
-          className="font-mono text-[9px] text-[var(--mrms-ink-mute)] tracking-[0.05em] mt-0.5 truncate"
-          title={user?.email || ""}
-        >
-          {user?.email || ""}
-        </div>
-        <div className="flex gap-3 mt-2 font-mono text-[10px]">
-          <Link href="/profile" className="text-[var(--mrms-ink-soft)] hover:text-[var(--mrms-rust)] no-underline">
-            profile
-          </Link>
-          <button
-            onClick={async () => {
-              await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-              window.location.href = "/login";
-            }}
-            className="text-[var(--mrms-ink-soft)] hover:text-[var(--mrms-rust)] bg-transparent border-0 p-0 cursor-pointer font-mono text-[10px]"
-          >
-            logout
-          </button>
-        </div>
+        {user ? (
+          <>
+            <div
+              className="font-display font-semibold text-[15px] text-[var(--mrms-ink)] leading-tight truncate"
+              title={user.displayName || ""}
+            >
+              {user.displayName || "—"}
+            </div>
+            <div
+              className="font-mono text-[9px] text-[var(--mrms-ink-mute)] tracking-[0.05em] mt-0.5 truncate"
+              title={user.email || ""}
+            >
+              {user.email || ""}
+            </div>
+            <div className="flex gap-3 mt-2 font-mono text-[10px]">
+              <Link href="/profile" className="text-[var(--mrms-ink-soft)] hover:text-[var(--mrms-rust)] no-underline">
+                profile
+              </Link>
+              <button
+                onClick={async () => {
+                  await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+                  window.location.href = "/login";
+                }}
+                className="text-[var(--mrms-ink-soft)] hover:text-[var(--mrms-rust)] bg-transparent border-0 p-0 cursor-pointer font-mono text-[10px]"
+              >
+                logout
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="font-display font-semibold text-[15px] text-[var(--mrms-ink)] leading-tight">
+              게스트
+            </div>
+            <div className="font-mono text-[9px] text-[var(--mrms-ink-mute)] tracking-[0.05em] mt-0.5">
+              비회원으로 둘러보는 중
+            </div>
+            <div className="flex gap-3 mt-2 font-mono text-[10px]">
+              <Link href="/login" className="text-[var(--mrms-rust)] hover:underline no-underline">
+                로그인
+              </Link>
+              <Link href="/register" className="text-[var(--mrms-ink-soft)] hover:text-[var(--mrms-rust)] no-underline">
+                가입
+              </Link>
+            </div>
+          </>
+        )}
       </div>
     </aside>
   );

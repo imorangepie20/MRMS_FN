@@ -5,9 +5,11 @@ import { Plus } from "lucide-react";
 
 import { usePlaylistActionsEnabled } from "./playlist-actions-context";
 import { PlaylistMenuContent } from "./PlaylistMenuContent";
+import { useRequireAuth } from "@/lib/hooks/use-require-auth";
 
 export function AddToPlaylistMenu({ trackId }: { trackId: string }) {
   const enabled = usePlaylistActionsEnabled();
+  const { isGuest } = useRequireAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -20,7 +22,7 @@ export function AddToPlaylistMenu({ trackId }: { trackId: string }) {
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  if (!enabled) return null;
+  if (!enabled || isGuest) return null; // 비회원: 플레이리스트 저장 숨김
 
   return (
     <div ref={ref} className="relative">
