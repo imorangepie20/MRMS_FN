@@ -24,8 +24,10 @@ export function PlatformConnect({ next = "/onboarding" }: Props) {
         variant="outline"
         className="w-full"
         size="lg"
+        disabled
+        title="Spotify 연결은 준비 중입니다"
       >
-        Spotify 연결하기
+        Spotify 연결하기 (준비 중)
       </Button>
       <Button
         onClick={() => (window.location.href = `/api/auth/youtube/authorize${q}`)}
