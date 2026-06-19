@@ -11,8 +11,9 @@ import psycopg
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from mrms.api.deps import db_conn, get_current_user_id
+from mrms.api.deps import db_conn, get_current_user_id, get_current_user_id_optional
 from mrms.auth.tidal import TidalOAuthClient
+from mrms.db.settings import get_setting
 from mrms.db.user_track import get_oauth, upsert_oauth
 
 
@@ -209,3 +210,55 @@ async def stream_track(
                     yield chunk
 
     return StreamingResponse(stream_audio(), media_type=media_type)
+
+
+@playback_router.get("/video/{video_id}")
+async def video_playback(
+    video_id: str,
+    user_id: str | None = Depends(get_current_user_id_optional),
+    conn: psycopg.Connection = Depends(db_conn),
+):
+    """Tidal 비디오 → HLS m3u8 URL. 회원 OAuth면 FULL 시도, 아니면 x-tidal-token PREVIEW.
+    응답: {"url": <m3u8>, "preview": <bool>}. (오디오 stream_track과 동일한 manifest 디코드.)"""
+    # 인증 헤더 선택: 연결 회원 Bearer 우선, 실패/게스트는 x-tidal-token.
+    headers: dict[str, str] = {}
+    if user_id:
+        try:
+            headers = {"Authorization": f"Bearer {await _get_access_token(user_id, conn)}"}
+        except HTTPException:
+            headers = {}
+    if not headers:
+        tok = get_setting(conn, "tidal_x_token") or ""
+        if not tok:
+            raise HTTPException(503, "tidal_x_token not configured")
+        headers = {"x-tidal-token": tok}
+
+    async with httpx.AsyncClient(timeout=10.0) as http:
+        info_r = await http.get(
+            f"https://api.tidal.com/v1/videos/{video_id}/playbackinfo",
+            params={
+                "videoquality": "HIGH",
+                "playbackmode": "STREAM",
+                "assetpresentation": "FULL",
+            },
+            headers=headers,
+        )
+        if info_r.status_code != 200:
+            raise HTTPException(
+                info_r.status_code, f"video playbackinfo failed: {info_r.text[:200]}"
+            )
+        info = info_r.json()
+
+    manifest_b64 = info.get("manifest")
+    if not manifest_b64:
+        raise HTTPException(500, f"no manifest in video playbackinfo: {list(info.keys())}")
+    try:
+        manifest_json = json.loads(base64.b64decode(manifest_b64).decode("utf-8"))
+    except Exception as e:
+        raise HTTPException(500, f"manifest decode failed: {e}") from e
+
+    urls = manifest_json.get("urls") or ([manifest_json["url"]] if manifest_json.get("url") else [])
+    if not urls:
+        raise HTTPException(500, f"no video URL in manifest: {list(manifest_json.keys())}")
+
+    return {"url": urls[0], "preview": info.get("assetPresentation") != "FULL"}
