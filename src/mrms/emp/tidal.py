@@ -74,6 +74,46 @@ def _extract_cover(node: dict) -> str | None:
     return None
 
 
+def _video_cover(image_id: str | None) -> str | None:
+    """Tidal 비디오 imageId(UUID) → 16:9 썸네일 CDN URL."""
+    if not isinstance(image_id, str) or "-" not in image_id:
+        return None
+    return f"https://resources.tidal.com/images/{image_id.replace('-', '/')}/640x360.jpg"
+
+
+def _normalize_video(item) -> dict | None:
+    """비디오 item dict → {video_id, title, artist, cover_url}. 부적합하면 None."""
+    if not isinstance(item, dict):
+        return None
+    vid = item.get("id")
+    title = item.get("title")
+    if not vid or not title:
+        return None
+    artists = item.get("artists") or []
+    artist = (
+        (item.get("artist") or {}).get("name")
+        or (artists[0].get("name") if artists else None)
+        or "Unknown"
+    )
+    return {
+        "video_id": str(vid),
+        "title": title,
+        "artist": artist,
+        "cover_url": _video_cover(item.get("imageId")),
+    }
+
+
+def _first_playlist_list_module(page: dict) -> dict | None:
+    """pages 응답에서 첫 PLAYLIST_LIST 모듈을 찾는다."""
+    if not isinstance(page, dict):
+        return None
+    for row in page.get("rows") or []:
+        for mod in row.get("modules") or []:
+            if isinstance(mod, dict) and mod.get("type") == "PLAYLIST_LIST":
+                return mod
+    return None
+
+
 def _classify_item(node: dict) -> tuple[str, str, str, str | None] | None:
     """Returns (kind, identifier, name, cover_url) or None.
 
@@ -266,6 +306,118 @@ class TidalEMPImporter(EMPImporter):
         elif isinstance(node, list):
             for v in node:
                 yield from TidalEMPImporter._walk_classify(v)
+
+    async def _fetch_video_playlists(
+        self, http: httpx.AsyncClient
+    ) -> list[dict]:
+        """/v1/pages/videos → 비디오 플레이리스트 목록 [{uuid, title, cover_url}, ...].
+        showMore(view-all)가 있으면 따라가 전체를 가져온다."""
+        try:
+            r = await http.get(
+                f"{TIDAL_BASE}/v1/pages/videos",
+                headers=self._headers(),
+                params={**self._common_params()},
+            )
+            if r.status_code != 200:
+                return []
+            data = r.json()
+        except Exception:
+            return []
+
+        module = _first_playlist_list_module(data)
+        if module is None:
+            return []
+        items = (module.get("pagedList") or {}).get("items") or []
+        # view-all로 전체 확장(있으면)
+        api_path = ((module.get("showMore") or {}).get("apiPath")) or None
+        if api_path:
+            try:
+                r2 = await http.get(
+                    f"{TIDAL_BASE}/v1/{api_path}",
+                    headers=self._headers(),
+                    params={**self._common_params()},
+                )
+                if r2.status_code == 200:
+                    m2 = _first_playlist_list_module(r2.json())
+                    if m2:
+                        items = (m2.get("pagedList") or {}).get("items") or items
+            except Exception:
+                pass
+
+        out: list[dict] = []
+        for it in items:
+            uuid = it.get("uuid")
+            title = it.get("title")
+            if not uuid or not title:
+                continue
+            out.append({
+                "uuid": uuid,
+                "title": title.strip(),
+                "cover_url": _extract_cover(it),
+            })
+        return out
+
+    async def _fetch_playlist_videos(
+        self, http: httpx.AsyncClient, playlist_uuid: str
+    ) -> list[dict]:
+        """/v1/playlists/{uuid}/items → 비디오들 [{video_id, title, artist, cover_url}, ...]."""
+        try:
+            r = await http.get(
+                f"{TIDAL_BASE}/v1/playlists/{playlist_uuid}/items",
+                headers=self._headers(),
+                params={**self._common_params(), "limit": 50, "offset": 0},
+            )
+            if r.status_code != 200:
+                return []
+            data = r.json()
+        except Exception:
+            return []
+        out: list[dict] = []
+        for entry in data.get("items") or []:
+            if entry.get("type") != "video":
+                continue
+            v = _normalize_video(entry.get("item"))
+            if v:
+                out.append(v)
+        return out
+
+    async def _import_videos(
+        self, conn: psycopg.Connection, http: httpx.AsyncClient, base_order: int
+    ) -> int:
+        """비디오 플레이리스트 → EMPSection(video:{uuid}) + item_type='video' 아이템.
+        저장 개수 반환."""
+        playlists = await self._fetch_video_playlists(http)
+        total = 0
+        for idx, pl in enumerate(playlists):
+            try:
+                videos = await self._fetch_playlist_videos(http, pl["uuid"])
+                if not videos:
+                    continue
+                section_id = upsert_section(
+                    conn=conn,
+                    platform="tidal",
+                    section_key=f"video:{pl['uuid']}",
+                    display_title=pl["title"],
+                    display_order=base_order + idx,
+                )
+                seen: set[tuple[str, str]] = set()
+                for v_idx, v in enumerate(videos):
+                    upsert_section_item(
+                        conn=conn,
+                        section_id=section_id,
+                        item_type="video",
+                        item_id=v["video_id"],
+                        title=v["title"],
+                        cover_url=v["cover_url"],
+                        display_order=v_idx,
+                    )
+                    seen.add(("video", v["video_id"]))
+                prune_stale_items(conn, section_id, seen)
+                total += len(videos)
+            except Exception:
+                safe_rollback(conn)
+                continue
+        return total
 
     async def _fetch_playlist_tracks(
         self, http: httpx.AsyncClient, playlist_id: str
@@ -504,9 +656,17 @@ class TidalEMPImporter(EMPImporter):
                             f"{fmt_exc(e, 120)}"
                         )
 
+            # === 비디오 인제스트 (항상 1회) ===
+            try:
+                video_count = await self._import_videos(conn, http, base_order=len(sources) + 10)
+            except Exception as e:
+                video_count = 0
+                errors.append(f"videos: {fmt_exc(e, 120)}")
+
         return {
             "tracks_new": tracks_new,
             "tracks_existing": tracks_existing,
             "playlists_processed": len(items),
+            "videos": video_count,
             "errors": errors,
         }
