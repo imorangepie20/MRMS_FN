@@ -6,7 +6,8 @@ import { fetchVideoSections } from "@/lib/api/videos";
 import type { EmpSection } from "@/lib/types";
 import { SectionMasthead } from "@/components/visual/SectionMasthead";
 
-import { VideoCard } from "./VideoCard";
+import { VideoPlaylistCard } from "./VideoPlaylistCard";
+import { VideoPlaylistModal } from "./VideoPlaylistModal";
 
 export function VideosBrowse() {
   const [sections, setSections] = useState<EmpSection[]>([]);
@@ -49,22 +50,24 @@ export function VideosBrowse() {
               {sec.display_title}
             </h2>
             <span className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) tabular-nums shrink-0 pb-1">
-              {sec.items.length} videos
+              {sec.items.length} playlists
             </span>
           </div>
-          <div className="flex gap-3 overflow-x-auto snap-x pb-2">
+          {/* 플레이리스트 카드 그리드 — 클릭 시 그 플레이리스트 영상 모달(EMP 음악과 동일 구조). */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-3 gap-y-4">
             {sec.items.map((it) => (
-              <VideoCard
+              <VideoPlaylistCard
                 key={it.id}
-                videoId={it.item_id}
+                uuid={it.item_id}
                 title={it.title ?? ""}
                 coverUrl={it.cover_url}
-                widthPx={260}
               />
             ))}
           </div>
         </div>
       ))}
+
+      <VideoPlaylistModal />
     </div>
   );
 }

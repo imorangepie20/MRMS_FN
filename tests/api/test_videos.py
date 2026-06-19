@@ -1,6 +1,8 @@
-"""/api/videos/sections + EMP 비디오 제외."""
+"""/api/videos/sections + EMP 비디오 제외 + 플레이리스트 영상 엔드포인트."""
 import uuid
 
+import httpx
+import respx
 from fastapi.testclient import TestClient
 
 from mrms.api.main import app
@@ -59,3 +61,21 @@ def test_videos_sections_endpoint(db_conn, cleanup):
     assert video_key in keys
     assert audio_key not in keys
     assert all(k.startswith("video:") for k in keys)
+
+
+@respx.mock
+def test_video_playlist_endpoint(db_conn):
+    """플레이리스트 카드 클릭 → 그 플레이리스트 영상들 라이브 fetch."""
+    items = {"items": [{"item": {
+        "id": 9, "title": "MV X",
+        "imageId": "aa11bb22-0000-1111-2222-333344445555",
+        "artist": {"name": "Artist X"}}, "type": "video"}]}
+    respx.get("https://tidal.com/v1/playlists/plX/items").mock(
+        return_value=httpx.Response(200, json=items)
+    )
+    client = TestClient(app)
+    r = client.get("/api/videos/playlists/plX")
+    assert r.status_code == 200
+    vids = r.json()["videos"]
+    assert vids[0]["video_id"] == "9"
+    assert vids[0]["artist"] == "Artist X"

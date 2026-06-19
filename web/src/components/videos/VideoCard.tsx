@@ -14,14 +14,15 @@ export function VideoCard({
   videoId: string;
   title: string;
   coverUrl: string | null;
-  widthPx: number;
+  /** 캐러셀용 고정 px. 생략하면 부모(그리드 셀) 폭에 맞춤. */
+  widthPx?: number;
 }) {
   const open = useVideoPlayer((s) => s.open);
   return (
     <button
       onClick={() => open(videoId, title)}
-      style={{ width: `${widthPx}px`, containerType: "inline-size" }}
-      className="group shrink-0 snap-start text-left bg-transparent border-0 p-0 cursor-pointer"
+      style={widthPx ? { width: `${widthPx}px`, containerType: "inline-size" } : { containerType: "inline-size" }}
+      className={`group text-left bg-transparent border-0 p-0 cursor-pointer ${widthPx ? "shrink-0 snap-start" : "w-full"}`}
     >
       <div className="relative w-full aspect-video overflow-hidden bg-(--mrms-rule)">
         {coverUrl ? (

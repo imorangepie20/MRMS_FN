@@ -84,26 +84,27 @@ async def test_fetch_playlist_videos():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_import_videos_persists_sections(db_conn, cleanup):
+async def test_import_videos_one_new_section_of_playlist_cards(db_conn, cleanup):
+    """비디오 플레이리스트들은 단일 'New' 섹션(video:new)에 item_type='video_playlist'
+    카드로 저장된다(영상 평면화 X — EMP 음악과 동일 구조)."""
     from mrms.db.emp_section import list_sections_with_items
-    cleanup('DELETE FROM "EMPSectionItem" WHERE "itemId" = %s AND "itemType" = %s', ("1", "video"))
-    cleanup('DELETE FROM "EMPSection" WHERE "sectionKey" = %s', ("video:pl-1",))
+    cleanup('DELETE FROM "EMPSection" WHERE "sectionKey" = %s', ("video:new",))
     page = {"rows": [{"modules": [{"type": "PLAYLIST_LIST", "showMore": None,
-        "pagedList": {"items": [{"uuid": "pl-1", "title": "New Pop Videos",
-            "squareImage": "ab12cd34-0000-1111-2222-333344445555"}]}}]}]}
-    items = {"items": [{"item": {"id": 1, "title": "MV A",
-        "imageId": "aa11bb22-0000-1111-2222-333344445555",
-        "artist": {"name": "Artist A"}}, "type": "video"}]}
+        "pagedList": {"items": [
+            {"uuid": "pl-1", "title": "New Pop Videos",
+             "squareImage": "ab12cd34-0000-1111-2222-333344445555"},
+            {"uuid": "pl-2", "title": "New K-Pop Videos",
+             "image": "ff00aa11-0000-1111-2222-333344445555"},
+        ]}}]}]}
     respx.get(f"{TIDAL_BASE}/v1/pages/videos").mock(return_value=_httpx.Response(200, json=page))
-    respx.get(f"{TIDAL_BASE}/v1/playlists/pl-1/items").mock(
-        return_value=_httpx.Response(200, json=items))
 
     imp = TidalEMPImporter(conn=db_conn, token="tok")
     async with _httpx.AsyncClient() as http:
         n = await imp._import_videos(db_conn, http, base_order=0)
-    assert n >= 1
-    secs = list_sections_with_items(db_conn)
-    vsec = [s for s in secs if s["section_key"] == "video:pl-1"]
-    assert vsec and vsec[0]["display_title"] == "New Pop Videos"
-    assert vsec[0]["items"][0]["item_type"] == "video"
-    assert vsec[0]["items"][0]["item_id"] == "1"
+    assert n == 2  # 저장 플레이리스트 수
+    secs = list_sections_with_items(db_conn, only_video=True)
+    vsec = [s for s in secs if s["section_key"] == "video:new"]
+    assert vsec and vsec[0]["display_title"] == "New"
+    items = vsec[0]["items"]
+    assert {i["item_type"] for i in items} == {"video_playlist"}
+    assert {i["item_id"] for i in items} == {"pl-1", "pl-2"}

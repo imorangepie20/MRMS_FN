@@ -384,40 +384,33 @@ class TidalEMPImporter(EMPImporter):
     async def _import_videos(
         self, conn: psycopg.Connection, http: httpx.AsyncClient, base_order: int
     ) -> int:
-        """비디오 플레이리스트 → EMPSection(video:{uuid}) + item_type='video' 아이템.
-        저장 개수 반환."""
+        """비디오 플레이리스트들을 단일 "New" 섹션(video:new)에 item_type='video_playlist'
+        카드로 저장(EMP 음악과 동일: 섹션→플레이리스트 카드→클릭 시 영상 모달).
+        영상은 평면화하지 않고 클릭 시 라이브 fetch한다. 저장 플레이리스트 개수 반환."""
         playlists = await self._fetch_video_playlists(http)
-        total = 0
+        if not playlists:
+            return 0
+        section_id = upsert_section(
+            conn=conn,
+            platform="tidal",
+            section_key="video:new",
+            display_title="New",
+            display_order=base_order,
+        )
+        seen: set[tuple[str, str]] = set()
         for idx, pl in enumerate(playlists):
-            try:
-                videos = await self._fetch_playlist_videos(http, pl["uuid"])
-                if not videos:
-                    continue
-                section_id = upsert_section(
-                    conn=conn,
-                    platform="tidal",
-                    section_key=f"video:{pl['uuid']}",
-                    display_title=pl["title"],
-                    display_order=base_order + idx,
-                )
-                seen: set[tuple[str, str]] = set()
-                for v_idx, v in enumerate(videos):
-                    upsert_section_item(
-                        conn=conn,
-                        section_id=section_id,
-                        item_type="video",
-                        item_id=v["video_id"],
-                        title=v["title"],
-                        cover_url=v["cover_url"],
-                        display_order=v_idx,
-                    )
-                    seen.add(("video", v["video_id"]))
-                prune_stale_items(conn, section_id, seen)
-                total += len(videos)
-            except Exception:
-                safe_rollback(conn)
-                continue
-        return total
+            upsert_section_item(
+                conn=conn,
+                section_id=section_id,
+                item_type="video_playlist",
+                item_id=pl["uuid"],
+                title=pl["title"],
+                cover_url=pl["cover_url"],
+                display_order=idx,
+            )
+            seen.add(("video_playlist", pl["uuid"]))
+        prune_stale_items(conn, section_id, seen)
+        return len(playlists)
 
     async def _fetch_playlist_tracks(
         self, http: httpx.AsyncClient, playlist_id: str
