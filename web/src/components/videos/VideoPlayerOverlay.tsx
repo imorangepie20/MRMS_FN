@@ -37,6 +37,12 @@ export function VideoPlayerOverlay() {
     let cancelled = false;
     setError(null);
 
+    // 네이티브 <video> 재생 실패(Safari HLS·폴백 src) → 에러 표시(오버레이 유지).
+    const onNativeError = () => {
+      if (!cancelled) setError("재생할 수 없는 영상입니다.");
+    };
+    el.addEventListener("error", onNativeError);
+
     void (async () => {
       try {
         const { url, preview: pv } = await getVideoPlaybackUrl(videoId);
@@ -49,6 +55,10 @@ export function VideoPlayerOverlay() {
           if (cancelled) return;
           if (Hls.isSupported()) {
             const inst = new Hls();
+            // hls.js 치명 에러(매니페스트/네트워크/미디어) → 에러 표시(오버레이 유지).
+            inst.on(Hls.Events.ERROR, (_evt, data) => {
+              if (data.fatal && !cancelled) setError("재생할 수 없는 영상입니다.");
+            });
             inst.loadSource(url);
             inst.attachMedia(el);
             hls = inst;
@@ -56,6 +66,7 @@ export function VideoPlayerOverlay() {
             el.src = url; // 최후 폴백
           }
         }
+        // autoplay 정책으로 막히면 사용자가 컨트롤로 재생 — 에러 아님(swallow).
         await el.play().catch(() => {});
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
@@ -64,6 +75,7 @@ export function VideoPlayerOverlay() {
 
     return () => {
       cancelled = true;
+      el.removeEventListener("error", onNativeError);
       if (hls) hls.destroy();
       el.removeAttribute("src");
       el.load();
@@ -115,7 +127,7 @@ export function VideoPlayerOverlay() {
         {preview && (
           <div className="absolute bottom-2 left-0 right-0 flex justify-center">
             <a
-              href="/login"
+              href="/register"
               className="font-mono text-[10px] tracking-editorial uppercase bg-(--mrms-rust) text-(--mrms-paper) px-3 py-1.5 no-underline"
             >
               가입하면 풀영상 →
