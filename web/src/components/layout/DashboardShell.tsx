@@ -9,6 +9,7 @@ import { PlayerBar } from "@/components/player/PlayerBar";
 import { PlaylistActionsContext } from "@/components/playlist/playlist-actions-context";
 import { NewPlaylistDialog } from "@/components/playlist/NewPlaylistDialog";
 import { TrackContextMenu } from "@/components/playlist/TrackContextMenu";
+import { VideoPlayerOverlay } from "@/components/videos/VideoPlayerOverlay";
 import { usePlaylistStore } from "@/store/playlist";
 
 /** 앱 크롬(사이드바·헤더·플레이어 + 플레이리스트 컨텍스트/다이얼로그/우클릭메뉴).
@@ -45,6 +46,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           <main className="flex-1 pb-32 md:pb-36">{children}</main>
         </div>
         <PlayerBar />
+        <VideoPlayerOverlay />
         <ArtistIntroModal />
         <NewPlaylistDialog />
         <TrackContextMenu />
