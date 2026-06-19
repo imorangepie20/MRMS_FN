@@ -17,7 +17,7 @@ def get_sections(
     conn: psycopg.Connection = Depends(db_conn),
 ):
     # 공개 — 비회원도 브라우즈 가능(전역 에디토리얼 데이터, 유저별 아님).
-    sections = list_sections_with_items(conn, platform=platform)
+    sections = list_sections_with_items(conn, platform=platform, exclude_video=True)
     return {"sections": sections}
 
 

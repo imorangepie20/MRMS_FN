@@ -64,13 +64,22 @@ def upsert_section_item(
 def list_sections_with_items(
     conn: psycopg.Connection,
     platform: str | None = None,
+    exclude_video: bool = False,
+    only_video: bool = False,
 ) -> list[dict]:
-    """모든 section + items (display_order 순). 사용자 EMP 페이지용."""
-    where = ""
-    params: tuple = ()
+    """모든 section + items (display_order 순).
+    exclude_video: section_key 'video:%' 제외(EMP 페이지). only_video: 'video:%'만(/videos)."""
+    clauses: list[str] = []
+    params_list: list = []
     if platform:
-        where = "WHERE platform = %s"
-        params = (platform,)
+        clauses.append("platform = %s")
+        params_list.append(platform)
+    if exclude_video:
+        clauses.append("\"sectionKey\" NOT LIKE 'video:%%'")
+    if only_video:
+        clauses.append("\"sectionKey\" LIKE 'video:%%'")
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    params: tuple = tuple(params_list)
 
     with conn.cursor() as cur:
         cur.execute(

@@ -37,6 +37,7 @@ from mrms.api.search import router as search_router
 from mrms.api.shared import router as shared_router
 from mrms.api.situation import router as situation_router
 from mrms.api.user_tracks import router as user_tracks_router
+from mrms.api.videos import router as videos_router
 from mrms.api.wellness import router as wellness_router
 from mrms.auth.roles import get_effective_role
 from mrms.db.user_embedding import fetch_latest_playlists
@@ -70,6 +71,7 @@ app.include_router(artwork_router)
 app.include_router(admin_emp_router)
 app.include_router(admin_users_router)
 app.include_router(emp_browse_router)
+app.include_router(videos_router)
 app.include_router(pgt_router)
 app.include_router(search_router)
 app.include_router(import_url_router)
