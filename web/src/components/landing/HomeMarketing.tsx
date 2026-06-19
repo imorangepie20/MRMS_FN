@@ -33,7 +33,7 @@ export function HomeMarketing() {
           취향을 <em className="font-display italic text-(--mrms-rust)">재생</em>하다
         </h1>
         <p className="font-mono text-[12px] text-(--mrms-ink-soft) leading-relaxed mt-5 max-w-[520px]">
-          Tidal · Spotify · YouTube를 한 곳에서. 임베딩 기반 추천과 무드로, 당신의 취향을 읽습니다.
+          Tidal · <span className="line-through opacity-60">Spotify</span> · YouTube를 한 곳에서. 임베딩 기반 추천과 무드로, 당신의 취향을 읽습니다.
         </p>
         <Link
           href="/login"
