@@ -212,42 +212,68 @@ async def stream_track(
     return StreamingResponse(stream_audio(), media_type=media_type)
 
 
+async def _fetch_video_playbackinfo(
+    http: httpx.AsyncClient, video_id: str, endpoint: str, headers: dict[str, str]
+) -> httpx.Response:
+    """Tidal 비디오 playbackinfo 호출. endpoint='playbackinfo'|'playbackinfopostpaywall'."""
+    return await http.get(
+        f"https://api.tidal.com/v1/videos/{video_id}/{endpoint}",
+        params={
+            "videoquality": "HIGH",
+            "playbackmode": "STREAM",
+            "assetpresentation": "FULL",
+        },
+        headers=headers,
+    )
+
+
 @playback_router.get("/video/{video_id}")
 async def video_playback(
     video_id: str,
     user_id: str | None = Depends(get_current_user_id_optional),
     conn: psycopg.Connection = Depends(db_conn),
 ):
-    """Tidal 비디오 → HLS m3u8 URL. 회원 OAuth면 FULL 시도, 아니면 x-tidal-token PREVIEW.
-    응답: {"url": <m3u8>, "preview": <bool>}. (오디오 stream_track과 동일한 manifest 디코드.)"""
-    # 인증 헤더 선택: 연결 회원 Bearer 우선, 실패/게스트는 x-tidal-token.
-    headers: dict[str, str] = {}
+    """Tidal 비디오 → HLS m3u8 URL. 응답: {"url": <m3u8>, "preview": <bool>}.
+
+    인증 분기(스펙 §재생/§에러처리):
+    - 연결 회원(OAuth Bearer) → `playbackinfopostpaywall` 로 FULL 시도.
+    - 실패/게스트 → `x-tidal-token` 으로 `playbackinfo`(PREVIEW로 내려옴, 30초).
+    오디오 stream_track과 동일한 manifest 디코드.
+    """
+    info: dict | None = None
+
+    # 1) 연결 회원: Bearer OAuth로 postpaywall(FULL) 시도. 실패 시 게스트 폴백.
     if user_id:
         try:
-            headers = {"Authorization": f"Bearer {await _get_access_token(user_id, conn)}"}
+            access_token = await _get_access_token(user_id, conn)
         except HTTPException:
-            headers = {}
-    if not headers:
+            access_token = None
+        if access_token:
+            async with httpx.AsyncClient(timeout=10.0) as http:
+                member_r = await _fetch_video_playbackinfo(
+                    http,
+                    video_id,
+                    "playbackinfopostpaywall",
+                    {"Authorization": f"Bearer {access_token}"},
+                )
+            if member_r.status_code == 200:
+                info = member_r.json()
+            # 비-200(401/지역/만료 등) → 아래 게스트 프리뷰로 폴백.
+
+    # 2) 게스트/폴백: x-tidal-token으로 playbackinfo(PREVIEW).
+    if info is None:
         tok = get_setting(conn, "tidal_x_token") or ""
         if not tok:
             raise HTTPException(503, "tidal_x_token not configured")
-        headers = {"x-tidal-token": tok}
-
-    async with httpx.AsyncClient(timeout=10.0) as http:
-        info_r = await http.get(
-            f"https://api.tidal.com/v1/videos/{video_id}/playbackinfo",
-            params={
-                "videoquality": "HIGH",
-                "playbackmode": "STREAM",
-                "assetpresentation": "FULL",
-            },
-            headers=headers,
-        )
-        if info_r.status_code != 200:
-            raise HTTPException(
-                info_r.status_code, f"video playbackinfo failed: {info_r.text[:200]}"
+        async with httpx.AsyncClient(timeout=10.0) as http:
+            guest_r = await _fetch_video_playbackinfo(
+                http, video_id, "playbackinfo", {"x-tidal-token": tok}
             )
-        info = info_r.json()
+        if guest_r.status_code != 200:
+            raise HTTPException(
+                guest_r.status_code, f"video playbackinfo failed: {guest_r.text[:200]}"
+            )
+        info = guest_r.json()
 
     manifest_b64 = info.get("manifest")
     if not manifest_b64:
