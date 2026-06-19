@@ -77,7 +77,7 @@ export function HomeMarketing() {
           >
             <div className="min-w-0">
               <div className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-rust)">
-                § 02 · External Music Pool · 회원가입 불필요
+                § 02 · External Music Pool
               </div>
               <div className="font-serif font-bold text-[clamp(26px,4.6vw,44px)] leading-[1.04] text-(--mrms-ink) mt-1">
                 External pool
