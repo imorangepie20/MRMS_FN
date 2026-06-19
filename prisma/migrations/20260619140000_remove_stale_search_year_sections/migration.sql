@@ -1,0 +1,12 @@
+-- 고아(stale) EMP 섹션 정리: "2026 · {장르}" / "2026 · Hot New" 등.
+--
+-- 출처: 제거된 Spotify "search-tracks" 임포터(커밋 b33a2dd). 이 임포터는
+-- /v1/search?type=track 으로 year:2026 genre:* 트랙을 찾아 그 "앨범"을
+-- section_key='search-year-2026-genre-{g}' 섹션에 item_type='album'로 적재했다.
+-- 이후 커밋 88fbea3에서 Spotify 임포터가 embed 기반(section_key='{kind}:{id}')으로
+-- 재작성되며 이 경로가 사라졌고, 현재 코드는 이 섹션들을 만들지도/갱신·prune 하지도
+-- 않는다. 결과적으로 옛 데이터가 DB에 남아 트랙(상당수가 싱글)을 'album' 카드로
+-- 잘못 노출했다. 현재 어떤 임포터도 'search-year-' 접두 키를 쓰지 않으므로 안전.
+--
+-- EMPSectionItem 은 EMPSection 에 ON DELETE CASCADE → 항목도 함께 삭제된다.
+DELETE FROM "EMPSection" WHERE "sectionKey" LIKE 'search-year-%';
