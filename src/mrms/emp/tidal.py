@@ -103,13 +103,13 @@ def _normalize_video(item) -> dict | None:
     }
 
 
-def _first_playlist_list_module(page: dict) -> dict | None:
-    """pages 응답에서 첫 PLAYLIST_LIST 모듈을 찾는다."""
+def _first_module(page: dict, module_type: str) -> dict | None:
+    """pages 응답에서 주어진 type의 첫 모듈을 찾는다."""
     if not isinstance(page, dict):
         return None
     for row in page.get("rows") or []:
         for mod in row.get("modules") or []:
-            if isinstance(mod, dict) and mod.get("type") == "PLAYLIST_LIST":
+            if isinstance(mod, dict) and mod.get("type") == module_type:
                 return mod
     return None
 
@@ -324,7 +324,7 @@ class TidalEMPImporter(EMPImporter):
         except Exception:
             return []
 
-        module = _first_playlist_list_module(data)
+        module = _first_module(data, "PLAYLIST_LIST")
         if module is None:
             return []
         items = (module.get("pagedList") or {}).get("items") or []
@@ -338,7 +338,7 @@ class TidalEMPImporter(EMPImporter):
                     params={**self._common_params()},
                 )
                 if r2.status_code == 200:
-                    m2 = _first_playlist_list_module(r2.json())
+                    m2 = _first_module(r2.json(), "PLAYLIST_LIST")
                     if m2:
                         items = (m2.get("pagedList") or {}).get("items") or items
             except Exception:
@@ -354,6 +354,43 @@ class TidalEMPImporter(EMPImporter):
                 "uuid": uuid,
                 "title": title.strip(),
                 "cover_url": _extract_cover(it),
+            })
+        return out
+
+    async def _fetch_featured_videos(
+        self, http: httpx.AsyncClient
+    ) -> list[dict]:
+        """/v1/pages/videos의 Featured 모듈(MULTIPLE_TOP_PROMOTIONS) → 개별 비디오
+        [{video_id, title, cover_url}, ...]. type!='VIDEO'(CATEGORY_PAGES 등)는 스킵."""
+        try:
+            r = await http.get(
+                f"{TIDAL_BASE}/v1/pages/videos",
+                headers=self._headers(),
+                params={**self._common_params()},
+            )
+            if r.status_code != 200:
+                return []
+            data = r.json()
+        except Exception:
+            return []
+
+        module = _first_module(data, "MULTIPLE_TOP_PROMOTIONS")
+        if module is None:
+            return []
+        out: list[dict] = []
+        seen: set[str] = set()
+        for it in module.get("items") or []:
+            if not isinstance(it, dict) or it.get("type") != "VIDEO":
+                continue
+            vid = it.get("artifactId")
+            title = it.get("shortHeader") or it.get("header")
+            if not vid or not title or str(vid) in seen:
+                continue
+            seen.add(str(vid))
+            out.append({
+                "video_id": str(vid),
+                "title": title,
+                "cover_url": _video_cover(it.get("imageId")),
             })
         return out
 
@@ -384,33 +421,49 @@ class TidalEMPImporter(EMPImporter):
     async def _import_videos(
         self, conn: psycopg.Connection, http: httpx.AsyncClient, base_order: int
     ) -> int:
-        """비디오 플레이리스트들을 단일 "New" 섹션(video:new)에 item_type='video_playlist'
-        카드로 저장(EMP 음악과 동일: 섹션→플레이리스트 카드→클릭 시 영상 모달).
-        영상은 평면화하지 않고 클릭 시 라이브 fetch한다. 저장 플레이리스트 개수 반환."""
-        playlists = await self._fetch_video_playlists(http)
-        if not playlists:
-            return 0
-        section_id = upsert_section(
-            conn=conn,
-            platform="tidal",
-            section_key="video:new",
-            display_title="New",
-            display_order=base_order,
-        )
-        seen: set[tuple[str, str]] = set()
-        for idx, pl in enumerate(playlists):
-            upsert_section_item(
-                conn=conn,
-                section_id=section_id,
-                item_type="video_playlist",
-                item_id=pl["uuid"],
-                title=pl["title"],
-                cover_url=pl["cover_url"],
-                display_order=idx,
+        """비디오 섹션 2개 저장(저장 아이템 총개수 반환):
+        - "Featured"(video:featured): 개별 비디오 카드(item_type='video') → 클릭 시 바로 풀스크린.
+        - "New"(video:new): 장르 플레이리스트 카드(item_type='video_playlist') → 클릭 시 영상 모달.
+        영상은 평면화하지 않고(New) 클릭 시 라이브 fetch. (EMP 음악과 동일 구조.)"""
+        total = 0
+
+        # 1) Featured — 개별 비디오
+        featured = await self._fetch_featured_videos(http)
+        if featured:
+            sec_id = upsert_section(
+                conn=conn, platform="tidal", section_key="video:featured",
+                display_title="Featured", display_order=base_order,
             )
-            seen.add(("video_playlist", pl["uuid"]))
-        prune_stale_items(conn, section_id, seen)
-        return len(playlists)
+            seen_f: set[tuple[str, str]] = set()
+            for idx, v in enumerate(featured):
+                upsert_section_item(
+                    conn=conn, section_id=sec_id, item_type="video",
+                    item_id=v["video_id"], title=v["title"],
+                    cover_url=v["cover_url"], display_order=idx,
+                )
+                seen_f.add(("video", v["video_id"]))
+            prune_stale_items(conn, sec_id, seen_f)
+            total += len(featured)
+
+        # 2) New — 장르 플레이리스트 카드
+        playlists = await self._fetch_video_playlists(http)
+        if playlists:
+            sec_id = upsert_section(
+                conn=conn, platform="tidal", section_key="video:new",
+                display_title="New", display_order=base_order + 1,
+            )
+            seen_p: set[tuple[str, str]] = set()
+            for idx, pl in enumerate(playlists):
+                upsert_section_item(
+                    conn=conn, section_id=sec_id, item_type="video_playlist",
+                    item_id=pl["uuid"], title=pl["title"],
+                    cover_url=pl["cover_url"], display_order=idx,
+                )
+                seen_p.add(("video_playlist", pl["uuid"]))
+            prune_stale_items(conn, sec_id, seen_p)
+            total += len(playlists)
+
+        return total
 
     async def _fetch_playlist_tracks(
         self, http: httpx.AsyncClient, playlist_id: str

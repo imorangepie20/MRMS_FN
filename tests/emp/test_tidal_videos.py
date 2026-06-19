@@ -84,27 +84,43 @@ async def test_fetch_playlist_videos():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_import_videos_one_new_section_of_playlist_cards(db_conn, cleanup):
-    """비디오 플레이리스트들은 단일 'New' 섹션(video:new)에 item_type='video_playlist'
-    카드로 저장된다(영상 평면화 X — EMP 음악과 동일 구조)."""
+async def test_import_videos_featured_and_new_sections(db_conn, cleanup):
+    """Featured(개별 비디오 카드) + New(플레이리스트 카드) 두 섹션을 저장.
+    Featured는 type=='VIDEO'만(CATEGORY_PAGES 등 스킵), New는 video_playlist 카드."""
     from mrms.db.emp_section import list_sections_with_items
-    cleanup('DELETE FROM "EMPSection" WHERE "sectionKey" = %s', ("video:new",))
-    page = {"rows": [{"modules": [{"type": "PLAYLIST_LIST", "showMore": None,
-        "pagedList": {"items": [
+    cleanup(
+        'DELETE FROM "EMPSection" WHERE "sectionKey" IN (%s, %s)',
+        ("video:featured", "video:new"),
+    )
+    page = {"rows": [
+        {"modules": [{"type": "MULTIPLE_TOP_PROMOTIONS", "title": "Featured", "items": [
+            {"type": "VIDEO", "artifactId": "111", "shortHeader": "Feat A",
+             "imageId": "aa11bb22-0000-1111-2222-333344445555"},
+            {"type": "CATEGORY_PAGES", "artifactId": "pages/x", "shortHeader": "skip me"},
+        ]}]},
+        {"modules": [{"type": "PLAYLIST_LIST", "showMore": None, "pagedList": {"items": [
             {"uuid": "pl-1", "title": "New Pop Videos",
              "squareImage": "ab12cd34-0000-1111-2222-333344445555"},
             {"uuid": "pl-2", "title": "New K-Pop Videos",
              "image": "ff00aa11-0000-1111-2222-333344445555"},
-        ]}}]}]}
+        ]}}]},
+    ]}
     respx.get(f"{TIDAL_BASE}/v1/pages/videos").mock(return_value=_httpx.Response(200, json=page))
 
     imp = TidalEMPImporter(conn=db_conn, token="tok")
     async with _httpx.AsyncClient() as http:
         n = await imp._import_videos(db_conn, http, base_order=0)
-    assert n == 2  # 저장 플레이리스트 수
+    assert n == 3  # featured 1 + playlists 2
     secs = list_sections_with_items(db_conn, only_video=True)
-    vsec = [s for s in secs if s["section_key"] == "video:new"]
-    assert vsec and vsec[0]["display_title"] == "New"
-    items = vsec[0]["items"]
-    assert {i["item_type"] for i in items} == {"video_playlist"}
-    assert {i["item_id"] for i in items} == {"pl-1", "pl-2"}
+
+    fsec = [s for s in secs if s["section_key"] == "video:featured"]
+    assert fsec and fsec[0]["display_title"] == "Featured"
+    fitems = fsec[0]["items"]
+    assert len(fitems) == 1  # CATEGORY_PAGES 스킵
+    assert fitems[0]["item_type"] == "video"
+    assert fitems[0]["item_id"] == "111"
+
+    nsec = [s for s in secs if s["section_key"] == "video:new"]
+    assert nsec and nsec[0]["display_title"] == "New"
+    assert {i["item_type"] for i in nsec[0]["items"]} == {"video_playlist"}
+    assert {i["item_id"] for i in nsec[0]["items"]} == {"pl-1", "pl-2"}
