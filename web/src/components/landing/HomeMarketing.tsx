@@ -53,6 +53,47 @@ export function HomeMarketing() {
         </div>
       </section>
 
+      {/* External Pool 둘러보기 — 비회원도 가입 없이 EMP 브라우즈 */}
+      <section className="px-6 md:px-14 pb-12 max-w-[1100px]">
+        <Link
+          href="/emp"
+          className="group relative block overflow-hidden border border-(--mrms-ink) no-underline"
+        >
+          <img
+            src="/visuals/band.jpg"
+            alt=""
+            aria-hidden
+            className="absolute inset-0 size-full object-cover"
+            style={{ objectPosition: "center 42%", filter: "saturate(1.5) contrast(1.08)" }}
+          />
+          <div
+            aria-hidden
+            className="absolute inset-0"
+            style={{ background: "linear-gradient(100deg, rgba(243,230,216,.95) 2%, rgba(243,230,216,.6) 36%, rgba(243,230,216,.08) 66%)" }}
+          />
+          <div
+            className="relative flex flex-col gap-4 px-6 py-7 sm:flex-row sm:items-center sm:justify-between md:px-9 md:py-9"
+            style={{ textShadow: "0 1px 10px rgba(243,230,216,.55)" }}
+          >
+            <div className="min-w-0">
+              <div className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-rust)">
+                § 02 · External Music Pool · 회원가입 불필요
+              </div>
+              <div className="font-serif font-bold text-[clamp(26px,4.6vw,44px)] leading-[1.04] text-(--mrms-ink) mt-1">
+                External pool
+              </div>
+              <div className="font-mono text-[11px] text-(--mrms-ink-soft) mt-1.5 max-w-[460px] leading-relaxed">
+                전 세계 차트·에디토리얼 플레이리스트를 가입 없이 둘러보세요.
+              </div>
+            </div>
+            <span className="shrink-0 self-start sm:self-auto inline-flex items-center gap-1.5 bg-(--mrms-rust) text-(--mrms-paper) px-4 py-2.5 font-mono text-[11px] tracking-editorial uppercase">
+              둘러보기
+              <span className="transition-transform group-hover:translate-x-0.5">→</span>
+            </span>
+          </div>
+        </Link>
+      </section>
+
       <footer className="px-6 md:px-14 py-6 border-t border-(--mrms-rule) font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute)">
         Photos · Unsplash — Timothy Barlin, Fernando Hernandez, Priscilla Du Preez
       </footer>
