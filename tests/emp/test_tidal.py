@@ -43,7 +43,32 @@ def test_classify_mix():
 def test_classify_track_returns_none():
     """ISRC있는 트랙은 classify 안 됨 (item-level discovery용 함수)."""
     r = _classify_item({"id": 100, "title": "Track", "isrc": "USRC1", "artists": [{"name": "A"}]})
-    assert r is None  # isrc 존재 가드 때문 — 트랙은 항상 isrc를 들고 와서 album으로 오분류 안 됨
+    assert r is None  # isrc 시그널로 트랙 배제 → album 오분류 안 됨
+
+
+def test_classify_isrc_less_track_not_album():
+    """isrc 없는 트랙(LATEST_SPOTLIGHTED_TRACKS 등)도 album으로 오분류 X.
+    트랙은 trackNumber 또는 nested album 객체를 들고 와서 배제된다."""
+    # trackNumber 시그널
+    r = _classify_item(
+        {"id": 200, "title": "Jazz Track", "artists": [{"name": "A"}], "trackNumber": 1}
+    )
+    assert r is None
+    # nested album 객체 시그널
+    r = _classify_item({"id": 201, "title": "Jazz Track", "artists": [{"name": "A"}],
+                        "album": {"id": 9, "title": "Alb"}})
+    assert r is None
+
+
+def test_walk_classify_skips_wrapped_track():
+    """{type:'TRACK', data:{...}} 래퍼는 내부로 재귀하지 않는다 — 트랙 섹션
+    (예: 2026 Hot New)의 곡이 앨범 카드로 뜨던 버그 방지."""
+    node = {"type": "TRACK", "data": {"id": 300, "title": "T", "artists": [{"name": "A"}]}}
+    assert list(TidalEMPImporter._walk_classify(node)) == []
+    # ALBUM 래퍼는 그대로 분류돼야 함(회귀 방지) — _classify_album 경유.
+    alb = {"type": "ALBUM", "data": {"id": 555, "title": "Real Album", "artists": [{"name": "A"}]}}
+    out = list(TidalEMPImporter._walk_classify(alb))
+    assert out and out[0][0] == "album"
 
 
 def test_classify_returns_cover_from_image_url():

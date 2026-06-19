@@ -102,11 +102,18 @@ def _classify_item(node: dict) -> tuple[str, str, str, str | None] | None:
     if uuid and isinstance(uuid, str) and len(uuid) >= 16:
         return ("playlist", uuid, title, cover_url)
     item_id = node.get("id")
-    # Album items typically have numeric id + artists/releaseDate.
-    # Guard on 'isrc' absence — tracks also have artists but always carry isrc.
+    # 트랙 전용 시그널 — isrc가 없어도(spotlighted tracks 등) 트랙을 album으로
+    # 오분류하지 않도록. 트랙은 trackNumber/volumeNumber 또는 nested album 객체를 가짐.
+    looks_like_track = (
+        node.get("isrc")
+        or node.get("trackNumber") is not None
+        or node.get("volumeNumber") is not None
+        or isinstance(node.get("album"), dict)
+    )
+    # Album items typically have numeric id + artists/releaseDate, 트랙 시그널은 없음.
     if (
         item_id
-        and not node.get("isrc")
+        and not looks_like_track
         and (node.get("releaseDate") or node.get("artists"))
     ):
         return ("album", str(item_id), title, cover_url)
@@ -249,6 +256,11 @@ class TidalEMPImporter(EMPImporter):
             if classified is not None:
                 yield classified
                 return  # Don't recurse into matched items
+            # 트랙/비디오 래퍼({type:"TRACK"|"VIDEO", data:{...}})는 컨테이너가 아니다.
+            # 내부 data로 재귀하면 그 트랙 dict이 fallback에서 album으로 오분류된다
+            # (LATEST_SPOTLIGHTED_TRACKS 등 트랙 섹션이 앨범 카드로 뜨던 버그) → 재귀 차단.
+            if (node.get("type") or "").upper() in ("TRACK", "VIDEO"):
+                return
             for v in node.values():
                 yield from TidalEMPImporter._walk_classify(v)
         elif isinstance(node, list):
