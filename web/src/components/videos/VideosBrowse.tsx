@@ -6,6 +6,7 @@ import { fetchVideoSections } from "@/lib/api/videos";
 import type { EmpSection } from "@/lib/types";
 import { SectionMasthead } from "@/components/visual/SectionMasthead";
 
+import { SectionCarousel } from "./SectionCarousel";
 import { VideoCard } from "./VideoCard";
 import { VideoPlaylistCard } from "./VideoPlaylistCard";
 import { VideoPlaylistModal } from "./VideoPlaylistModal";
@@ -44,39 +45,39 @@ export function VideosBrowse() {
       {!loading && sections.length === 0 && !error && (
         <div className="py-12 text-center font-mono text-[11px] tracking-editorial uppercase text-(--mrms-ink-mute)">— no videos yet —</div>
       )}
-      {sections.map((sec) => (
-        <div key={sec.id} className="mb-10">
-          <div className="mb-3 flex items-end justify-between gap-4 border-b border-(--mrms-ink) pb-1">
-            <h2 className="font-display font-bold text-(--mrms-ink) leading-[1.05] tracking-[-0.015em] text-[20px] md:text-[26px]">
-              {sec.display_title}
-            </h2>
-            <span className="font-mono text-[10px] tracking-editorial uppercase text-(--mrms-ink-mute) tabular-nums shrink-0 pb-1">
-              {sec.items.length}{" "}
-              {sec.items[0]?.item_type === "video_playlist" ? "playlists" : "videos"}
-            </span>
-          </div>
-          {/* video_playlist=플레이리스트 카드(→영상 모달), video=개별 영상 카드(→풀스크린). */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-3 gap-y-4">
-            {sec.items.map((it) =>
-              it.item_type === "video_playlist" ? (
-                <VideoPlaylistCard
-                  key={it.id}
-                  uuid={it.item_id}
-                  title={it.title ?? ""}
-                  coverUrl={it.cover_url}
-                />
-              ) : (
-                <VideoCard
-                  key={it.id}
-                  videoId={it.item_id}
-                  title={it.title ?? ""}
-                  coverUrl={it.cover_url}
-                />
-              ),
-            )}
-          </div>
-        </div>
-      ))}
+      {sections.map((sec) => {
+        const isPlaylist = sec.items[0]?.item_type === "video_playlist";
+        // 플레이리스트=정사각(작게), 비디오=16:9(넓게). 슬라이드 고정폭.
+        const slideW = isPlaylist
+          ? "w-[140px] sm:w-[150px] md:w-[160px]"
+          : "w-[200px] sm:w-[220px] md:w-[240px]";
+        return (
+          <SectionCarousel
+            key={sec.id}
+            title={sec.display_title ?? ""}
+            countLabel={`${sec.items.length} ${isPlaylist ? "playlists" : "videos"}`}
+          >
+            {/* video_playlist=플레이리스트 카드(→영상 모달), video=개별 영상 카드(→풀스크린). */}
+            {sec.items.map((it) => (
+              <div key={it.id} className={`shrink-0 snap-start ${slideW}`}>
+                {it.item_type === "video_playlist" ? (
+                  <VideoPlaylistCard
+                    uuid={it.item_id}
+                    title={it.title ?? ""}
+                    coverUrl={it.cover_url}
+                  />
+                ) : (
+                  <VideoCard
+                    videoId={it.item_id}
+                    title={it.title ?? ""}
+                    coverUrl={it.cover_url}
+                  />
+                )}
+              </div>
+            ))}
+          </SectionCarousel>
+        );
+      })}
 
       <VideoPlaylistModal />
     </div>
