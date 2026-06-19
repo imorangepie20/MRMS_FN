@@ -197,7 +197,8 @@ export type EmpItemType =
   | "chart"
   | "station"
   | "video"
-  | "video_playlist";
+  | "video_playlist"
+  | "youtube_video";
 
 export interface EmpSectionItem {
   id: string;

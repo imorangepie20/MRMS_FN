@@ -62,7 +62,20 @@ async def _run_importer_apple(conn) -> dict:
 
 async def _run_importer_youtube(conn) -> dict:
     importer = make_importer("youtube", conn)
-    return await importer.import_all(conn)
+    summary = await importer.import_all(conn)
+    # 클래식 공연 실황 비디오(YouTube Data API) — 음악 import과 별개 섹션.
+    # 래퍼에 둠: test_runner는 이 함수를 통째로 patch하고, youtube import_all 단위테스트는
+    # import_all을 직접 호출하므로 어느 테스트도 실제 googleapis를 때리지 않는다.
+    try:
+        import httpx
+
+        from mrms.emp.youtube_videos import import_classical_videos
+        async with httpx.AsyncClient(timeout=20.0) as http:
+            await import_classical_videos(conn, http)
+    except Exception as e:
+        safe_rollback(conn)
+        summary.setdefault("errors", []).append(f"classical_videos: {fmt_exc(e, 120)}")
+    return summary
 
 
 def _run_script(args: list[str]) -> dict:

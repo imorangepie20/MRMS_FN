@@ -3,24 +3,27 @@
 import { Play } from "lucide-react";
 
 import { duotoneStyle, coverInitial } from "@/lib/cover-art";
-import { useVideoPlayer } from "@/store/video-player";
+import { useVideoPlayer, type VideoSource } from "@/store/video-player";
 
 export function VideoCard({
   videoId,
   title,
   coverUrl,
   widthPx,
+  source = "tidal",
 }: {
   videoId: string;
   title: string;
   coverUrl: string | null;
   /** 캐러셀용 고정 px. 생략하면 부모(그리드 셀) 폭에 맞춤. */
   widthPx?: number;
+  /** tidal=HLS, youtube=IFrame 임베드. 기본 tidal. */
+  source?: VideoSource;
 }) {
   const open = useVideoPlayer((s) => s.open);
   return (
     <button
-      onClick={() => open(videoId, title)}
+      onClick={() => open(videoId, title, source)}
       style={widthPx ? { width: `${widthPx}px`, containerType: "inline-size" } : { containerType: "inline-size" }}
       className={`group text-left bg-transparent border-0 p-0 cursor-pointer ${widthPx ? "shrink-0 snap-start" : "w-full"}`}
     >

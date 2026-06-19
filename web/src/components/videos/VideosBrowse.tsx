@@ -57,7 +57,8 @@ export function VideosBrowse() {
             title={sec.display_title ?? ""}
             countLabel={`${sec.items.length} ${isPlaylist ? "playlists" : "videos"}`}
           >
-            {/* video_playlist=플레이리스트 카드(→영상 모달), video=개별 영상 카드(→풀스크린). */}
+            {/* video_playlist=플레이리스트 카드(→영상 모달), video=Tidal 개별영상(HLS),
+                youtube_video=YouTube 개별영상(IFrame). 둘 다 클릭 시 풀스크린. */}
             {sec.items.map((it) => (
               <div key={it.id} className={`shrink-0 snap-start ${slideW}`}>
                 {it.item_type === "video_playlist" ? (
@@ -71,6 +72,7 @@ export function VideosBrowse() {
                     videoId={it.item_id}
                     title={it.title ?? ""}
                     coverUrl={it.cover_url}
+                    source={it.item_type === "youtube_video" ? "youtube" : "tidal"}
                   />
                 )}
               </div>

@@ -11,6 +11,7 @@ import { useVideoPlayer } from "@/store/video-player";
 export function VideoPlayerOverlay() {
   const videoId = useVideoPlayer((s) => s.videoId);
   const title = useVideoPlayer((s) => s.title);
+  const source = useVideoPlayer((s) => s.source);
   const close = useVideoPlayer((s) => s.close);
   const videoRef = useRef<HTMLVideoElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -28,9 +29,9 @@ export function VideoPlayerOverlay() {
     return () => window.removeEventListener("keydown", onKey);
   }, [videoId, close]);
 
-  // m3u8 로드 + hls.js attach
+  // m3u8 로드 + hls.js attach (Tidal HLS만 — youtube는 IFrame이라 스킵)
   useEffect(() => {
-    if (!videoId) return;
+    if (!videoId || source !== "tidal") return;
     const el = videoRef.current;
     if (!el) return;
     let hls: { destroy: () => void } | null = null;
@@ -80,7 +81,7 @@ export function VideoPlayerOverlay() {
       el.removeAttribute("src");
       el.load();
     };
-  }, [videoId]);
+  }, [videoId, source]);
 
   if (!videoId) return null;
 
@@ -101,7 +102,18 @@ export function VideoPlayerOverlay() {
         onClick={(e) => e.stopPropagation()}
         className="relative w-full max-w-[960px] aspect-video bg-black"
       >
-        <video ref={videoRef} controls autoPlay playsInline className="size-full bg-black" />
+        {source === "youtube" ? (
+          <iframe
+            key={videoId}
+            src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1`}
+            title={title ?? "video"}
+            allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+            allowFullScreen
+            className="size-full border-0 bg-black"
+          />
+        ) : (
+          <video ref={videoRef} controls autoPlay playsInline className="size-full bg-black" />
+        )}
         {/* 상단 우측 컨트롤 */}
         <div className="absolute top-2 right-2 flex gap-2">
           <button
