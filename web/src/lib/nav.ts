@@ -24,6 +24,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { title: "MRT", href: "/mrt", num: "§ 01", full: "Model Recommendation Tracks", badge: "50" },
       { title: "EMP", href: "/emp", num: "§ 02", full: "External Music Pool", badge: "2.4k" },
+      { title: "Videos", href: "/videos", num: "§ 04", full: "Tidal Music Videos", badge: "MV" },
       {
         title: "PGT", href: "/pgt", num: "§ 03", full: "Personal Generated Tracks", badge: "42",
         children: [

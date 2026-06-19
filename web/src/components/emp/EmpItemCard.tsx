@@ -17,6 +17,7 @@ const TYPE_TONE: Record<EmpItemType, string> = {
   artist: "text-(--mrms-ink) border-(--mrms-ink)",
   mix: "text-(--mrms-ink-mute) border-(--mrms-ink-mute)",
   chart: "text-(--mrms-ink-mute) border-(--mrms-ink-mute)",
+  video: "text-(--mrms-rust) border-(--mrms-rust)",
 };
 
 
