@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+import re
 from typing import Iterable
 
 import httpx
@@ -79,6 +80,12 @@ def _video_cover(image_id: str | None) -> str | None:
     if not isinstance(image_id, str) or "-" not in image_id:
         return None
     return f"https://resources.tidal.com/images/{image_id.replace('-', '/')}/640x360.jpg"
+
+
+def _video_section_key(title: str) -> str:
+    """비디오 모듈 제목 → 'video:<slug>' 섹션 키(영숫자 외 → '-'). EMP와 구분 + 안정 키."""
+    slug = re.sub(r"[^a-z0-9]+", "-", title.strip().lower()).strip("-")
+    return f"video:{slug or 'section'}"
 
 
 def _normalize_video(item) -> dict | None:
@@ -307,11 +314,16 @@ class TidalEMPImporter(EMPImporter):
             for v in node:
                 yield from TidalEMPImporter._walk_classify(v)
 
-    async def _fetch_video_playlists(
+    async def _fetch_video_page_modules(
         self, http: httpx.AsyncClient
     ) -> list[dict]:
-        """/v1/pages/videos → 비디오 플레이리스트 목록 [{uuid, title, cover_url}, ...].
-        showMore(view-all)가 있으면 따라가 전체를 가져온다."""
+        """/v1/pages/videos의 모든 모듈을 페이지 순서 그대로 → 섹션 리스트.
+        각 섹션 = {key, title, kind, items}. kind: 'video'(개별 비디오 카드) |
+        'video_playlist'(플레이리스트 카드). 화면(Tidal /videos)을 그대로 미러:
+        - MULTIPLE_TOP_PROMOTIONS("Featured") → 개별 비디오(type=='VIDEO'만)
+        - VIDEO_LIST("New Music Videos"/"Classics") → 개별 비디오
+        - PLAYLIST_LIST("New Video Playlists"/"Classics Video Playlists") → 플레이리스트
+          (showMore view-all로 전체 확장)."""
         try:
             r = await http.get(
                 f"{TIDAL_BASE}/v1/pages/videos",
@@ -324,59 +336,36 @@ class TidalEMPImporter(EMPImporter):
         except Exception:
             return []
 
-        module = _first_module(data, "PLAYLIST_LIST")
-        if module is None:
-            return []
-        items = (module.get("pagedList") or {}).get("items") or []
-        # view-all로 전체 확장(있으면)
-        api_path = ((module.get("showMore") or {}).get("apiPath")) or None
-        if api_path:
-            try:
-                r2 = await http.get(
-                    f"{TIDAL_BASE}/v1/{api_path}",
-                    headers=self._headers(),
-                    params={**self._common_params()},
-                )
-                if r2.status_code == 200:
-                    m2 = _first_module(r2.json(), "PLAYLIST_LIST")
-                    if m2:
-                        items = (m2.get("pagedList") or {}).get("items") or items
-            except Exception:
-                pass
+        sections: list[dict] = []
+        for row in data.get("rows") or []:
+            for m in row.get("modules") or []:
+                if not isinstance(m, dict):
+                    continue
+                title = (m.get("title") or "").strip()
+                mtype = m.get("type")
+                if not title:
+                    continue
+                if mtype == "MULTIPLE_TOP_PROMOTIONS":
+                    items, kind = self._featured_from_module(m), "video"
+                elif mtype == "VIDEO_LIST":
+                    items, kind = self._videos_from_module(m), "video"
+                elif mtype == "PLAYLIST_LIST":
+                    items = await self._playlists_from_module(http, m)
+                    kind = "video_playlist"
+                else:
+                    continue
+                if items:
+                    sections.append({
+                        "key": _video_section_key(title),
+                        "title": title,
+                        "kind": kind,
+                        "items": items,
+                    })
+        return sections
 
-        out: list[dict] = []
-        for it in items:
-            uuid = it.get("uuid")
-            title = it.get("title")
-            if not uuid or not title:
-                continue
-            out.append({
-                "uuid": uuid,
-                "title": title.strip(),
-                "cover_url": _extract_cover(it),
-            })
-        return out
-
-    async def _fetch_featured_videos(
-        self, http: httpx.AsyncClient
-    ) -> list[dict]:
-        """/v1/pages/videos의 Featured 모듈(MULTIPLE_TOP_PROMOTIONS) → 개별 비디오
-        [{video_id, title, cover_url}, ...]. type!='VIDEO'(CATEGORY_PAGES 등)는 스킵."""
-        try:
-            r = await http.get(
-                f"{TIDAL_BASE}/v1/pages/videos",
-                headers=self._headers(),
-                params={**self._common_params()},
-            )
-            if r.status_code != 200:
-                return []
-            data = r.json()
-        except Exception:
-            return []
-
-        module = _first_module(data, "MULTIPLE_TOP_PROMOTIONS")
-        if module is None:
-            return []
+    @staticmethod
+    def _featured_from_module(module: dict) -> list[dict]:
+        """MULTIPLE_TOP_PROMOTIONS items → 개별 비디오. type=='VIDEO'만(CATEGORY_PAGES 등 스킵)."""
         out: list[dict] = []
         seen: set[str] = set()
         for it in module.get("items") or []:
@@ -391,6 +380,56 @@ class TidalEMPImporter(EMPImporter):
                 "video_id": str(vid),
                 "title": title,
                 "cover_url": _video_cover(it.get("imageId")),
+            })
+        return out
+
+    @staticmethod
+    def _videos_from_module(module: dict) -> list[dict]:
+        """VIDEO_LIST pagedList.items → 개별 비디오(_normalize_video). video_id dedup."""
+        out: list[dict] = []
+        seen: set[str] = set()
+        for it in (module.get("pagedList") or {}).get("items") or []:
+            v = _normalize_video(it)
+            if not v or v["video_id"] in seen:
+                continue
+            seen.add(v["video_id"])
+            out.append(v)
+        return out
+
+    async def _playlists_from_module(
+        self, http: httpx.AsyncClient, module: dict
+    ) -> list[dict]:
+        """PLAYLIST_LIST pagedList.items(+showMore view-all) → 플레이리스트 카드
+        [{uuid, title, cover_url}, ...]. uuid dedup."""
+        items = (module.get("pagedList") or {}).get("items") or []
+        api_path = ((module.get("showMore") or {}).get("apiPath")) or None
+        if api_path:
+            try:
+                r = await http.get(
+                    f"{TIDAL_BASE}/v1/{api_path}",
+                    headers=self._headers(),
+                    params={**self._common_params()},
+                )
+                if r.status_code == 200:
+                    m2 = _first_module(r.json(), "PLAYLIST_LIST")
+                    if m2:
+                        items = (m2.get("pagedList") or {}).get("items") or items
+            except Exception:
+                pass
+        out: list[dict] = []
+        seen: set[str] = set()
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            uuid = it.get("uuid")
+            title = it.get("title")
+            if not uuid or not title or uuid in seen:
+                continue
+            seen.add(uuid)
+            out.append({
+                "uuid": uuid,
+                "title": title.strip(),
+                "cover_url": _extract_cover(it),
             })
         return out
 
@@ -420,50 +459,54 @@ class TidalEMPImporter(EMPImporter):
 
     async def _import_videos(
         self, conn: psycopg.Connection, http: httpx.AsyncClient, base_order: int
-    ) -> int:
-        """비디오 섹션 2개 저장(저장 아이템 총개수 반환):
-        - "Featured"(video:featured): 개별 비디오 카드(item_type='video') → 클릭 시 바로 풀스크린.
-        - "New"(video:new): 장르 플레이리스트 카드(item_type='video_playlist') → 클릭 시 영상 모달.
-        영상은 평면화하지 않고(New) 클릭 시 라이브 fetch. (EMP 음악과 동일 구조.)"""
+    ) -> tuple[int, set[str]]:
+        """Tidal /v1/pages/videos의 모든 모듈을 페이지 순서·제목 그대로 EMPSection으로 미러.
+        반환 = (저장 아이템 총개수, 생성된 video:% 키 집합 — import_all이 stale 정리에 사용).
+        - PLAYLIST_LIST → 플레이리스트 카드(item_type='video_playlist') → 클릭 시 영상 모달.
+        - MULTIPLE_TOP_PROMOTIONS/VIDEO_LIST → 개별 비디오(item_type='video') → 클릭 시 풀스크린.
+        영상은 평면화하지 않고 플레이리스트는 카드로(클릭 시 라이브 fetch). (EMP 음악과 동일 구조.)
+        ※ 섹션 단위 stale 정리는 import_all에서(빈 fetch로 전체 삭제 방지)."""
+        sections = await self._fetch_video_page_modules(http)
         total = 0
-
-        # 1) Featured — 개별 비디오
-        featured = await self._fetch_featured_videos(http)
-        if featured:
+        created_keys: set[str] = set()
+        for offset, sec in enumerate(sections):
+            item_type = "video_playlist" if sec["kind"] == "video_playlist" else "video"
             sec_id = upsert_section(
-                conn=conn, platform="tidal", section_key="video:featured",
-                display_title="Featured", display_order=base_order,
+                conn=conn, platform="tidal", section_key=sec["key"],
+                display_title=sec["title"], display_order=base_order + offset,
             )
-            seen_f: set[tuple[str, str]] = set()
-            for idx, v in enumerate(featured):
+            seen: set[tuple[str, str]] = set()
+            for idx, it in enumerate(sec["items"]):
+                item_id = it["uuid"] if item_type == "video_playlist" else it["video_id"]
                 upsert_section_item(
-                    conn=conn, section_id=sec_id, item_type="video",
-                    item_id=v["video_id"], title=v["title"],
-                    cover_url=v["cover_url"], display_order=idx,
+                    conn=conn, section_id=sec_id, item_type=item_type,
+                    item_id=item_id, title=it["title"],
+                    cover_url=it["cover_url"], display_order=idx,
                 )
-                seen_f.add(("video", v["video_id"]))
-            prune_stale_items(conn, sec_id, seen_f)
-            total += len(featured)
+                seen.add((item_type, item_id))
+            prune_stale_items(conn, sec_id, seen)
+            created_keys.add(sec["key"])
+            total += len(sec["items"])
+        return total, created_keys
 
-        # 2) New — 장르 플레이리스트 카드
-        playlists = await self._fetch_video_playlists(http)
-        if playlists:
-            sec_id = upsert_section(
-                conn=conn, platform="tidal", section_key="video:new",
-                display_title="New", display_order=base_order + 1,
+    @staticmethod
+    def _prune_stale_video_sections(
+        conn: psycopg.Connection, keep_keys: set[str]
+    ) -> int:
+        """이번 sync에 없는 video:% 섹션 삭제(모듈 제거/리네임 정리). items는 FK CASCADE.
+        keep_keys 비면 아무것도 안 지움(빈 fetch로 전체 삭제 방지)."""
+        if not keep_keys:
+            return 0
+        with conn.cursor() as cur:
+            cur.execute(
+                '''DELETE FROM "EMPSection"
+                   WHERE platform = 'tidal' AND "sectionKey" LIKE 'video:%%'
+                     AND "sectionKey" <> ALL(%s)''',
+                (list(keep_keys),),
             )
-            seen_p: set[tuple[str, str]] = set()
-            for idx, pl in enumerate(playlists):
-                upsert_section_item(
-                    conn=conn, section_id=sec_id, item_type="video_playlist",
-                    item_id=pl["uuid"], title=pl["title"],
-                    cover_url=pl["cover_url"], display_order=idx,
-                )
-                seen_p.add(("video_playlist", pl["uuid"]))
-            prune_stale_items(conn, sec_id, seen_p)
-            total += len(playlists)
-
-        return total
+            deleted = cur.rowcount
+        conn.commit()
+        return deleted
 
     async def _fetch_playlist_tracks(
         self, http: httpx.AsyncClient, playlist_id: str
@@ -702,11 +745,16 @@ class TidalEMPImporter(EMPImporter):
                             f"{fmt_exc(e, 120)}"
                         )
 
-            # === 비디오 인제스트 (항상 1회) ===
+            # === 비디오 인제스트 (항상 1회) — Tidal /pages/videos 전체 모듈 미러 ===
             try:
-                video_count = await self._import_videos(conn, http, base_order=len(sources) + 10)
+                video_count, video_keys = await self._import_videos(
+                    conn, http, base_order=len(sources) + 10
+                )
+                # stale 섹션 정리 — 정상 fetch(키 있음) 때만(빈 결과로 전체 삭제 방지)
+                self._prune_stale_video_sections(conn, video_keys)
             except Exception as e:
                 video_count = 0
+                safe_rollback(conn)
                 errors.append(f"videos: {fmt_exc(e, 120)}")
 
         return {

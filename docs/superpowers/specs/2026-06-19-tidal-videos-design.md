@@ -33,12 +33,15 @@
 
 기존 `TidalEMPImporter`와 동일한 `X-Tidal-Token`(Setting `tidal_x_token`) + `tidal.com` 베이스 + `_common_params`(countryCode/locale/deviceType) 사용. 새 토큰/OAuth 불필요(인제스트 한정).
 
-1. **비디오 플레이리스트 목록**
+1. **비디오 페이지 모듈 (화면 그대로 미러 — 실측 2026-06-20, 5개 모듈 순서대로)**
    `GET tidal.com/v1/pages/videos?countryCode=US&locale=en_US&deviceType=BROWSER`
-   → `{ rows: [{ modules: [...] }] }`. 모듈 종류:
-   - `MULTIPLE_TOP_PROMOTIONS`("Featured"): 개별 비디오(`type:"VIDEO"`, `artifactId`=비디오ID, `shortHeader`=제목). 일부 `CATEGORY_PAGES`(스킵).
-   - `PLAYLIST_LIST`("New Video Playlists"): `pagedList.items` = 비디오 플레이리스트(`uuid`, `title`="New Pop Videos", `type:"EDITORIAL"`, `numberOfVideos`, `image`/`squareImage`). `showMore.apiPath` = view-all.
-   - view-all: `GET tidal.com/v1/pages/single-module-page/{...}/1` → 전체 비디오 플레이리스트(실측 22개).
+   → `{ rows: [{ modules: [...] }] }`. **모든 모듈을 페이지 순서·제목 그대로 섹션화**(`section_key='video:<제목 slug>'`):
+   - row0 `MULTIPLE_TOP_PROMOTIONS`("Featured"): 개별 비디오(`type:"VIDEO"`, `artifactId`=비디오ID, `shortHeader`=제목). 일부 `CATEGORY_PAGES`(스킵).
+   - row1 `PLAYLIST_LIST`("New Video Playlists"): `pagedList.items` = 비디오 플레이리스트(`uuid`, `title`, `image`/`squareImage`). `showMore.apiPath`=view-all로 전체 확장(실측 22개).
+   - row2 `VIDEO_LIST`("New Music Videos"): `pagedList.items` = 개별 비디오(`id`/`title`/`artists`/`imageId` → `_normalize_video`). 실측 116개.
+   - row3 `PLAYLIST_LIST`("Classics Video Playlists"): 장르별 "명곡" 비디오 플레이리스트(Classic Hip-Hop/R&B/Rock 등, **클래식음악 아님**). 실측 14개.
+   - row4 `VIDEO_LIST`("Classics"): 단편영화/비주얼앨범 등 개별 비디오. 실측 28개.
+   - 매핑: `PLAYLIST_LIST` → `item_type='video_playlist'`(카드→영상 모달), `MULTIPLE_TOP_PROMOTIONS`/`VIDEO_LIST` → `item_type='video'`(카드→풀스크린). 이번 sync에 없는 `video:%` 섹션은 정리(`_prune_stale_video_sections`, 빈 fetch 시 no-op).
 
 2. **플레이리스트 내 비디오**
    `GET tidal.com/v1/playlists/{uuid}/items?offset=0&limit=50&countryCode=US&...`
