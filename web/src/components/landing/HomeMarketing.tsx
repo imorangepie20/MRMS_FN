@@ -83,7 +83,7 @@ export function HomeMarketing() {
                 External pool
               </div>
               <div className="font-mono text-[11px] text-(--mrms-ink-soft) mt-1.5 max-w-[460px] leading-relaxed">
-                전 세계 차트·에디토리얼 플레이리스트를 가입 없이 둘러보세요.
+                다양한 음악의 풀에서 헤엄쳐 보세요.
               </div>
             </div>
             <span className="shrink-0 self-start sm:self-auto inline-flex items-center gap-1.5 bg-(--mrms-rust) text-(--mrms-paper) px-4 py-2.5 font-mono text-[11px] tracking-editorial uppercase">
