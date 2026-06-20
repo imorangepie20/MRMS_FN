@@ -158,9 +158,10 @@ function ModalTrackRow({
   const playable = isPlayable(track);
   const { isGuest, guard } = useRequireAuth();
   // 큐의 현재 재생 트랙이면 하이라이트 + 이퀄라이저 (QueueDrawer와 동일 표시).
-  const isCurrent = usePlayerStore(
-    (s) => s.queue[s.currentIdx]?.track_id === track.track_id,
-  );
+  // 가드: 재생 곡이 실제로 있을 때만 — 큐가 비면 양쪽 undefined로 전 행이 매칭돼
+  // 번호가 다 사라지는 버그 방지.
+  const currentTrackId = usePlayerStore((s) => s.queue[s.currentIdx]?.track_id ?? null);
+  const isCurrent = currentTrackId !== null && currentTrackId === track.track_id;
   const playing = usePlayerStore((s) => s.isPlaying);
 
   const onLike = async () => {
