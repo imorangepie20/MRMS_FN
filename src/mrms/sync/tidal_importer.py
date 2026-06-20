@@ -149,7 +149,9 @@ async def import_all(
     UserTrack은 이미 있어도 UPSERT 규칙대로 머지 (liked > playlist).
     같은 트랙이 양쪽에 있으면 stats.user_tracks_upserted는 1로 카운트.
     """
+    from mrms.db.playlist import create_imported_playlist
     from mrms.db.user_track import find_track_id_by_isrc, upsert_user_track
+    from mrms.emp.base import safe_rollback
 
     stats = ImportStats()
     upserted_tracks: set[str] = set()
@@ -186,6 +188,7 @@ async def import_all(
     stats.playlists_fetched = len(playlists)
     for pl in playlists:
         title = pl.get("title", "untitled")
+        pl_track_ids: list[str] = []
         tracks = await importer.fetch_playlist_tracks(playlist_id=pl["id"])
         for t in tracks:
             stats.playlist_tracks_fetched += 1
@@ -202,10 +205,18 @@ async def import_all(
                 is_core=False, source=f"playlist:{title}", platform="tidal",
             )
             stats.playlist_tracks_matched += 1
+            if track_id not in pl_track_ids:
+                pl_track_ids.append(track_id)
             if track_id not in upserted_tracks:
                 upserted_tracks.add(track_id)
                 stats.user_tracks_upserted += 1
                 # isCore는 liked로 안 들어왔으면 false 유지 — is_core 카운트 X
         conn.commit()  # 플레이리스트별로 커밋 — 중도 실패해도 진행분 보존
+        # 가져온 플레이리스트를 '일반' Playlist로 흡수(멱등). 실패해도 import 진행.
+        if pl_track_ids:
+            try:
+                create_imported_playlist(conn, user_id, f"tidal:{pl['id']}", title, pl_track_ids)
+            except Exception:
+                safe_rollback(conn)
 
     return stats

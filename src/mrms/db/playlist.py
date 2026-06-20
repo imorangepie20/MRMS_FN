@@ -44,6 +44,42 @@ def create_playlist(
     return playlist_id
 
 
+def create_imported_playlist(
+    conn: psycopg.Connection,
+    user_id: str,
+    source_ref: str,
+    name: str,
+    track_ids: list[str],
+) -> str | None:
+    """구독 플랫폼 플레이리스트를 '일반' Playlist로 생성(멱등). 같은 sourceRef가 이미
+    있으면 None(중복 생성 안 함). 트랙은 importer가 이미 UserTrack에 적재했으므로
+    여기선 Playlist + PlaylistTrack(순서 보존)만 만든다 — 가져온 뒤엔 평범한 내 플레이리스트.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            'SELECT id FROM "Playlist" WHERE "userId" = %s AND "sourceRef" = %s',
+            (user_id, source_ref),
+        )
+        if cur.fetchone():
+            return None
+        playlist_id = _id(f"playlist|{user_id}|{source_ref}")
+        cur.execute(
+            '''INSERT INTO "Playlist" (id, "userId", name, description, "sourceRef")
+               VALUES (%s, %s, %s, %s, %s)
+               ON CONFLICT (id) DO NOTHING''',
+            (playlist_id, user_id, name, None, source_ref),
+        )
+        for pos, track_id in enumerate(track_ids):
+            cur.execute(
+                '''INSERT INTO "PlaylistTrack" ("playlistId", "trackId", position)
+                   VALUES (%s, %s, %s)
+                   ON CONFLICT ("playlistId", "trackId") DO NOTHING''',
+                (playlist_id, track_id, pos),
+            )
+    conn.commit()
+    return playlist_id
+
+
 def list_user_playlists(
     conn: psycopg.Connection, user_id: str
 ) -> list[dict]:

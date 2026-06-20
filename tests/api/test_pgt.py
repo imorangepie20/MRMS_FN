@@ -24,7 +24,7 @@ def _seed(conn):
 
 def test_pgt_sections(db_conn, cleanup):
     from mrms.db.pgt import (section_liked, section_pct, section_albums,
-                             section_artists, section_imported_playlists)
+                             section_artists)
     uid = _seed(db_conn)
     assert len(section_liked(db_conn, uid)) == 2            # 2 liked
     assert len(section_pct(db_conn, uid)) == 1              # 1 isCore
@@ -32,8 +32,6 @@ def test_pgt_sections(db_conn, cleanup):
     assert len(albums) == 1 and albums[0]["track_count"] == 3
     artists = section_artists(db_conn, uid)
     assert len(artists) == 1 and artists[0]["track_count"] == 3
-    groups = section_imported_playlists(db_conn, uid)
-    assert any(g["name"] == "My Mix" and g["track_count"] == 1 for g in groups)
     # 서브함수 + 트랙 dict shape(get_playlist_tracks와 동일: album_cover 포함)
     from mrms.db.pgt import album_tracks
     at = album_tracks(db_conn, uid, albums[0]["album_id"])

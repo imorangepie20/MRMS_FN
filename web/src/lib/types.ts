@@ -265,12 +265,6 @@ export interface PgtArtistGroup {
   track_count: number;
 }
 
-export interface PgtImportedPlaylist {
-  source: string;
-  name: string;
-  track_count: number;
-}
-
 export interface UserPlaylistSummary {
   id: string;
   name: string;
@@ -285,7 +279,6 @@ export interface PgtSections {
   pct: number;
   albums: number;
   artists: number;
-  imported_playlists: PgtImportedPlaylist[];
   user_playlists: UserPlaylistSummary[];
 }
 

@@ -304,6 +304,18 @@ async def test_import_all_creates_tracks_and_is_idempotent(db_conn):
         assert ut[vid_liked][2] == "youtube"
         assert ut[vid_pl][1].startswith("playlist:")
 
+        # 가져온 플레이리스트가 일반 Playlist로 흡수됐는지 (sourceRef + 트랙)
+        with db_conn.cursor() as cur:
+            cur.execute(
+                'SELECT id, name FROM "Playlist" WHERE "userId"=%s AND "sourceRef"=%s',
+                (user_id, "youtube:PL_X"),
+            )
+            plrow = cur.fetchone()
+        assert plrow is not None and plrow[1] == "My Playlist"
+        with db_conn.cursor() as cur:
+            cur.execute('SELECT COUNT(*) FROM "PlaylistTrack" WHERE "playlistId"=%s', (plrow[0],))
+            assert cur.fetchone()[0] == 1
+
         # 커버(썸네일)가 TrackPlatform."previewUrl"에 적재됐는지 — 계약 'Track(+cover)'.
         with db_conn.cursor() as cur:
             cur.execute(
@@ -333,6 +345,11 @@ async def test_import_all_creates_tracks_and_is_idempotent(db_conn):
         from mrms.db.ids import stable_id as _id
         track_ids = [_id(f"track|yt_{vid_liked}"), _id(f"track|yt_{vid_pl}")]
         with db_conn.cursor() as cur:
+            # 가져온 Playlist + PlaylistTrack 먼저 (FK 안전)
+            cur.execute(
+                'DELETE FROM "PlaylistTrack" WHERE "playlistId" IN '
+                '(SELECT id FROM "Playlist" WHERE "userId" = %s)', (user_id,))
+            cur.execute('DELETE FROM "Playlist" WHERE "userId" = %s', (user_id,))
             cur.execute('DELETE FROM "UserTrack" WHERE "trackId" = ANY(%s)', (track_ids,))
             cur.execute('DELETE FROM "TrackPlatform" WHERE "trackId" = ANY(%s)', (track_ids,))
             cur.execute('DELETE FROM "Track" WHERE id = ANY(%s)', (track_ids,))

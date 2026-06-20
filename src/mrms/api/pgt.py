@@ -25,7 +25,6 @@ def sections(user_id: str = Depends(get_current_user_id), conn=Depends(db_conn))
         "pct": len(pgt_db.section_pct(conn, user_id)),
         "albums": len(pgt_db.section_albums(conn, user_id)),
         "artists": len(pgt_db.section_artists(conn, user_id)),
-        "imported_playlists": pgt_db.section_imported_playlists(conn, user_id),
         "user_playlists": list_user_playlists(conn, user_id),
     }
 
@@ -60,11 +59,3 @@ def artist_tracks(artist_id: str, user_id: str = Depends(get_current_user_id), c
     return {"tracks": _with_states(conn, user_id, pgt_db.artist_tracks(conn, user_id, artist_id))}
 
 
-@router.get("/imported-playlists")
-def imported_playlists(user_id: str = Depends(get_current_user_id), conn=Depends(db_conn)):
-    return {"playlists": pgt_db.section_imported_playlists(conn, user_id)}
-
-
-@router.get("/imported-playlists/tracks")
-def imported_playlist_tracks(source: str, user_id: str = Depends(get_current_user_id), conn=Depends(db_conn)):
-    return {"tracks": _with_states(conn, user_id, pgt_db.imported_playlist_tracks(conn, user_id, source))}

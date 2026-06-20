@@ -6,6 +6,7 @@ import pytest
 
 from mrms.db.playlist import (
     add_tracks_to_playlist,
+    create_imported_playlist,
     create_playlist,
     delete_playlist,
     get_playlist,
@@ -132,6 +133,30 @@ def test_get_playlist_by_share_id(db_conn: psycopg.Connection):
     assert found["name"] == "Lookup"
     assert "owner_name" in found  # displayName 미설정이면 None 허용
     assert get_playlist_by_share_id(db_conn, "nonexistent-token") is None
+
+
+def test_create_imported_playlist_idempotent(db_conn: psycopg.Connection, cleanup):
+    """sourceRef로 멱등 — 같은 source 재호출 시 None(중복 생성 X). 순서·sourceRef 보존."""
+    user_id = get_or_create_user(db_conn, f"plimp-{_uuid.uuid4().hex[:8]}@test.com")
+    db_conn.commit()
+    track_ids = _track_ids(db_conn, 3)
+    if len(track_ids) < 3:
+        pytest.skip("Track 데이터 부족")
+
+    pid = create_imported_playlist(db_conn, user_id, "youtube:PL123", "My Mix", track_ids)
+    cleanup('DELETE FROM "Playlist" WHERE id = %s', (pid,))
+    cleanup('DELETE FROM "PlaylistTrack" WHERE "playlistId" = %s', (pid,))
+    assert pid
+    # 멱등 — 같은 sourceRef 두 번째 호출은 None
+    assert create_imported_playlist(db_conn, user_id, "youtube:PL123", "My Mix", track_ids) is None
+
+    # 순서 보존
+    tracks = get_playlist_tracks(db_conn, pid)
+    assert [t["track_id"] for t in tracks] == track_ids
+    # sourceRef 저장
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT "sourceRef" FROM "Playlist" WHERE id=%s', (pid,))
+        assert cur.fetchone()[0] == "youtube:PL123"
 
 
 def test_create_playlist_marks_tracks_curated(db_conn: psycopg.Connection, cleanup):

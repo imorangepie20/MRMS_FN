@@ -67,26 +67,9 @@ def section_artists(conn: psycopg.Connection, user_id: str) -> list[dict]:
         return [{"artist_id": r[0], "name": r[1], "track_count": r[2]} for r in cur.fetchall()]
 
 
-def section_imported_playlists(conn: psycopg.Connection, user_id: str) -> list[dict]:
-    """source LIKE 'playlist%' 그룹. 'playlist:이름'→이름, 'playlist'→'Imported'."""
-    with conn.cursor() as cur:
-        cur.execute('''SELECT ut.source, COUNT(*) FROM "UserTrack" ut
-                       WHERE ut."userId"=%s AND ut.source LIKE 'playlist%%'
-                       GROUP BY ut.source ORDER BY 2 DESC''', (user_id,))
-        out = []
-        for source, cnt in cur.fetchall():
-            name = source.split(":", 1)[1] if ":" in source else "Imported"
-            out.append({"source": source, "name": name, "track_count": cnt})
-        return out
-
-
 def album_tracks(conn: psycopg.Connection, user_id: str, album_id: str) -> list[dict]:
     return _track_section(conn, user_id, 'AND t."albumId"=%s', (album_id,))
 
 
 def artist_tracks(conn: psycopg.Connection, user_id: str, artist_id: str) -> list[dict]:
     return _track_section(conn, user_id, 'AND t."artistId"=%s', (artist_id,))
-
-
-def imported_playlist_tracks(conn: psycopg.Connection, user_id: str, source: str) -> list[dict]:
-    return _track_section(conn, user_id, "AND ut.source=%s", (source,))

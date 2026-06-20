@@ -75,10 +75,6 @@ export function getPgtArtistTracks(artistId: string): Promise<{ tracks: PgtTrack
   return fetchJson<{ tracks: PgtTrack[] }>(`/pgt/artists/${artistId}`);
 }
 
-export function getPgtImportedTracks(source: string): Promise<{ tracks: PgtTrack[] }> {
-  return fetchJson<{ tracks: PgtTrack[] }>(`/pgt/imported-playlists/tracks?source=${encodeURIComponent(source)}`);
-}
-
 export function getUserPlaylists(): Promise<{ playlists: UserPlaylistSummary[] }> {
   return fetchJson<{ playlists: UserPlaylistSummary[] }>("/user/playlists");
 }

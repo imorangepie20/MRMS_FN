@@ -37,7 +37,6 @@ import {
   getPgtAlbumTracks,
   getPgtArtists,
   getPgtArtistTracks,
-  getPgtImportedTracks,
   getPlaylistTracks,
 } from "@/lib/api";
 import type {
@@ -45,7 +44,6 @@ import type {
   PgtTrack,
   PgtAlbumGroup,
   PgtArtistGroup,
-  PgtImportedPlaylist,
   UserPlaylistSummary,
 } from "@/lib/types";
 
@@ -685,16 +683,12 @@ function ArtistsTab({ count }: { count: number }) {
 
 // ── Playlists tab ────────────────────────────────────────────────────────────
 
-type PlaylistSelection =
-  | { kind: "user"; pl: UserPlaylistSummary }
-  | { kind: "imported"; pl: PgtImportedPlaylist };
+type PlaylistSelection = { kind: "user"; pl: UserPlaylistSummary };
 
 function PlaylistsTab({
   userPlaylists: initialUserPlaylists,
-  importedPlaylists,
 }: {
   userPlaylists: UserPlaylistSummary[];
-  importedPlaylists: PgtImportedPlaylist[];
 }) {
   // 로컬 사본: rename/delete가 store뿐 아니라 이 화면(목록·헤더)에도 즉시 반영되게 한다.
   const [userPlaylists, setUserPlaylists] =
@@ -722,17 +716,6 @@ function PlaylistsTab({
     }
   };
 
-  const selectImportedPlaylist = async (pl: PgtImportedPlaylist) => {
-    setSelected({ kind: "imported", pl });
-    setTracksLoading(true);
-    try {
-      const r = await getPgtImportedTracks(pl.source);
-      setTracks(r.tracks);
-    } finally {
-      setTracksLoading(false);
-    }
-  };
-
   // 사이드바에서 특정 플레이리스트(?pl=) 진입 시 자동으로 그 플리를 펼친다.
   useEffect(() => {
     if (!plParam) return;
@@ -747,7 +730,7 @@ function PlaylistsTab({
       lastScrolledId.current = null;
       return;
     }
-    const id = selected.kind === "user" ? selected.pl.id : selected.pl.source;
+    const id = selected.pl.id;
     if (lastScrolledId.current === id) return;
     lastScrolledId.current = id;
     const el = detailRef.current;
@@ -771,7 +754,7 @@ function PlaylistsTab({
       <SectionHeader
         num="L2"
         title="Playlists"
-        meta={`${userPlaylists.length + importedPlaylists.length} playlists`}
+        meta={`${userPlaylists.length} playlists`}
       />
 
       {/* User-created playlists */}
@@ -810,41 +793,7 @@ function PlaylistsTab({
         </div>
       )}
 
-      {/* Imported playlists */}
-      {importedPlaylists.length > 0 && (
-        <div className="mb-8">
-          <div className="font-mono text-[10px] tracking-editorial uppercase text-[var(--mrms-ink-mute)] mb-3">
-            Imported · {importedPlaylists.length}
-          </div>
-          <div className="border-y border-[var(--mrms-rule)]">
-            {importedPlaylists.map((pl) => (
-              <button
-                key={pl.source}
-                onClick={() => selectImportedPlaylist(pl)}
-                className={`w-full text-left bg-transparent border-0 border-b border-[var(--mrms-rule)] last:border-b-0 px-0 py-3 cursor-pointer flex justify-between items-baseline transition-colors hover:bg-[var(--mrms-paper)] ${
-                  selected?.kind === "imported" && selected.pl.source === pl.source
-                    ? "bg-[var(--mrms-paper)]"
-                    : ""
-                }`}
-              >
-                <div className="min-w-0">
-                  <div className="font-display font-semibold text-[15px] text-[var(--mrms-ink)] truncate">
-                    {pl.name}
-                  </div>
-                  <div className="font-mono text-[10px] text-[var(--mrms-ink-mute)] mt-0.5">
-                    {pl.source}
-                  </div>
-                </div>
-                <span className="font-mono text-[11px] text-[var(--mrms-ink-mute)] shrink-0 ml-3">
-                  {pl.track_count} tracks
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {userPlaylists.length === 0 && importedPlaylists.length === 0 && (
+      {userPlaylists.length === 0 && (
         <div className="py-12 text-center font-mono text-[11px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">
           — no playlists —
         </div>
@@ -1069,8 +1018,7 @@ export function PgtLibrary() {
             )}
             {sections && tab.id === "playlists" && (
               <span className="ml-1.5 text-[var(--mrms-ink-mute)]">
-                {(sections.user_playlists?.length ?? 0) +
-                  (sections.imported_playlists?.length ?? 0)}
+                {sections.user_playlists?.length ?? 0}
               </span>
             )}
           </button>
@@ -1091,10 +1039,7 @@ export function PgtLibrary() {
         <ArtistsTab count={sections?.artists ?? 0} />
       )}
       {activeTab === "playlists" && sections && (
-        <PlaylistsTab
-          userPlaylists={sections.user_playlists ?? []}
-          importedPlaylists={sections.imported_playlists ?? []}
-        />
+        <PlaylistsTab userPlaylists={sections.user_playlists ?? []} />
       )}
       {activeTab === "playlists" && !sections && (
         <div className="py-12 text-center font-mono text-[11px] tracking-editorial uppercase text-[var(--mrms-ink-mute)]">

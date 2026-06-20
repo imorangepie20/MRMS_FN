@@ -389,6 +389,7 @@ async def import_all(
     include_liked=False면 좋아요(liked) 배치를 통째로 스킵 (fetch_liked·적재
     모두 생략) — 선택적 import flow용. 기본 True로 기존 동작(전체 + 좋아요) 유지.
     """
+    from mrms.db.playlist import create_imported_playlist
     from mrms.db.user_track import upsert_user_track
 
     importer = YouTubeImporter(http, access_token)
@@ -412,11 +413,12 @@ async def import_all(
             self.matched = 0
             self.new_track_ids: set[str] = set()
 
-    def _ingest(track: dict, batch: "_Batch", *, is_core: bool, source: str) -> None:
+    def _ingest(track: dict, batch: "_Batch", *, is_core: bool, source: str) -> str | None:
+        """resolve된 catalog track_id 반환(스킵 시 None). 플레이리스트 생성용 수집에 사용."""
         batch.fetched += 1
         video_id = track.get("video_id")
         if not video_id:
-            return
+            return None
         artist = track.get("artist") or "Unknown"
         title = track.get("title") or ""
 
@@ -440,7 +442,7 @@ async def import_all(
                 batch.new_track_ids.add(matched_track_id)
                 batch.imported += 1
                 batch.matched += 1
-            return
+            return matched_track_id
 
         # 2) 미스 — 기존 경로: videoId로 새 catalog Track + TrackPlatform 생성.
         r = upsert_youtube_track(
@@ -462,6 +464,7 @@ async def import_all(
                 batch.created += 1
             else:
                 batch.existing += 1
+        return track_id
 
     def _commit_batch(batch: "_Batch") -> None:
         """commit 성공 후에만 호출 — 배치 델타를 전역 stats에 반영."""
@@ -492,15 +495,26 @@ async def import_all(
     stats.playlists_fetched = len(playlists)
     for pl in playlists:
         pl_batch = _Batch()
+        pl_track_ids: list[str] = []
         try:
             name = pl.get("name") or "untitled"
             tracks = await importer.fetch_playlist_tracks(pl["id"])
             for t in tracks:
-                _ingest(t, pl_batch, is_core=False, source=f"playlist:{name}")
+                tid = _ingest(t, pl_batch, is_core=False, source=f"playlist:{name}")
+                if tid and tid not in pl_track_ids:
+                    pl_track_ids.append(tid)
             conn.commit()  # 플레이리스트별 커밋 — 중도 실패해도 진행분 보존
             _commit_batch(pl_batch)
         except Exception:
             safe_rollback(conn)  # DB·stats 동시 롤백 (배치 델타 폐기)
             continue
+        # 트랙 커밋 후 — 가져온 플레이리스트를 '일반' Playlist로 흡수(멱등). 실패해도 import 진행.
+        if pl_track_ids:
+            try:
+                create_imported_playlist(
+                    conn, user_id, f"youtube:{pl['id']}", name, pl_track_ids
+                )
+            except Exception:
+                safe_rollback(conn)
 
     return stats
