@@ -5,6 +5,7 @@ import respx
 
 from mrms.tidal_playlist import (
     TIDAL_API,
+    TIDAL_OPENAPI,
     create_tidal_playlist,
     make_tidal_playlist_public,
 )
@@ -57,10 +58,12 @@ async def test_create_tidal_playlist_batches_over_50():
 async def test_make_tidal_playlist_public():
     respx.get(f"{TIDAL_API}/sessions").mock(
         return_value=_httpx.Response(200, json={"userId": 1, "countryCode": "KR"}))
-    pub = respx.put(f"{TIDAL_API}/playlists/u-1/set-public").mock(
+    patch = respx.patch(f"{TIDAL_OPENAPI}/playlists/u-1").mock(
         return_value=_httpx.Response(200, json={}))
     await make_tidal_playlist_public("tok", "u-1")
-    assert pub.called
+    assert patch.called
+    body = patch.calls.last.request.content.decode()
+    assert '"accessType": "PUBLIC"' in body
 
 
 @pytest.mark.asyncio

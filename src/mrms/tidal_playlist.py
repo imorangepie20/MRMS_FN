@@ -7,9 +7,12 @@ api.tidal.com/v1 레거시 엔드포인트를 쓴다. 추가는 If-None-Match(ET
 """
 from __future__ import annotations
 
+import json
+
 import httpx
 
 TIDAL_API = "https://api.tidal.com/v1"
+TIDAL_OPENAPI = "https://openapi.tidal.com/v2"
 ADD_BATCH = 50  # items 추가 배치 크기 (배치마다 ETag 재취득)
 
 
@@ -72,16 +75,33 @@ async def create_tidal_playlist(
 async def make_tidal_playlist_public(
     access_token: str, uuid: str, *, timeout: float = 10.0
 ) -> None:
-    """플레이리스트를 공개로 전환. Tidal 플레이리스트는 기본 private라 공개 안 하면
-    공유 링크가 404. 이미 만들어진 것도 복구할 수 있게 별도 헬퍼로 분리(멱등)."""
+    """플레이리스트를 공개(accessType=PUBLIC)로 전환. Tidal 플레이리스트는 기본 private라
+    공개 안 하면 공유 링크가 404. 이미 만들어진 것도 복구할 수 있게 별도 헬퍼로 분리(멱등).
+
+    실측 캡처 기준 — v2 openapi PATCH(JSON:API):
+      PATCH openapi.tidal.com/v2/playlists/{uuid}?countryCode=XX
+      Content-Type: application/vnd.api+json
+      {"data":{"type":"playlists","id":uuid,"attributes":{"accessType":"PUBLIC"}}}
+    """
     auth = {"Authorization": f"Bearer {access_token}"}
     async with httpx.AsyncClient(timeout=timeout) as http:
         s = await http.get(f"{TIDAL_API}/sessions", headers=auth)
         s.raise_for_status()
         country = s.json().get("countryCode") or "KR"
-        r = await http.put(
-            f"{TIDAL_API}/playlists/{uuid}/set-public",
-            headers=auth,
+        r = await http.patch(
+            f"{TIDAL_OPENAPI}/playlists/{uuid}",
             params={"countryCode": country},
+            headers={
+                **auth,
+                "Content-Type": "application/vnd.api+json",
+                "Accept": "application/vnd.api+json",
+            },
+            content=json.dumps({
+                "data": {
+                    "type": "playlists",
+                    "id": uuid,
+                    "attributes": {"accessType": "PUBLIC"},
+                }
+            }),
         )
         r.raise_for_status()
