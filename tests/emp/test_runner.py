@@ -77,6 +77,7 @@ async def test_run_pipeline_records_run(db_conn, cleanup):
          patch("mrms.emp.runner._run_importer_vibe", new=fake_import_vibe), \
          patch("mrms.emp.runner._run_importer_apple", new=fake_import_apple), \
          patch("mrms.emp.runner._run_importer_youtube", new=fake_import_youtube), \
+         patch("mrms.emp.runner._run_enrich_isrc", return_value=ok_stage), \
          patch("mrms.emp.runner._run_audio_download", return_value=ok_stage), \
          patch("mrms.emp.runner._run_extract_embeddings", return_value=ok_stage), \
          patch("mrms.emp.runner._run_youtube_misses", return_value=ok_stage), \
@@ -101,6 +102,7 @@ async def test_run_pipeline_records_run(db_conn, cleanup):
     assert "import_vibe" in stage_names
     assert "import_apple" in stage_names
     assert "import_youtube" in stage_names
+    assert "enrich_isrc" in stage_names
     assert "download_audio" in stage_names
     assert "extract_embeddings" in stage_names
     assert "load_to_db" in stage_names
@@ -141,6 +143,7 @@ async def test_run_pipeline_partial_on_failure(db_conn, cleanup):
          patch("mrms.emp.runner._run_importer_vibe", new=fake_import_vibe), \
          patch("mrms.emp.runner._run_importer_apple", new=fake_import_apple), \
          patch("mrms.emp.runner._run_importer_youtube", new=fake_import_youtube), \
+         patch("mrms.emp.runner._run_enrich_isrc", return_value=ok_stage), \
          patch("mrms.emp.runner._run_audio_download", return_value=fail_stage), \
          patch("mrms.emp.runner._run_extract_embeddings", return_value=ok_stage), \
          patch("mrms.emp.runner._run_youtube_misses", return_value=ok_stage), \
@@ -222,6 +225,7 @@ async def test_run_pipeline_includes_youtube_and_mrt_stages(db_conn, cleanup):
          patch("mrms.emp.runner._run_importer_vibe", new=_imp), \
          patch("mrms.emp.runner._run_importer_apple", new=_imp), \
          patch("mrms.emp.runner._run_importer_youtube", new=_imp), \
+         patch("mrms.emp.runner._run_enrich_isrc", return_value=ok), \
          patch("mrms.emp.runner._run_audio_download", return_value=ok), \
          patch("mrms.emp.runner._run_extract_embeddings", return_value=ok), \
          patch("mrms.emp.runner._run_youtube_misses", return_value=ok), \
@@ -237,6 +241,8 @@ async def test_run_pipeline_includes_youtube_and_mrt_stages(db_conn, cleanup):
     assert status == "success"
     assert "youtube_misses" in names
     assert "regenerate_mrt" in names
+    assert "enrich_isrc" in names
+    assert names.index("enrich_isrc") < names.index("download_audio")  # 머지가 02 다운로드 전
     assert names.index("youtube_misses") > names.index("extract_embeddings")
     assert names.index("youtube_misses") < names.index("load_to_db")
     assert names.index("regenerate_mrt") > names.index("load_to_db")
