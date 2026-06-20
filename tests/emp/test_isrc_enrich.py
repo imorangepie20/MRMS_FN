@@ -7,7 +7,9 @@ import pytest
 from mrms.emp.isrc_enrich import (
     SyntheticTrack,
     fetch_synthetic_emp_tracks,
+    find_canonical,
     is_confident_match,
+    merge_track,
     resolve_real_isrc,
 )
 
@@ -98,3 +100,40 @@ async def test_resolve_real_isrc_rejects_low_confidence_and_empty():
     with patch("mrms.emp.isrc_enrich.deezer.search_by_text",
                new=AsyncMock(return_value={"title": "X", "artist": "Y"})):
         assert await resolve_real_isrc(None, "X", "Y") is None
+
+
+def test_merge_track_repoints_fks_and_deletes_synth(db_conn, cleanup):
+    """합성 트랙의 TrackPlatform/EMPSource를 canonical로 옮기고 합성 Track 삭제."""
+    sfx = uuid.uuid4().hex[:8]
+    synth = _make_track(db_conn, cleanup, f"emp_apple_{sfx}", in_emp=True)
+    canon = _make_track(db_conn, cleanup, f"USRC2{sfx}", in_emp=True)
+
+    # 합성에 TrackPlatform(apple) + EMPSource 부착
+    with db_conn.cursor() as cur:
+        cur.execute(
+            '''INSERT INTO "TrackPlatform" (id,"trackId",platform,"platformTrackId")
+               VALUES (%s,%s,'apple',%s)''',
+            (f"tp_{sfx}", synth, f"applepid_{sfx}"),
+        )
+        cur.execute(
+            '''INSERT INTO "EMPSource" (id,"trackId",platform,source_type,source_id)
+               VALUES (%s,%s,'apple','editorial_playlist',%s)''',
+            (f"es_{sfx}", synth, f"src_{sfx}"),
+        )
+    db_conn.commit()
+    # canonical 쪽으로 옮겨질 행들 cleanup 등록
+    cleanup('DELETE FROM "TrackPlatform" WHERE "platformTrackId" = %s', (f"applepid_{sfx}",))
+    cleanup('DELETE FROM "EMPSource" WHERE source_id = %s', (f"src_{sfx}",))
+
+    assert find_canonical(db_conn, f"USRC2{sfx}", synth) == canon
+
+    merge_track(db_conn, synth, canon)
+
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT 1 FROM "Track" WHERE id = %s', (synth,))
+        assert cur.fetchone() is None
+        cur.execute('SELECT "trackId" FROM "TrackPlatform" WHERE "platformTrackId" = %s',
+                    (f"applepid_{sfx}",))
+        assert cur.fetchone()[0] == canon
+        cur.execute('SELECT "trackId" FROM "EMPSource" WHERE source_id = %s', (f"src_{sfx}",))
+        assert cur.fetchone()[0] == canon

@@ -98,3 +98,68 @@ async def resolve_real_isrc(
     if not is_confident_match(title, artist, dz.get("title") or "", dz.get("artist") or ""):
         return None
     return real
+
+
+def find_canonical(
+    conn: psycopg.Connection, real_isrc: str, exclude_id: str
+) -> str | None:
+    """real_isrc를 가진 다른 Track(자기 자신 제외) id. 없으면 None."""
+    with conn.cursor() as cur:
+        cur.execute(
+            'SELECT id FROM "Track" WHERE isrc = %s AND id <> %s LIMIT 1',
+            (real_isrc, exclude_id),
+        )
+        row = cur.fetchone()
+    return row[0] if row else None
+
+
+# (table, [trackId 외 unique 컬럼]) — 충돌 판정용. 스펙 §5에서 DB 확인됨.
+_MERGE_TABLES: list[tuple[str, list[str]]] = [
+    ("TrackPlatform", ["platform"]),
+    ("EMPSource", ["platform", "source_id"]),
+    ("UserTrack", ["userId"]),
+    ("PlaylistTrack", ["playlistId"]),
+    ("TrackAudioFeatures", ["modelVersion"]),
+    ("TrackEmbedding", ["modelVersion"]),
+]
+
+
+def _repoint_or_drop(
+    conn: psycopg.Connection, table: str, other_cols: list[str],
+    synth_id: str, canonical_id: str,
+) -> None:
+    """synth의 행을 canonical로 이동. canonical이 같은 unique 키를 이미 가지면 drop."""
+    not_exists = " AND ".join(f'c."{col}" = s."{col}"' for col in other_cols)
+    with conn.cursor() as cur:
+        cur.execute(
+            f'''UPDATE "{table}" s SET "trackId" = %(canon)s
+                WHERE s."trackId" = %(synth)s
+                  AND NOT EXISTS (
+                    SELECT 1 FROM "{table}" c
+                    WHERE c."trackId" = %(canon)s AND {not_exists}
+                  )''',  # noqa: S608 — table/cols는 상수 _MERGE_TABLES 출처, 값은 bound
+            {"canon": canonical_id, "synth": synth_id},
+        )
+        cur.execute(f'DELETE FROM "{table}" WHERE "trackId" = %s', (synth_id,))
+
+
+def merge_track(
+    conn: psycopg.Connection, synth_id: str, canonical_id: str
+) -> None:
+    """합성 Track의 모든 참조를 canonical로 옮기고 합성 Track 삭제 (트랜잭션 1건).
+
+    FK가 전부 CASCADE라 삭제 전 repoint 필수. canonical의 임베딩은 그대로 유지돼
+    합성 트랙이 추천에서 canonical로 흡수된다.
+    """
+    for table, other_cols in _MERGE_TABLES:
+        _repoint_or_drop(conn, table, other_cols, synth_id, canonical_id)
+    with conn.cursor() as cur:
+        # PlaylistHistory.trackIds (배열, 비-FK): dangling 방지
+        cur.execute(
+            '''UPDATE "PlaylistHistory"
+               SET "trackIds" = array_replace("trackIds", %s, %s)
+               WHERE %s = ANY("trackIds")''',
+            (synth_id, canonical_id, synth_id),
+        )
+        cur.execute('DELETE FROM "Track" WHERE id = %s', (synth_id,))
+    conn.commit()
