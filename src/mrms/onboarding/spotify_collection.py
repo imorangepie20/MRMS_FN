@@ -36,10 +36,10 @@ async def fetch_spotify_favorite_tracks(
 async def fetch_spotify_user_playlists(
     access_token: str,
     page_size: int = 50,
-) -> list[str]:
-    """GET /me/playlists — 사용자 플레이리스트 ID 목록."""
+) -> list[tuple[str, str]]:
+    """GET /me/playlists — 사용자 플레이리스트 (id, name) 목록. name은 일반 Playlist 생성용."""
     headers = {"Authorization": f"Bearer {access_token}"}
-    playlist_ids: list[str] = []
+    playlists: list[tuple[str, str]] = []
     url = f"{SPOTIFY_API_BASE}/me/playlists?limit={page_size}&offset=0"
 
     async with httpx.AsyncClient(timeout=15.0) as http:
@@ -51,10 +51,10 @@ async def fetch_spotify_user_playlists(
             for item in data.get("items", []):
                 pid = item.get("id")
                 if pid:
-                    playlist_ids.append(pid)
+                    playlists.append((pid, (item.get("name") or "Playlist").strip()))
             url = data.get("next")
 
-    return playlist_ids
+    return playlists
 
 
 async def fetch_spotify_playlist_tracks(

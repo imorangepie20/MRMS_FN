@@ -47,10 +47,10 @@ async def fetch_tidal_user_playlists(
     tidal_user_id: str,
     country: str = "KR",
     page_size: int = 50,
-) -> list[str]:
-    """User의 플레이리스트 UUID 목록 (페이지네이션)."""
+) -> list[tuple[str, str]]:
+    """User의 플레이리스트 (uuid, title) 목록 (페이지네이션). title은 일반 Playlist 생성용."""
     headers = {"Authorization": f"Bearer {access_token}"}
-    playlist_uuids: list[str] = []
+    playlists: list[tuple[str, str]] = []
     offset = 0
 
     async with httpx.AsyncClient(timeout=15.0) as http:
@@ -68,13 +68,13 @@ async def fetch_tidal_user_playlists(
                 pl = item.get("item") or item
                 uuid_val = pl.get("uuid")
                 if uuid_val:
-                    playlist_uuids.append(uuid_val)
-            total = data.get("totalNumberOfItems", len(playlist_uuids))
+                    playlists.append((uuid_val, (pl.get("title") or "Playlist").strip()))
+            total = data.get("totalNumberOfItems", len(playlists))
             offset += len(items)
             if not items or offset >= total:
                 break
 
-    return playlist_uuids
+    return playlists
 
 
 async def fetch_tidal_playlist_tracks(

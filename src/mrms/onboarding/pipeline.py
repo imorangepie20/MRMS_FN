@@ -8,7 +8,9 @@ import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
 
+from mrms.db.playlist import create_imported_playlist
 from mrms.db.user_track import get_oauth, upsert_user_track
+from mrms.emp.base import safe_rollback
 from mrms.onboarding.spotify_collection import (
     fetch_spotify_favorite_tracks,
     fetch_spotify_playlist_tracks,
@@ -148,6 +150,31 @@ async def run_onboarding(
         conn.rollback()
 
 
+def _create_imported_playlists(
+    conn: psycopg.Connection,
+    user_id: str,
+    platform: str,
+    per_playlist: list[tuple[str, str, list[str]]],
+    platform_to_internal: dict[str, str],
+) -> None:
+    """가져온 각 원본 플레이리스트를 일반 Playlist로 흡수(순서 보존·멱등, best-effort).
+    per_playlist = [(platform_playlist_id, name, ordered platform_track_ids), ...]."""
+    for pl_id, pl_name, platform_ids in per_playlist:
+        seen: set[str] = set()
+        ids: list[str] = []
+        for pid in platform_ids:
+            iid = platform_to_internal.get(pid)
+            if iid and iid not in seen:
+                seen.add(iid)
+                ids.append(iid)
+        if not ids:
+            continue
+        try:
+            create_imported_playlist(conn, user_id, f"{platform}:{pl_id}", pl_name, ids)
+        except Exception:
+            safe_rollback(conn)
+
+
 async def _run_tidal_collection(
     user_id: str,
     status: OnboardingStatus,
@@ -164,22 +191,24 @@ async def _run_tidal_collection(
     )
 
     status.set("fetching_favorites", 10, "Tidal 플레이리스트 목록 가져오는 중...")
-    playlist_uuids = await fetch_tidal_user_playlists(
+    playlists = await fetch_tidal_user_playlists(
         access_token=access_token, tidal_user_id=tidal_uid, country="KR"
     )
 
     playlist_track_ids_set: set[str] = set()
-    for i, pl_uuid in enumerate(playlist_uuids):
+    per_playlist: list[tuple[str, str, list[str]]] = []  # (uuid, title, ordered tidal ids)
+    for i, (pl_uuid, pl_title) in enumerate(playlists):
         status.set(
             "fetching_favorites",
-            10 + int(10 * (i + 1) / max(len(playlist_uuids), 1)),
-            f"Tidal 플레이리스트 트랙 가져오는 중... ({i + 1}/{len(playlist_uuids)})",
+            10 + int(10 * (i + 1) / max(len(playlists), 1)),
+            f"Tidal 플레이리스트 트랙 가져오는 중... ({i + 1}/{len(playlists)})",
         )
         try:
             tracks = await fetch_tidal_playlist_tracks(
                 access_token=access_token, playlist_uuid=pl_uuid, country="KR"
             )
             playlist_track_ids_set.update(tracks)
+            per_playlist.append((pl_uuid, pl_title, list(tracks)))
         except Exception:
             continue
 
@@ -219,6 +248,10 @@ async def _run_tidal_collection(
             )
     conn.commit()
 
+    # 가져온 각 플레이리스트를 일반 Playlist로 흡수(순서 보존·멱등).
+    tidal_to_internal = {tid: iid for iid, tid in internal_to_tidal.items()}
+    _create_imported_playlists(conn, user_id, "tidal", per_playlist, tidal_to_internal)
+
 
 async def _run_spotify_collection(
     user_id: str,
@@ -234,21 +267,22 @@ async def _run_spotify_collection(
     favorite_track_ids = list(favorite_isrcs.keys())
 
     status.set("fetching_favorites", 10, "Spotify 플레이리스트 목록 가져오는 중...")
-    playlist_ids = await fetch_spotify_user_playlists(access_token=access_token)
+    playlists = await fetch_spotify_user_playlists(access_token=access_token)
     status.set(
         "fetching_favorites", 11,
-        f"Spotify 플레이리스트 {len(playlist_ids)}개 발견",
+        f"Spotify 플레이리스트 {len(playlists)}개 발견",
     )
 
     playlist_isrcs: dict[str, str | None] = {}
     playlist_track_ids_set: set[str] = set()
+    per_playlist: list[tuple[str, str, list[str]]] = []  # (id, name, ordered spotify ids)
     playlist_fetch_errors = 0
     last_playlist_error = ""
-    for i, pl_id in enumerate(playlist_ids):
+    for i, (pl_id, pl_name) in enumerate(playlists):
         status.set(
             "fetching_favorites",
-            10 + int(10 * (i + 1) / max(len(playlist_ids), 1)),
-            f"Spotify 플레이리스트 트랙 가져오는 중... ({i + 1}/{len(playlist_ids)})",
+            10 + int(10 * (i + 1) / max(len(playlists), 1)),
+            f"Spotify 플레이리스트 트랙 가져오는 중... ({i + 1}/{len(playlists)})",
         )
         try:
             tracks = await fetch_spotify_playlist_tracks(
@@ -256,6 +290,7 @@ async def _run_spotify_collection(
             )
             playlist_isrcs.update(tracks)
             playlist_track_ids_set.update(tracks.keys())
+            per_playlist.append((pl_id, pl_name, list(tracks.keys())))
         except Exception as e:
             playlist_fetch_errors += 1
             last_playlist_error = f"{type(e).__name__}: {str(e)[:150]}"
@@ -321,7 +356,7 @@ async def _run_spotify_collection(
     internal_track_ids = list(internal_to_spotify.keys())
     if len(internal_track_ids) < 10:
         diag = (
-            f"playlists 발견={len(playlist_ids)}, fetch 실패={playlist_fetch_errors}"
+            f"playlists 발견={len(playlists)}, fetch 실패={playlist_fetch_errors}"
             f", direct 매칭={direct_match_count}, ISRC 매칭={isrc_match_count}"
             + (f", last_err=[{last_playlist_error}]" if last_playlist_error else "")
         )
@@ -343,3 +378,7 @@ async def _run_spotify_collection(
                 is_core=False, source="playlist", platform="spotify",
             )
     conn.commit()
+
+    # 가져온 각 플레이리스트를 일반 Playlist로 흡수(순서 보존·멱등).
+    spotify_to_internal = {sid: iid for iid, sid in internal_to_spotify.items()}
+    _create_imported_playlists(conn, user_id, "spotify", per_playlist, spotify_to_internal)

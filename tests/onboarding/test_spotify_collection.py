@@ -57,8 +57,8 @@ async def test_fetch_user_playlists_returns_ids():
     fake_client.get = AsyncMock(return_value=fake)
 
     with patch("httpx.AsyncClient", return_value=fake_client):
-        ids = await fetch_spotify_user_playlists(access_token="fake")
-    assert ids == ["PL_A", "PL_B"]
+        pls = await fetch_spotify_user_playlists(access_token="fake")
+    assert pls == [("PL_A", "P1"), ("PL_B", "P2")]
 
 
 @pytest.mark.asyncio

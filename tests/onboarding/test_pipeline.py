@@ -17,6 +17,40 @@ def _stub_discovery():
         yield
 
 
+def test_create_imported_playlists_helper(db_conn, cleanup):
+    """가져온 플레이리스트를 일반 Playlist로 흡수 — 역매핑·순서 보존·dedup·미매칭 skip."""
+    from mrms.db.playlist import get_playlist_tracks
+    from mrms.db.user_track import get_or_create_user
+    from mrms.onboarding.pipeline import _create_imported_playlists
+
+    uid = get_or_create_user(db_conn, "imppl_helper@test.com")
+    db_conn.commit()
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT id FROM "Track" LIMIT 3')
+        tids = [r[0] for r in cur.fetchall()]
+    if len(tids) < 3:
+        pytest.skip("Track 데이터 부족")
+    # 등록 역순 실행 → 자식(PlaylistTrack) 먼저, 부모(Playlist/User) 나중
+    cleanup('DELETE FROM "User" WHERE id = %s', (uid,))
+    cleanup('DELETE FROM "Playlist" WHERE "userId" = %s', (uid,))
+    cleanup(
+        'DELETE FROM "PlaylistTrack" WHERE "playlistId" IN '
+        '(SELECT id FROM "Playlist" WHERE "userId" = %s)', (uid,))
+
+    platform_to_internal = {"sp1": tids[0], "sp2": tids[1], "sp3": tids[2]}
+    # 순서: sp1, 미매칭(sp9), sp2, sp1(중복), sp3 → 결과 [t0, t1, t2]
+    per_playlist = [("PLX", "My Mix", ["sp1", "sp9", "sp2", "sp1", "sp3"])]
+    _create_imported_playlists(db_conn, uid, "spotify", per_playlist, platform_to_internal)
+
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT id, name, "sourceRef" FROM "Playlist" WHERE "userId" = %s', (uid,))
+        rows = cur.fetchall()
+    assert len(rows) == 1
+    pid, name, sref = rows[0]
+    assert name == "My Mix" and sref == "spotify:PLX"
+    assert [t["track_id"] for t in get_playlist_tracks(db_conn, pid)] == tids[:3]
+
+
 @pytest.mark.asyncio
 async def test_pipeline_no_data_sets_error(db_conn):
     """Tidal favorites + playlists 모두 0이면 error 상태."""

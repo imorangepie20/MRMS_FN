@@ -81,10 +81,10 @@ async def test_fetch_user_playlists_returns_uuids():
     from mrms.onboarding.tidal_favorites import fetch_tidal_user_playlists
 
     with patch("httpx.AsyncClient", return_value=fake_client):
-        uuids = await fetch_tidal_user_playlists(
+        pls = await fetch_tidal_user_playlists(
             access_token="fake", tidal_user_id="12345", country="KR",
         )
-    assert uuids == ["pl-aaa", "pl-bbb"]
+    assert pls == [("pl-aaa", "P1"), ("pl-bbb", "P2")]
 
 
 @pytest.mark.asyncio

@@ -12,16 +12,20 @@
 - **메뉴의 Import(D4 "Eat The Shared")는 별개** — 공유 링크 붙여넣기(`import_url`). 이 작업과 무관, 안 건드림.
 - 좋아요(liked)는 플레이리스트가 아님 → 취향 신호(UserTrack `source='liked'`)만, Playlist 생성 안 함.
 
-## 현재 동작 (조사)
+## 현재 동작 (조사) — ⚠️ 정정
 
-- `youtube_importer`/`tidal_importer`.`import_all`: 본인 플레이리스트 fetch → 트랙을 `UserTrack(source='playlist:<이름>', is_core=False)`로 **평면 적재**. 별도 Playlist 미생성.
-- PGT "imported playlists" 섹션: `source LIKE 'playlist%'` 그룹으로 표시(읽기 전용 뷰). → 진짜 플레이리스트가 아니라 "합쳐진" 느낌.
+- **웹 가입 import 경로는 두 갈래**(1차 조사 누락):
+  - **YouTube**: `auth_youtube /import` → `sync/youtube_importer.import_all`. (트랙을 `source='playlist:<이름>'` 적재.)
+  - **Tidal·Spotify**: `onboarding/pipeline.py`(`run_onboarding`)가 처리. **여기가 진짜 머지 지점** — `fetch_*_user_playlists`로 플레이리스트 **ID만**(이름 X) 받고, 각 플레이리스트 트랙을 **하나의 set으로 합쳐**(`playlist_track_ids_set`) `UserTrack(source='playlist')` 통짜 적재. 진짜 Playlist 미생성, 플레이리스트 정체성·이름·순서 소실.
+  - (`sync/tidal_importer`는 CLI 전용 `scripts/08` — 웹 미사용.)
+- PGT "imported playlists" 섹션: `source LIKE 'playlist%'` 그룹 뷰(제거 대상).
 
 ## 설계 (안전·additive 우선)
 
-1. **진짜 Playlist 생성**: importer가 각 원본 플레이리스트의 resolve된 catalog `track_id`를 **순서대로** 모아 `create_imported_playlist(conn, user_id, source_ref, name, track_ids)`로 일반 Playlist 생성.
-   - `source_ref = "youtube:{id}" / "tidal:{id}"`. **멱등** — 같은 sourceRef가 이미 있으면 skip(재import 중복 방지).
-   - Playlist + PlaylistTrack(순서 보존)만 INSERT. 트랙 UserTrack은 importer가 이미 적재.
+1. **진짜 Playlist 생성** — **두 경로 모두**:
+   - **YouTube**(`sync/youtube_importer`): 플레이리스트별 track_id 수집 → `create_imported_playlist`. (1차 구현 완료.)
+   - **Tidal·Spotify**(`onboarding/pipeline.py`): ⚠️ **핵심 수정**. `fetch_*_user_playlists`가 (id, **name**) 반환하도록, pipeline이 플레이리스트별 ordered 트랙을 따로 보관 → 기존 batch 매칭 후 platform→internal 역매핑으로 플레이리스트별 internal track_id(순서) → `create_imported_playlist(conn, user_id, "tidal|spotify:{id}", name, ids)`. 머지 set은 매칭 효율용으로 유지, 취향 UserTrack 적재는 기존대로.
+   - `source_ref = "youtube|tidal|spotify:{id}"`. **멱등**(같은 sourceRef skip). Playlist+PlaylistTrack(순서)만 INSERT.
 
 2. **PGT "imported playlists" 특별 섹션 제거 (확정)**: 가져온 뒤엔 일반 플레이리스트와 역할이 같으니 "imported"라는 개념 자체를 없앤다.
    - 백엔드: `/api/pgt/sections`에서 `imported_playlists` 제거, `/imported-playlists`·`/imported-playlists/tracks` 엔드포인트 제거, `section_imported_playlists`·`imported_playlist_tracks`(db/pgt.py) 제거.

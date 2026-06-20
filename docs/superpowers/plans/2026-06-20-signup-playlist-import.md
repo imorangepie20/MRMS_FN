@@ -47,3 +47,12 @@
 - Modify: `tests/api/test_pgt.py` — `section_imported_playlists` 테스트 제거.
 - Add: `tests/db/test_playlist.py::test_create_imported_playlist_idempotent`(멱등·순서·sourceRef), `tests/sync/test_youtube_importer.py`에 Playlist 생성 단언.
 - [x] 대상 파일 pytest(35 pass) + ruff(신규 클린), 프론트 tsc/eslint ✅
+
+### Task 8: ⚠️ 정정 — Tidal·Spotify 웹 경로(`onboarding/pipeline.py`)  ✅ 완료
+
+> 1차 구현은 sync 임포터(YouTube 웹 + Tidal CLI)만 → 실제 웹 가입(Tidal/Spotify)은 `pipeline.py`라 미적용(플레이리스트 0개 버그). 진짜 머지 지점을 수정.
+
+- `onboarding/tidal_favorites.py`·`spotify_collection.py`: `fetch_*_user_playlists` → **(id, name)** 반환(이름 필요).
+- `onboarding/pipeline.py`: `_create_imported_playlists` 공용 헬퍼(역매핑·순서·dedup·미매칭 skip·멱등) + Tidal/Spotify collection에서 플레이리스트별 ordered 트랙 보관 → 매칭 후 호출.
+- 영향: fetch 반환타입 변경 호출처 = pipeline.py뿐(확인). 테스트: tidal_favorites·spotify_collection shape 갱신 + `test_create_imported_playlists_helper` 추가.
+- [x] 온보딩 13/13 pass, 앱 import 무결, 관련 35 pass, ruff 신규 클린 ✅
