@@ -1,5 +1,6 @@
 """EMP 합성-ISRC enrichment."""
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -7,6 +8,7 @@ from mrms.emp.isrc_enrich import (
     SyntheticTrack,
     fetch_synthetic_emp_tracks,
     is_confident_match,
+    resolve_real_isrc,
 )
 
 
@@ -69,3 +71,30 @@ def test_is_confident_match_artist_gate_and_title_variants():
                               "Watermelon Sugar", "Andrew Foy") is False
     # 빈 값 → False
     assert is_confident_match("", "X", "", "X") is False
+
+
+@pytest.mark.asyncio
+async def test_resolve_real_isrc_confident_returns_isrc():
+    dz = {"isrc": "GBUM71903920", "title": "Watermelon Sugar", "artist": "Harry Styles",
+          "preview_url": "http://x"}
+    with patch("mrms.emp.isrc_enrich.deezer.search_by_text",
+               new=AsyncMock(return_value=dz)):
+        got = await resolve_real_isrc(None, "Watermelon Sugar", "Harry Styles")
+    assert got == "GBUM71903920"
+
+
+@pytest.mark.asyncio
+async def test_resolve_real_isrc_rejects_low_confidence_and_empty():
+    # artist 불일치 → None
+    dz_bad = {"isrc": "X", "title": "Watermelon Sugar", "artist": "Andrew Foy"}
+    with patch("mrms.emp.isrc_enrich.deezer.search_by_text",
+               new=AsyncMock(return_value=dz_bad)):
+        assert await resolve_real_isrc(None, "Watermelon Sugar", "Harry Styles") is None
+    # Deezer 미스 → None
+    with patch("mrms.emp.isrc_enrich.deezer.search_by_text",
+               new=AsyncMock(return_value=None)):
+        assert await resolve_real_isrc(None, "X", "Y") is None
+    # isrc 없는 결과 → None
+    with patch("mrms.emp.isrc_enrich.deezer.search_by_text",
+               new=AsyncMock(return_value={"title": "X", "artist": "Y"})):
+        assert await resolve_real_isrc(None, "X", "Y") is None

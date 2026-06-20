@@ -9,7 +9,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+import httpx
 import psycopg
+
+from mrms.ingest import deezer
 
 
 @dataclass(slots=True)
@@ -77,3 +80,21 @@ def is_confident_match(
     if not ot or not ct:
         return False
     return ot == ct or ot in ct or ct in ot
+
+
+async def resolve_real_isrc(
+    client: httpx.AsyncClient | None, title: str, artist: str
+) -> str | None:
+    """Deezer 텍스트 검색 → confident하면 real ISRC, 아니면 None.
+
+    Deezer 응답은 isrc+preview를 함께 담음(deezer.py). iTunes는 ISRC를 안 줘서 미사용.
+    """
+    dz = await deezer.search_by_text(client, title, artist)
+    if not dz:
+        return None
+    real = dz.get("isrc")
+    if not real:
+        return None
+    if not is_confident_match(title, artist, dz.get("title") or "", dz.get("artist") or ""):
+        return None
+    return real
