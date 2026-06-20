@@ -5,6 +5,7 @@ import { useState } from "react";
 import { importUrl } from "@/lib/api/import";
 import type { ImportResult } from "@/lib/types";
 import { ModalTrackList, PlayAllButton } from "@/components/track/ModalTrackList";
+import { TrackListPlaylistMenu } from "@/components/playlist/TrackListPlaylistMenu";
 import { SectionMasthead } from "@/components/visual/SectionMasthead";
 
 export default function ImportPage() {
@@ -69,7 +70,10 @@ export default function ImportPage() {
               <span className="min-w-0 truncate font-display text-[15px] font-semibold text-(--mrms-ink)">
                 {result.title ?? `${tracks.length} tracks`}
               </span>
-              <PlayAllButton tracks={tracks} />
+              <div className="flex shrink-0 items-center gap-2">
+                <PlayAllButton tracks={tracks} />
+                <TrackListPlaylistMenu trackIds={tracks.map((t) => t.track_id)} />
+              </div>
             </div>
             <ModalTrackList tracks={tracks} />
           </>
