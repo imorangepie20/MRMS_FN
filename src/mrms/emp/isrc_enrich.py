@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import psycopg
@@ -44,3 +45,35 @@ def fetch_synthetic_emp_tracks(
             SyntheticTrack(track_id=r[0], isrc=r[1], title=r[2] or "", artist=r[3] or "")
             for r in cur.fetchall()
         ]
+
+
+_PAREN = re.compile(r"\([^)]*\)|\[[^\]]*\]")
+_KEEP = re.compile(r"[^a-z0-9가-힣]+")
+
+
+def _norm(s: str) -> str:
+    """소문자 + 괄호내용 제거 + 영숫자/한글만 + 공백정규화."""
+    s = (s or "").lower()
+    s = _PAREN.sub(" ", s)
+    s = _KEEP.sub(" ", s)
+    return " ".join(s.split())
+
+
+def _first_artist(a: str) -> str:
+    """대표 아티스트 1명 — 콤마/&/feat 앞부분."""
+    a = (a or "").lower()
+    for sep in (",", "&", " feat", " ft", " with "):
+        a = a.split(sep)[0]
+    return a
+
+
+def is_confident_match(
+    orig_title: str, orig_artist: str, cand_title: str, cand_artist: str
+) -> bool:
+    """오매칭 차단 게이트: artist 정규화 일치(필수) + title 정규화 포함관계."""
+    if _norm(_first_artist(orig_artist)) != _norm(_first_artist(cand_artist)):
+        return False
+    ot, ct = _norm(orig_title), _norm(cand_title)
+    if not ot or not ct:
+        return False
+    return ot == ct or ot in ct or ct in ot

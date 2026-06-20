@@ -3,7 +3,11 @@ import uuid
 
 import pytest
 
-from mrms.emp.isrc_enrich import SyntheticTrack, fetch_synthetic_emp_tracks
+from mrms.emp.isrc_enrich import (
+    SyntheticTrack,
+    fetch_synthetic_emp_tracks,
+    is_confident_match,
+)
 
 
 def _artist_id(conn) -> str:
@@ -47,3 +51,21 @@ def test_fetch_synthetic_picks_only_synthetic_unembedded_inemp(db_conn, cleanup)
     assert isinstance(one, SyntheticTrack)
     assert one.isrc == f"emp_apple_{sfx}"
     assert one.title == "Test Title"
+
+
+def test_is_confident_match_artist_gate_and_title_variants():
+    # artist 일치 + title 정확/버전 변형 → True
+    assert is_confident_match("Watermelon Sugar", "Harry Styles",
+                              "Watermelon Sugar", "Harry Styles") is True
+    assert is_confident_match('The Power (7" Version)', "Snap!",
+                              "The Power", "SNAP!") is True
+    # 괄호 피처/한글 아티스트 정규화
+    assert is_confident_match(
+        "친구로 지내다 보면 (Feat. 김민석 of 멜로망스)", "BIG Naughty (서동현)",
+        "친구로 지내다 보면", "BIG Naughty",
+    ) is True
+    # artist 불일치 → False (오매칭 차단)
+    assert is_confident_match("Watermelon Sugar", "Harry Styles",
+                              "Watermelon Sugar", "Andrew Foy") is False
+    # 빈 값 → False
+    assert is_confident_match("", "X", "", "X") is False
