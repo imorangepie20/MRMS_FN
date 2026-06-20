@@ -223,3 +223,19 @@ def test_apply_with_recheck_demotes_stale_rekey_to_merge(db_conn, cleanup):
         cur.execute('SELECT 1 FROM "Track" WHERE id = %s', (synth,))
         assert cur.fetchone() is None  # merge로 synth 삭제(rekey였으면 살아있었을 것)
     assert canon  # (lint: canon 사용)
+
+
+def test_run_enrich_isrc_wrapper_returns_status_dict(monkeypatch):
+    """_run_enrich_isrc는 14 스크립트를 실행하고 status dict 반환."""
+    from mrms.emp import runner
+
+    captured = {}
+
+    def fake_run_script(cmd):
+        captured["cmd"] = cmd
+        return {"status": "success", "stdout": "merge 3 / rekey 2 / skip 1"}
+
+    monkeypatch.setattr(runner, "_run_script", fake_run_script)
+    s = runner._run_enrich_isrc()
+    assert s["status"] == "success"
+    assert any("14_enrich_emp_isrc.py" in str(c) for c in captured["cmd"])

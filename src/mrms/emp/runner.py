@@ -115,6 +115,11 @@ def _run_audio_download(limit: int = 500) -> dict:
     ])
 
 
+def _run_enrich_isrc() -> dict:
+    """합성-ISRC EMP 트랙을 real ISRC로 역해결 → 머지/re-key (02 download 전)."""
+    return _run_script([sys.executable, _script_path("14_enrich_emp_isrc.py")])
+
+
 def _run_extract_embeddings() -> dict:
     return _run_script([sys.executable, _script_path("03_extract_embeddings.py")])
 
@@ -240,6 +245,12 @@ async def run_pipeline(
             if platform in ("all", plat):
                 if not await _import_stage(conn, run_id, stage_name, importer_fn):
                     overall_ok = False
+
+        # 합성-ISRC enrichment — 중복 머지/신곡 re-key (download_audio 전에)
+        s = _run_enrich_isrc()
+        append_stage(conn, run_id, {"stage": "enrich_isrc", **s})
+        if s["status"] != "success":
+            overall_ok = False
 
         # audio download
         s = _run_audio_download()
