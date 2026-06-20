@@ -23,6 +23,7 @@ import { ArtistLink } from "@/components/artist/ArtistLink";
 import { AlbumArt } from "@/components/mrms/AlbumArt";
 import { SharePlaylistButton } from "@/components/playlist/SharePlaylistButton";
 import { TrackListPlaylistMenu } from "@/components/playlist/TrackListPlaylistMenu";
+import { PlayAllButton } from "@/components/track/ModalTrackList";
 import { SectionMasthead } from "@/components/visual/SectionMasthead";
 import { removeTrackFromPlaylist, reorderPlaylistTracks } from "@/lib/api/playlists";
 import { loadAndPlay } from "@/lib/player";
@@ -386,7 +387,12 @@ function LikedTab({ count }: { count: number }) {
         num="L1"
         title="Liked tracks"
         meta={`${count} tracks`}
-        action={<TrackListPlaylistMenu trackIds={tracks.map((t) => t.track_id)} />}
+        action={
+          <div className="flex items-center gap-2">
+            <PlayAllButton tracks={tracks} />
+            <TrackListPlaylistMenu trackIds={tracks.map((t) => t.track_id)} />
+          </div>
+        }
       />
       <TrackList tracks={tracks} loading={loading} />
     </div>
@@ -412,7 +418,12 @@ function PctTab({ count }: { count: number }) {
         num="L5"
         title="PCT — 취향저격"
         meta={`${count} tracks`}
-        action={<TrackListPlaylistMenu trackIds={tracks.map((t) => t.track_id)} />}
+        action={
+          <div className="flex items-center gap-2">
+            <PlayAllButton tracks={tracks} />
+            <TrackListPlaylistMenu trackIds={tracks.map((t) => t.track_id)} />
+          </div>
+        }
       />
       <TrackList tracks={tracks} loading={loading} />
     </div>
