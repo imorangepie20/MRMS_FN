@@ -96,6 +96,10 @@ function PgtTrackRow({
 }) {
   const [liked, setLiked] = useState(track.liked);
   const [pct, setPct] = useState(track.pct);
+  // 큐의 현재 재생 트랙이면 하이라이트 + 커버 이퀄라이저. 가드: 재생 곡 있을 때만.
+  const currentTrackId = usePlayerStore((s) => s.queue[s.currentIdx]?.track_id ?? null);
+  const isCurrent = currentTrackId !== null && currentTrackId === track.track_id;
+  const playing = usePlayerStore((s) => s.isPlaying);
 
   const onLike = async () => {
     const prev = liked;
@@ -142,7 +146,9 @@ function PgtTrackRow({
         dragHandle
           ? "grid-cols-[20px_48px_1fr_76px] md:grid-cols-[20px_56px_1fr_60px_80px]"
           : "grid-cols-[48px_1fr_60px] md:grid-cols-[56px_1fr_60px_80px]"
-      } gap-2 md:gap-3 py-2.5 border-b border-[var(--mrms-rule)] items-center hover:bg-[var(--mrms-paper)] transition-colors`}
+      } gap-2 md:gap-3 py-2.5 border-b border-[var(--mrms-rule)] items-center transition-colors ${
+        isCurrent ? "bg-[var(--mrms-rust)]/[0.07]" : "hover:bg-[var(--mrms-paper)]"
+      }`}
     >
       {dragHandle}
       <button
@@ -159,10 +165,31 @@ function PgtTrackRow({
         <span className="absolute inset-0 bg-[var(--mrms-ink)]/55 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
           <Play className="size-5 fill-[var(--mrms-paper)]" stroke="none" />
         </span>
+        {/* 재생 중 트랙 — 커버에 이퀄라이저 오버레이(호버하면 재생 버튼으로 전환). */}
+        {isCurrent && (
+          <span
+            className="absolute inset-0 bg-[var(--mrms-ink)]/55 flex items-end justify-center gap-[2px] pb-2 group-hover:opacity-0 transition-opacity"
+            aria-label={playing ? "재생 중" : "일시정지"}
+          >
+            {[0, 1, 2, 3].map((b) => (
+              <span
+                key={b}
+                className={`w-[3px] bg-[var(--mrms-paper)] ${playing ? "mrms-eq-bar" : ""}`}
+                style={
+                  playing
+                    ? { height: "55%", animationDelay: `${b * 0.16}s` }
+                    : { height: ["40%", "65%", "50%", "60%"][b] }
+                }
+              />
+            ))}
+          </span>
+        )}
       </button>
       <div className="min-w-0">
         <div
-          className="font-display font-semibold text-[15px] leading-tight truncate"
+          className={`font-display font-semibold text-[15px] leading-tight truncate ${
+            isCurrent ? "text-[var(--mrms-rust)]" : ""
+          }`}
           title={track.title}
         >
           {track.title}
