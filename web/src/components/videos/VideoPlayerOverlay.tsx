@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { X, Maximize2 } from "lucide-react";
+import { X, Maximize2, PictureInPicture2 } from "lucide-react";
 
 import { getVideoPlaybackUrl } from "@/lib/api/videos";
 import { pausePlayback } from "@/lib/player";
@@ -12,6 +12,8 @@ export function VideoPlayerOverlay() {
   const videoId = useVideoPlayer((s) => s.videoId);
   const title = useVideoPlayer((s) => s.title);
   const source = useVideoPlayer((s) => s.source);
+  const pip = useVideoPlayer((s) => s.pip);
+  const setPip = useVideoPlayer((s) => s.setPip);
   const close = useVideoPlayer((s) => s.close);
   const videoRef = useRef<HTMLVideoElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -92,15 +94,26 @@ export function VideoPlayerOverlay() {
     else void box.requestFullscreen?.();
   };
 
+  const btnCls =
+    "size-8 flex items-center justify-center bg-(--mrms-ink)/70 text-(--mrms-paper) border-0 cursor-pointer hover:bg-(--mrms-ink)";
+
   return (
     <div
-      onClick={close}
-      className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-4"
+      onClick={pip ? undefined : close}
+      className={
+        pip
+          ? "fixed bottom-24 right-4 z-[70] w-[300px] sm:w-[380px]"
+          : "fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-4"
+      }
     >
       <div
         ref={boxRef}
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-[1248px] aspect-video bg-black"
+        className={
+          pip
+            ? "relative w-full aspect-video bg-black shadow-2xl ring-1 ring-white/15"
+            : "relative w-full max-w-[1248px] aspect-video bg-black"
+        }
       >
         {source === "youtube" ? (
           <iframe
@@ -117,26 +130,26 @@ export function VideoPlayerOverlay() {
         {/* 상단 우측 컨트롤 */}
         <div className="absolute top-2 right-2 flex gap-2">
           <button
-            onClick={toggleFullscreen}
-            aria-label="fullscreen"
-            className="size-8 flex items-center justify-center bg-(--mrms-ink)/70 text-(--mrms-paper) border-0 cursor-pointer hover:bg-(--mrms-ink)"
+            onClick={() => setPip(!pip)}
+            aria-label={pip ? "극장 모드" : "미니 플레이어"}
+            title={pip ? "극장 모드" : "미니 플레이어"}
+            className={btnCls}
           >
+            <PictureInPicture2 className="size-4" />
+          </button>
+          <button onClick={toggleFullscreen} aria-label="fullscreen" className={btnCls}>
             <Maximize2 className="size-4" />
           </button>
-          <button
-            onClick={close}
-            aria-label="close"
-            className="size-8 flex items-center justify-center bg-(--mrms-ink)/70 text-(--mrms-paper) border-0 cursor-pointer hover:bg-(--mrms-ink)"
-          >
+          <button onClick={close} aria-label="close" className={btnCls}>
             <X className="size-4" />
           </button>
         </div>
-        {title && (
-          <div className="absolute top-2 left-3 right-24 font-display text-[13px] text-(--mrms-paper) truncate drop-shadow">
+        {title && !pip && (
+          <div className="absolute top-2 left-3 right-32 font-display text-[13px] text-(--mrms-paper) truncate drop-shadow">
             {title}
           </div>
         )}
-        {preview && (
+        {preview && !pip && (
           <div className="absolute bottom-2 left-0 right-0 flex justify-center">
             <a
               href="/register"
