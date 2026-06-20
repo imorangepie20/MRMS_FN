@@ -122,7 +122,7 @@ export function SharedPlaylistClient({ shareId }: { shareId: string }) {
 
       {/* ─── 본문 ─── */}
       <div className="mx-auto max-w-[900px] px-5 md:px-8">
-        <div className="-mt-1 mb-9 flex flex-wrap items-center gap-3">
+        <div className="mt-8 mb-9 flex flex-wrap items-center gap-3 md:mt-10">
           {connected ? <PlayAllButton tracks={tracks} /> : <ConnectToPlay />}
           {playlist.tidal_playlist_id && (
             <a
