@@ -100,7 +100,7 @@ export function VideoPlayerOverlay() {
       <div
         ref={boxRef}
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-[960px] aspect-video bg-black"
+        className="relative w-full max-w-[1248px] aspect-video bg-black"
       >
         {source === "youtube" ? (
           <iframe
