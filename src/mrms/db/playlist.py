@@ -209,7 +209,7 @@ def get_playlist_by_share_id(
     with conn.cursor() as cur:
         cur.execute(
             '''SELECT p.id, p.name, p.description, p."createdAt", u."displayName",
-                      p."tidalPlaylistId"
+                      p."tidalPlaylistId", p."sourceRef"
                FROM "Playlist" p
                JOIN "User" u ON u.id = p."userId"
                WHERE p."shareId" = %s''',
@@ -218,13 +218,18 @@ def get_playlist_by_share_id(
         row = cur.fetchone()
     if not row:
         return None
+    # Tidal 카피가 있으면 그것, 없으면 가져온 원본 Tidal 플레이리스트(sourceRef)로 폴백.
+    # 가져온 Tidal 플레이리스트는 원본이 이미 Tidal에 있어 카피를 새로 만들 필요 없음.
+    tidal_id = row[5]
+    if not tidal_id and isinstance(row[6], str) and row[6].startswith("tidal:"):
+        tidal_id = row[6].split(":", 1)[1]
     return {
         "id": row[0],
         "name": row[1],
         "description": row[2],
         "created_at": row[3].isoformat() if row[3] else None,
         "owner_name": row[4],
-        "tidal_playlist_id": row[5],
+        "tidal_playlist_id": tidal_id,
     }
 
 

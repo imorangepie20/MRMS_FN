@@ -135,6 +135,32 @@ def test_get_playlist_by_share_id(db_conn: psycopg.Connection):
     assert get_playlist_by_share_id(db_conn, "nonexistent-token") is None
 
 
+def test_get_playlist_by_share_id_tidal_source_fallback(
+    db_conn: psycopg.Connection, cleanup
+):
+    """가져온 Tidal 플레이리스트(sourceRef=tidal:uuid)는 카피가 없어도 원본 uuid로
+    tidal_playlist_id 폴백 → 공유페이지 'Tidal에서 재생' 버튼. spotify 소스는 폴백 안 함."""
+    user_id = get_or_create_user(db_conn, f"shtdl-{_uuid.uuid4().hex[:8]}@test.com")
+    db_conn.commit()
+    track_ids = _track_ids(db_conn, 1)
+    if not track_ids:
+        pytest.skip("Track 데이터 부족")
+
+    # Tidal 소스 → 카피(tidalPlaylistId) 없어도 원본 uuid로 폴백
+    pid_t = create_imported_playlist(db_conn, user_id, "tidal:ORIGUUID123", "Coffee", track_ids)
+    cleanup('DELETE FROM "Playlist" WHERE id = %s', (pid_t,))
+    cleanup('DELETE FROM "PlaylistTrack" WHERE "playlistId" = %s', (pid_t,))
+    token_t = set_playlist_share(db_conn, pid_t, True)
+    assert get_playlist_by_share_id(db_conn, token_t)["tidal_playlist_id"] == "ORIGUUID123"
+
+    # Spotify 소스 → 폴백 안 함(Tidal 원본 없음) → None
+    pid_s = create_imported_playlist(db_conn, user_id, "spotify:SPID456", "Jazz", track_ids)
+    cleanup('DELETE FROM "Playlist" WHERE id = %s', (pid_s,))
+    cleanup('DELETE FROM "PlaylistTrack" WHERE "playlistId" = %s', (pid_s,))
+    token_s = set_playlist_share(db_conn, pid_s, True)
+    assert get_playlist_by_share_id(db_conn, token_s)["tidal_playlist_id"] is None
+
+
 def test_create_imported_playlist_idempotent(db_conn: psycopg.Connection, cleanup):
     """sourceRef로 멱등 — 같은 source 재호출 시 None(중복 생성 X). 순서·sourceRef 보존."""
     user_id = get_or_create_user(db_conn, f"plimp-{_uuid.uuid4().hex[:8]}@test.com")
