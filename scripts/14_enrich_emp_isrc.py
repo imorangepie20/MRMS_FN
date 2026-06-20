@@ -24,7 +24,11 @@ import httpx
 import psycopg
 from rich.console import Console
 
-from mrms.emp.isrc_enrich import apply_one, classify_one, fetch_synthetic_emp_tracks
+from mrms.emp.isrc_enrich import (
+    apply_with_recheck,
+    classify_one,
+    fetch_synthetic_emp_tracks,
+)
 
 console = Console()
 
@@ -38,8 +42,6 @@ async def run(conn: psycopg.Connection, limit: int, dry_run: bool, concurrency: 
         return
 
     sem = asyncio.Semaphore(concurrency)
-    counts: Counter = Counter()
-    samples: list[str] = []
 
     async with httpx.AsyncClient(
         timeout=15.0, headers={"User-Agent": "MRMS/0.1 (+research)"}
@@ -51,17 +53,34 @@ async def run(conn: psycopg.Connection, limit: int, dry_run: bool, concurrency: 
 
         results = await asyncio.gather(*[classify(t) for t in tracks])
 
+    # classify는 읽기 전용 — 누적된 읽기 트랜잭션 닫기(stale snapshot/long-open tx 방지)
+    conn.rollback()
+
+    counts: Counter = Counter()
+    samples: list[str] = []
     for t, (action, real_isrc, canonical_id) in results:
-        counts[action] += 1
         if len(samples) < 15:
-            samples.append(f"  {action:5} {t.isrc} → {real_isrc or '-'}  | {t.artist} — {t.title}")
-        if not dry_run:
-            apply_one(conn, t, action, real_isrc, canonical_id)
+            samples.append(
+                f"  {action:5} {t.isrc} → {real_isrc or '-'}  | {t.artist} — {t.title}"
+            )
+        if dry_run:
+            counts[action] += 1
+            continue
+        # 트랙별 격리(spec §7): 1건 실패가 전체 run을 오염시키지 않게 rollback 후 계속
+        try:
+            final = apply_with_recheck(conn, t, action, real_isrc, canonical_id)
+            counts[final] += 1
+        except Exception as e:  # noqa: BLE001 — per-track isolation per spec §7
+            conn.rollback()
+            console.print(f"[red]apply 실패[/red] {t.isrc} {t.artist} — {t.title}: {e}")
+            counts["error"] += 1
 
     console.print("\n".join(samples))
     verb = "would" if dry_run else "did"
-    console.print(f"\n[bold]{verb}[/bold]: merge {counts['merge']:,} / "
-                  f"rekey {counts['rekey']:,} / skip {counts['skip']:,}")
+    console.print(
+        f"\n[bold]{verb}[/bold]: merge {counts['merge']:,} / "
+        f"rekey {counts['rekey']:,} / skip {counts['skip']:,} / error {counts['error']:,}"
+    )
 
 
 def main() -> None:

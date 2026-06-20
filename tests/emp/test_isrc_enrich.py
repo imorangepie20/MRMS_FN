@@ -6,6 +6,7 @@ import pytest
 
 from mrms.emp.isrc_enrich import (
     SyntheticTrack,
+    apply_with_recheck,
     classify_one,
     fetch_synthetic_emp_tracks,
     find_canonical,
@@ -204,3 +205,21 @@ async def test_classify_one_branches(db_conn, cleanup):
     # 해결 실패 → skip
     with patch("mrms.emp.isrc_enrich.resolve_real_isrc", new=AsyncMock(return_value=None)):
         assert await classify_one(db_conn, None, synth) == ("skip", None, None)
+
+
+def test_apply_with_recheck_demotes_stale_rekey_to_merge(db_conn, cleanup):
+    """apply 직전 같은 real ISRC가 카탈로그에 선점돼 있으면 rekey→merge 강등."""
+    sfx = uuid.uuid4().hex[:8]
+    real = f"USRC5{sfx}"
+    canon = _make_track(db_conn, cleanup, real, in_emp=True)   # 이미 카탈로그에 real ISRC
+    synth = _make_track(db_conn, cleanup, f"emp_apple_{sfx}", in_emp=True)
+    track = SyntheticTrack(track_id=synth, isrc=f"emp_apple_{sfx}", title="T", artist="A")
+
+    # classify가 'rekey'로 판단했었다고 가정 → apply 시점엔 canon이 real을 선점한 상태
+    result = apply_with_recheck(db_conn, track, "rekey", real, None)
+
+    assert result == "merge"          # 강등됨
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT 1 FROM "Track" WHERE id = %s', (synth,))
+        assert cur.fetchone() is None  # merge로 synth 삭제(rekey였으면 살아있었을 것)
+    assert canon  # (lint: canon 사용)

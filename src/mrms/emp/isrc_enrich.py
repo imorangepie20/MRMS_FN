@@ -212,3 +212,19 @@ async def enrich_one(
     action, real_isrc, canonical_id = await classify_one(conn, client, track)
     apply_one(conn, track, action, real_isrc, canonical_id)
     return action
+
+
+def apply_with_recheck(
+    conn: psycopg.Connection, track: SyntheticTrack,
+    action: str, real_isrc: str | None, canonical_id: str | None,
+) -> str:
+    """apply 직전 staleness 재확인 후 적용. 배치 내 앞선 apply가 같은 real ISRC를
+    선점했으면(find_canonical 발견) stale 'rekey'를 'merge'로 강등(Track.isrc UNIQUE
+    충돌 방지). 수행한 최종 action 반환.
+    """
+    if action == "rekey" and real_isrc:
+        fresh = find_canonical(conn, real_isrc, track.track_id)
+        if fresh:
+            action, canonical_id = "merge", fresh
+    apply_one(conn, track, action, real_isrc, canonical_id)
+    return action
