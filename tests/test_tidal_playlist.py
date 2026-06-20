@@ -3,7 +3,11 @@ import httpx as _httpx
 import pytest
 import respx
 
-from mrms.tidal_playlist import TIDAL_API, create_tidal_playlist
+from mrms.tidal_playlist import (
+    TIDAL_API,
+    create_tidal_playlist,
+    make_tidal_playlist_public,
+)
 
 
 @pytest.mark.asyncio
@@ -46,6 +50,17 @@ async def test_create_tidal_playlist_batches_over_50():
     # 50+50+20 → 3배치, 배치마다 etag 재취득
     assert a.calls.call_count == 3
     assert g.calls.call_count == 3
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_make_tidal_playlist_public():
+    respx.get(f"{TIDAL_API}/sessions").mock(
+        return_value=_httpx.Response(200, json={"userId": 1, "countryCode": "KR"}))
+    pub = respx.put(f"{TIDAL_API}/playlists/u-1/set-public").mock(
+        return_value=_httpx.Response(200, json={}))
+    await make_tidal_playlist_public("tok", "u-1")
+    assert pub.called
 
 
 @pytest.mark.asyncio

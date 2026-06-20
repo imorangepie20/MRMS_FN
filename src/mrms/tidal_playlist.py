@@ -67,3 +67,21 @@ async def create_tidal_playlist(
             a.raise_for_status()
 
     return uuid
+
+
+async def make_tidal_playlist_public(
+    access_token: str, uuid: str, *, timeout: float = 10.0
+) -> None:
+    """플레이리스트를 공개로 전환. Tidal 플레이리스트는 기본 private라 공개 안 하면
+    공유 링크가 404. 이미 만들어진 것도 복구할 수 있게 별도 헬퍼로 분리(멱등)."""
+    auth = {"Authorization": f"Bearer {access_token}"}
+    async with httpx.AsyncClient(timeout=timeout) as http:
+        s = await http.get(f"{TIDAL_API}/sessions", headers=auth)
+        s.raise_for_status()
+        country = s.json().get("countryCode") or "KR"
+        r = await http.put(
+            f"{TIDAL_API}/playlists/{uuid}/set-public",
+            headers=auth,
+            params={"countryCode": country},
+        )
+        r.raise_for_status()
