@@ -1,23 +1,28 @@
 """Playlists API — create / list / get tracks."""
 from __future__ import annotations
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from mrms.api.auth_tidal import _get_access_token
 from mrms.api.deps import db_conn, get_current_user_id
 from mrms.db.playlist import (
     add_tracks_to_playlist,
     create_playlist,
     delete_playlist,
     get_playlist,
+    get_playlist_tidal_id,
     get_playlist_tracks,
     list_user_playlists,
     remove_track_from_playlist,
     reorder_playlist_tracks,
     set_playlist_share,
+    set_playlist_tidal_id,
     update_playlist_meta,
 )
-from mrms.db.user_track import get_user_track_states
+from mrms.db.user_track import get_oauth, get_user_track_states
+from mrms.tidal_playlist import create_tidal_playlist
 
 router = APIRouter(tags=["playlists"])
 
@@ -103,22 +108,50 @@ def playlist_tracks_endpoint(
 
 
 @router.post("/api/user/playlists/{playlist_id}/share")
-def toggle_playlist_share(
+async def toggle_playlist_share(
     playlist_id: str,
     body: ShareRequest,
     user_id: str = Depends(get_current_user_id),
     conn=Depends(db_conn),
 ):
-    """공유 토글 (소유자만). enabled=true면 공개 링크 생성, false면 해제."""
+    """공유 토글 (소유자만). enabled=true면 공개 링크 생성, false면 해제.
+    공유 켤 때 소유자가 Tidal 연결돼 있으면 본인 Tidal에 동일 플레이리스트를 1회 생성해
+    공유페이지의 'Tidal에서 재생' 링크로 노출(실패해도 공유는 정상 진행)."""
     pl = get_playlist(conn, playlist_id)
     if not pl:
         raise HTTPException(404, "playlist not found")
     if pl["user_id"] != user_id:
         raise HTTPException(403, "forbidden")
     share_id = set_playlist_share(conn, playlist_id, body.enabled)
+
+    tidal_created = False
+    if (
+        body.enabled
+        and not get_playlist_tidal_id(conn, playlist_id)  # 아직 안 만든 경우만
+        and get_oauth(conn, user_id, "tidal")             # 소유자 Tidal 연결됨
+    ):
+        track_ids: list[str] = []
+        seen: set[str] = set()
+        for t in get_playlist_tracks(conn, playlist_id):
+            tid = t.get("tidal_track_id")
+            if tid and str(tid) not in seen:
+                seen.add(str(tid))
+                track_ids.append(str(tid))
+        if track_ids:
+            try:
+                access_token = await _get_access_token(user_id, conn)
+                uuid = await create_tidal_playlist(
+                    access_token, pl["name"], pl.get("description"), track_ids
+                )
+                set_playlist_tidal_id(conn, playlist_id, uuid)
+                tidal_created = True
+            except (httpx.HTTPError, KeyError):
+                tidal_created = False  # best-effort — 공유는 그대로 진행
+
     return {
         "share_id": share_id,
         "share_url": f"/p/{share_id}" if share_id else None,
+        "tidal_created": tidal_created,
     }
 
 

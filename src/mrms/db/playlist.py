@@ -169,10 +169,11 @@ def set_playlist_share(
 def get_playlist_by_share_id(
     conn: psycopg.Connection, share_id: str
 ) -> dict | None:
-    """공유 토큰으로 플레이리스트 메타(+owner displayName). 없으면 None."""
+    """공유 토큰으로 플레이리스트 메타(+owner displayName, +Tidal 플레이리스트 id). 없으면 None."""
     with conn.cursor() as cur:
         cur.execute(
-            '''SELECT p.id, p.name, p.description, p."createdAt", u."displayName"
+            '''SELECT p.id, p.name, p.description, p."createdAt", u."displayName",
+                      p."tidalPlaylistId"
                FROM "Playlist" p
                JOIN "User" u ON u.id = p."userId"
                WHERE p."shareId" = %s''',
@@ -187,7 +188,28 @@ def get_playlist_by_share_id(
         "description": row[2],
         "created_at": row[3].isoformat() if row[3] else None,
         "owner_name": row[4],
+        "tidal_playlist_id": row[5],
     }
+
+
+def get_playlist_tidal_id(conn: psycopg.Connection, playlist_id: str) -> str | None:
+    """이미 생성된 Tidal 플레이리스트 uuid (없으면 None)."""
+    with conn.cursor() as cur:
+        cur.execute('SELECT "tidalPlaylistId" FROM "Playlist" WHERE id = %s', (playlist_id,))
+        row = cur.fetchone()
+    return row[0] if row and row[0] else None
+
+
+def set_playlist_tidal_id(
+    conn: psycopg.Connection, playlist_id: str, tidal_uuid: str
+) -> None:
+    """공유 시 생성한 Tidal 플레이리스트 uuid 저장."""
+    with conn.cursor() as cur:
+        cur.execute(
+            'UPDATE "Playlist" SET "tidalPlaylistId" = %s WHERE id = %s',
+            (tidal_uuid, playlist_id),
+        )
+    conn.commit()
 
 
 def add_tracks_to_playlist(

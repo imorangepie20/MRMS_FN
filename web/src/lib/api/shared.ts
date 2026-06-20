@@ -10,6 +10,8 @@ export interface SharedPlaylist {
     description: string | null;
     owner_name: string | null;
     created_at: string | null;
+    /** 공유 시 소유자 Tidal에 생성된 플레이리스트 uuid (있으면 'Tidal에서 재생' 링크). */
+    tidal_playlist_id: string | null;
   };
   tracks: ModalTrack[];
 }

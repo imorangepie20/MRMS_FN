@@ -122,8 +122,18 @@ export function SharedPlaylistClient({ shareId }: { shareId: string }) {
 
       {/* ─── 본문 ─── */}
       <div className="mx-auto max-w-[900px] px-5 md:px-8">
-        <div className="-mt-1 mb-9">
+        <div className="-mt-1 mb-9 flex flex-wrap items-center gap-3">
           {connected ? <PlayAllButton tracks={tracks} /> : <ConnectToPlay />}
+          {playlist.tidal_playlist_id && (
+            <a
+              href={`https://tidal.com/playlist/${playlist.tidal_playlist_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 border border-(--mrms-ink) px-4 py-2 font-mono text-[11px] uppercase tracking-editorial text-(--mrms-ink) no-underline transition-colors hover:bg-(--mrms-ink) hover:text-(--mrms-paper)"
+            >
+              Tidal에서 재생 <span aria-hidden>↗</span>
+            </a>
+          )}
         </div>
 
         <div className="mb-3 flex items-end justify-between gap-4 border-b border-(--mrms-ink) pb-1">
