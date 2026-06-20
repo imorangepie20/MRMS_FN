@@ -137,3 +137,33 @@ def test_merge_track_repoints_fks_and_deletes_synth(db_conn, cleanup):
         assert cur.fetchone()[0] == canon
         cur.execute('SELECT "trackId" FROM "EMPSource" WHERE source_id = %s', (f"src_{sfx}",))
         assert cur.fetchone()[0] == canon
+
+
+def test_merge_track_drops_conflicting_rows(db_conn, cleanup):
+    """canonical이 이미 같은 unique 키(platform)를 가지면 synth 행은 drop(이동 X)."""
+    sfx = uuid.uuid4().hex[:8]
+    synth = _make_track(db_conn, cleanup, f"emp_apple_{sfx}", in_emp=True)
+    canon = _make_track(db_conn, cleanup, f"USRC4{sfx}", in_emp=True)
+    # synth와 canon 둘 다 apple TrackPlatform 보유(platformTrackId 다름) → platform 충돌
+    with db_conn.cursor() as cur:
+        cur.execute('''INSERT INTO "TrackPlatform" (id,"trackId",platform,"platformTrackId")
+                       VALUES (%s,%s,'apple',%s)''', (f"tps_{sfx}", synth, f"spid_{sfx}"))
+        cur.execute('''INSERT INTO "TrackPlatform" (id,"trackId",platform,"platformTrackId")
+                       VALUES (%s,%s,'apple',%s)''', (f"tpc_{sfx}", canon, f"cpid_{sfx}"))
+    db_conn.commit()
+    cleanup('DELETE FROM "TrackPlatform" WHERE "platformTrackId" = %s', (f"spid_{sfx}",))
+    cleanup('DELETE FROM "TrackPlatform" WHERE "platformTrackId" = %s', (f"cpid_{sfx}",))
+
+    merge_track(db_conn, synth, canon)
+
+    with db_conn.cursor() as cur:
+        # synth Track 삭제됨
+        cur.execute('SELECT 1 FROM "Track" WHERE id = %s', (synth,))
+        assert cur.fetchone() is None
+        # canonical은 apple TrackPlatform 정확히 1개 = 자기 것(cpid). synth(spid)는 drop.
+        cur.execute('SELECT "platformTrackId" FROM "TrackPlatform" '
+                    'WHERE "trackId" = %s AND platform = %s', (canon, "apple"))
+        assert [r[0] for r in cur.fetchall()] == [f"cpid_{sfx}"]
+        # synth를 참조하는 TrackPlatform 없음
+        cur.execute('SELECT count(*) FROM "TrackPlatform" WHERE "trackId" = %s', (synth,))
+        assert cur.fetchone()[0] == 0

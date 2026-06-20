@@ -114,6 +114,10 @@ def find_canonical(
 
 
 # (table, [trackId 외 unique 컬럼]) — 충돌 판정용. 스펙 §5에서 DB 확인됨.
+# DB의 information_schema 기준 Track을 참조하는 FK 테이블 전부(6개).
+# TrackLyrics/TrackInteraction은 schema.prisma엔 onDelete:Cascade로 선언돼 있으나
+# 아직 테이블이 생성(마이그레이션)돼 있지 않아 제외 — 둘 다 미사용(ADR-003). 해당
+# 테이블이 materialize되면(특히 TrackInteraction 행동신호) 여기 추가해 repoint할 것.
 _MERGE_TABLES: list[tuple[str, list[str]]] = [
     ("TrackPlatform", ["platform"]),
     ("EMPSource", ["platform", "source_id"]),
@@ -137,7 +141,7 @@ def _repoint_or_drop(
                   AND NOT EXISTS (
                     SELECT 1 FROM "{table}" c
                     WHERE c."trackId" = %(canon)s AND {not_exists}
-                  )''',  # noqa: S608 — table/cols는 상수 _MERGE_TABLES 출처, 값은 bound
+                  )''',  # table/cols는 상수 _MERGE_TABLES 출처, 값은 bound
             {"canon": canonical_id, "synth": synth_id},
         )
         cur.execute(f'DELETE FROM "{table}" WHERE "trackId" = %s', (synth_id,))
