@@ -10,7 +10,7 @@ from pgvector.psycopg import register_vector
 
 from mrms.db.playlist import create_imported_playlist
 from mrms.db.user_track import get_oauth, upsert_user_track
-from mrms.emp.base import safe_rollback
+from mrms.emp.base import safe_rollback, upsert_platform_track
 from mrms.onboarding.spotify_collection import (
     fetch_spotify_favorite_tracks,
     fetch_spotify_playlist_tracks,
@@ -154,16 +154,24 @@ def _create_imported_playlists(
     conn: psycopg.Connection,
     user_id: str,
     platform: str,
-    per_playlist: list[tuple[str, str, list[str]]],
-    platform_to_internal: dict[str, str],
+    per_playlist: list[tuple[str, str, list[dict]]],
 ) -> None:
-    """가져온 각 원본 플레이리스트를 일반 Playlist로 흡수(순서 보존·멱등, best-effort).
-    per_playlist = [(platform_playlist_id, name, ordered platform_track_ids), ...]."""
-    for pl_id, pl_name, platform_ids in per_playlist:
+    """가져온 각 원본 플레이리스트를 일반 Playlist로 흡수 — **전곡**(순서 보존·멱등, best-effort).
+    per_playlist = [(platform_playlist_id, name, [track_meta dict]), ...].
+    각 트랙을 upsert_platform_track으로 카탈로그에 매칭(reuse)/미매칭이면 생성 → ordered
+    internal track_id. 미매칭 트랙은 임베딩 없어 추천엔 자동 제외(재생·표시만), UserTrack 미추가."""
+    for pl_id, pl_name, tracks_meta in per_playlist:
         seen: set[str] = set()
         ids: list[str] = []
-        for pid in platform_ids:
-            iid = platform_to_internal.get(pid)
+        for t in tracks_meta:
+            try:
+                iid = upsert_platform_track(
+                    conn, platform, t["id"], t.get("title") or "", t.get("artist") or "Unknown",
+                    isrc=t.get("isrc"), cover_url=t.get("cover"), duration_ms=t.get("duration_ms"),
+                )
+            except Exception:
+                safe_rollback(conn)
+                continue
             if iid and iid not in seen:
                 seen.add(iid)
                 ids.append(iid)
@@ -171,6 +179,7 @@ def _create_imported_playlists(
             continue
         try:
             create_imported_playlist(conn, user_id, f"{platform}:{pl_id}", pl_name, ids)
+            conn.commit()  # 멱등 skip이어도 catalog upsert 영속화
         except Exception:
             safe_rollback(conn)
 
@@ -196,7 +205,7 @@ async def _run_tidal_collection(
     )
 
     playlist_track_ids_set: set[str] = set()
-    per_playlist: list[tuple[str, str, list[str]]] = []  # (uuid, title, ordered tidal ids)
+    per_playlist: list[tuple[str, str, list[dict]]] = []  # (uuid, title, [track meta])
     for i, (pl_uuid, pl_title) in enumerate(playlists):
         status.set(
             "fetching_favorites",
@@ -207,8 +216,8 @@ async def _run_tidal_collection(
             tracks = await fetch_tidal_playlist_tracks(
                 access_token=access_token, playlist_uuid=pl_uuid, country="KR"
             )
-            playlist_track_ids_set.update(tracks)
-            per_playlist.append((pl_uuid, pl_title, list(tracks)))
+            playlist_track_ids_set.update(t["id"] for t in tracks)
+            per_playlist.append((pl_uuid, pl_title, tracks))
         except Exception:
             continue
 
@@ -248,9 +257,8 @@ async def _run_tidal_collection(
             )
     conn.commit()
 
-    # 가져온 각 플레이리스트를 일반 Playlist로 흡수(순서 보존·멱등).
-    tidal_to_internal = {tid: iid for iid, tid in internal_to_tidal.items()}
-    _create_imported_playlists(conn, user_id, "tidal", per_playlist, tidal_to_internal)
+    # 가져온 각 플레이리스트를 일반 Playlist로 흡수 — 전곡(미매칭은 카탈로그 생성).
+    _create_imported_playlists(conn, user_id, "tidal", per_playlist)
 
 
 async def _run_spotify_collection(
@@ -275,7 +283,7 @@ async def _run_spotify_collection(
 
     playlist_isrcs: dict[str, str | None] = {}
     playlist_track_ids_set: set[str] = set()
-    per_playlist: list[tuple[str, str, list[str]]] = []  # (id, name, ordered spotify ids)
+    per_playlist: list[tuple[str, str, list[dict]]] = []  # (id, name, [track meta])
     playlist_fetch_errors = 0
     last_playlist_error = ""
     for i, (pl_id, pl_name) in enumerate(playlists):
@@ -288,9 +296,9 @@ async def _run_spotify_collection(
             tracks = await fetch_spotify_playlist_tracks(
                 access_token=access_token, playlist_id=pl_id
             )
-            playlist_isrcs.update(tracks)
-            playlist_track_ids_set.update(tracks.keys())
-            per_playlist.append((pl_id, pl_name, list(tracks.keys())))
+            playlist_isrcs.update({t["id"]: t["isrc"] for t in tracks})
+            playlist_track_ids_set.update(t["id"] for t in tracks)
+            per_playlist.append((pl_id, pl_name, tracks))
         except Exception as e:
             playlist_fetch_errors += 1
             last_playlist_error = f"{type(e).__name__}: {str(e)[:150]}"
@@ -379,6 +387,5 @@ async def _run_spotify_collection(
             )
     conn.commit()
 
-    # 가져온 각 플레이리스트를 일반 Playlist로 흡수(순서 보존·멱등).
-    spotify_to_internal = {sid: iid for iid, sid in internal_to_spotify.items()}
-    _create_imported_playlists(conn, user_id, "spotify", per_playlist, spotify_to_internal)
+    # 가져온 각 플레이리스트를 일반 Playlist로 흡수 — 전곡(미매칭은 카탈로그 생성).
+    _create_imported_playlists(conn, user_id, "spotify", per_playlist)

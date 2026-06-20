@@ -17,30 +17,33 @@ def _stub_discovery():
         yield
 
 
-def test_create_imported_playlists_helper(db_conn, cleanup):
-    """가져온 플레이리스트를 일반 Playlist로 흡수 — 역매핑·순서 보존·dedup·미매칭 skip."""
+def test_create_imported_playlists_full_import(db_conn, cleanup):
+    """전곡 import — 미매칭 트랙도 upsert_platform_track으로 카탈로그 생성. 순서·dedup·sourceRef."""
+    from mrms.db.ids import stable_id as _id
     from mrms.db.playlist import get_playlist_tracks
     from mrms.db.user_track import get_or_create_user
     from mrms.onboarding.pipeline import _create_imported_playlists
 
-    uid = get_or_create_user(db_conn, "imppl_helper@test.com")
+    uid = get_or_create_user(db_conn, "imppl_full@test.com")
     db_conn.commit()
-    with db_conn.cursor() as cur:
-        cur.execute('SELECT id FROM "Track" LIMIT 3')
-        tids = [r[0] for r in cur.fetchall()]
-    if len(tids) < 3:
-        pytest.skip("Track 데이터 부족")
-    # 등록 역순 실행 → 자식(PlaylistTrack) 먼저, 부모(Playlist/User) 나중
+    # 등록 역순 실행 → 자식 먼저
     cleanup('DELETE FROM "User" WHERE id = %s', (uid,))
+    cleanup('DELETE FROM "Artist" WHERE id = %s', (_id("artist|imp artist"),))
+    cleanup('DELETE FROM "Track" WHERE isrc = ANY(%s)', (["IMPTST001", "IMPTST002"],))
     cleanup('DELETE FROM "Playlist" WHERE "userId" = %s', (uid,))
+    cleanup('DELETE FROM "TrackPlatform" WHERE "platformTrackId" = ANY(%s)',
+            (["imptst_1", "imptst_2"],))
     cleanup(
         'DELETE FROM "PlaylistTrack" WHERE "playlistId" IN '
         '(SELECT id FROM "Playlist" WHERE "userId" = %s)', (uid,))
 
-    platform_to_internal = {"sp1": tids[0], "sp2": tids[1], "sp3": tids[2]}
-    # 순서: sp1, 미매칭(sp9), sp2, sp1(중복), sp3 → 결과 [t0, t1, t2]
-    per_playlist = [("PLX", "My Mix", ["sp1", "sp9", "sp2", "sp1", "sp3"])]
-    _create_imported_playlists(db_conn, uid, "spotify", per_playlist, platform_to_internal)
+    # 전부 미매칭(새 isrc) → 카탈로그에 생성됨. 순서 보존 + dup id 제거.
+    per_playlist = [("PLX", "My Mix", [
+        {"id": "imptst_1", "title": "T1", "artist": "Imp Artist", "isrc": "IMPTST001"},
+        {"id": "imptst_2", "title": "T2", "artist": "Imp Artist", "isrc": "IMPTST002"},
+        {"id": "imptst_1", "title": "T1", "artist": "Imp Artist", "isrc": "IMPTST001"},  # dup
+    ])]
+    _create_imported_playlists(db_conn, uid, "spotify", per_playlist)
 
     with db_conn.cursor() as cur:
         cur.execute('SELECT id, name, "sourceRef" FROM "Playlist" WHERE "userId" = %s', (uid,))
@@ -48,7 +51,10 @@ def test_create_imported_playlists_helper(db_conn, cleanup):
     assert len(rows) == 1
     pid, name, sref = rows[0]
     assert name == "My Mix" and sref == "spotify:PLX"
-    assert [t["track_id"] for t in get_playlist_tracks(db_conn, pid)] == tids[:3]
+    # 미매칭 2곡 카탈로그 생성 + 순서, dup 제거
+    t1 = _id("track|IMPTST001")
+    t2 = _id("track|IMPTST002")
+    assert [t["track_id"] for t in get_playlist_tracks(db_conn, pid)] == [t1, t2]
 
 
 @pytest.mark.asyncio

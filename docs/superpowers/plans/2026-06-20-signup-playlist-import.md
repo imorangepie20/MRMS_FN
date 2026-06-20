@@ -56,3 +56,13 @@
 - `onboarding/pipeline.py`: `_create_imported_playlists` 공용 헬퍼(역매핑·순서·dedup·미매칭 skip·멱등) + Tidal/Spotify collection에서 플레이리스트별 ordered 트랙 보관 → 매칭 후 호출.
 - 영향: fetch 반환타입 변경 호출처 = pipeline.py뿐(확인). 테스트: tidal_favorites·spotify_collection shape 갱신 + `test_create_imported_playlists_helper` 추가.
 - [x] 온보딩 13/13 pass, 앱 import 무결, 관련 35 pass, ruff 신규 클린 ✅
+
+### Task 9: 전곡 import — 미매칭 트랙 카탈로그 생성  ✅ 완료
+
+> 21/655 버그(match-only). 미매칭 트랙도 카탈로그에 만들어 전곡 import.
+
+- `emp/base.py`: `upsert_platform_track`(Track+TrackPlatform만, EMPSource·UserTrack 없음 — `upsert_youtube_track` 패턴). 미매칭 트랙용.
+- `fetch_{tidal,spotify}_playlist_tracks` → `list[dict]`(id·title·artist·isrc·cover·duration_ms) — Spotify Dev Mode 403라 메타 inline 캡처.
+- `pipeline._create_imported_playlists`: 각 트랙 `upsert_platform_track`(매칭 reuse/미매칭 생성) → 전곡 Playlist. taste flow(UserTrack)는 매칭만 유지 — 미매칭은 임베딩 없어 추천 자동 제외.
+- 영향: emp/base 순수 additive(EMP 임포터 무영향), fetch 호출처=pipeline뿐.
+- [x] 온보딩 13/13 + emp base 4 pass, fetch shape 테스트 갱신 + 전곡 helper 테스트, 앱 import 무결, ruff 신규 클린 ✅

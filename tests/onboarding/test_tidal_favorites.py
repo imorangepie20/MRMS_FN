@@ -108,7 +108,8 @@ async def test_fetch_playlist_tracks_skips_non_tracks():
     from mrms.onboarding.tidal_favorites import fetch_tidal_playlist_tracks
 
     with patch("httpx.AsyncClient", return_value=fake_client):
-        ids = await fetch_tidal_playlist_tracks(
+        tracks = await fetch_tidal_playlist_tracks(
             access_token="fake", playlist_uuid="pl-xyz", country="KR",
         )
-    assert ids == ["111", "333"]
+    assert [t["id"] for t in tracks] == ["111", "333"]  # video(222) 제외
+    assert tracks[0]["artist"] == "Unknown"

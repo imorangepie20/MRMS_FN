@@ -61,14 +61,15 @@ async def fetch_spotify_playlist_tracks(
     access_token: str,
     playlist_id: str,
     page_size: int = 100,
-) -> dict[str, str | None]:
-    """GET /playlists/{id}/items — {spotify_id: isrc} (local + episode 제외).
+) -> list[dict]:
+    """GET /playlists/{id}/items → 트랙 메타 [{id, title, artist, isrc, cover, duration_ms}].
+    local + episode 제외. 메타(특히 isrc·title·artist)는 미매칭 카탈로그 생성용(전곡 import).
 
     /items + additional_types=track 사용 (Spotify 권장 — /tracks는 deprecated).
     ISRC는 inline (external_ids.isrc) — /tracks?ids= 별도 호출 안 함 (Dev Mode 403).
     """
     headers = {"Authorization": f"Bearer {access_token}"}
-    result: dict[str, str | None] = {}
+    tracks: list[dict] = []
     url = (
         f"{SPOTIFY_API_BASE}/playlists/{playlist_id}/items"
         f"?limit={page_size}&offset=0&additional_types=track"
@@ -83,18 +84,25 @@ async def fetch_spotify_playlist_tracks(
             for item in data.get("items", []):
                 # /items endpoint: track 객체가 "item" 또는 "track" 키에 들어옴
                 track = item.get("item") or item.get("track")
-                if not track:
-                    continue
-                if track.get("is_local"):
+                if not track or track.get("is_local"):
                     continue
                 if track.get("type") and track["type"] != "track":
                     continue
                 tid = track.get("id")
-                if tid:
-                    isrc = (track.get("external_ids") or {}).get("isrc")
-                    result[tid] = isrc
+                if not tid:
+                    continue
+                arts = track.get("artists") or []
+                images = (track.get("album") or {}).get("images") or []
+                tracks.append({
+                    "id": tid,
+                    "title": track.get("name") or "",
+                    "artist": (arts[0].get("name") if arts else None) or "Unknown",
+                    "isrc": (track.get("external_ids") or {}).get("isrc"),
+                    "cover": images[0].get("url") if images else None,
+                    "duration_ms": track.get("duration_ms"),
+                })
             url = data.get("next")
 
-    return result
+    return tracks
 
 

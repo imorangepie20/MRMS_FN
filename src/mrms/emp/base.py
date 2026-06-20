@@ -54,6 +54,72 @@ def _get_or_create_album(
     return album_id
 
 
+def upsert_platform_track(
+    conn: psycopg.Connection,
+    platform: str,
+    platform_track_id: str,
+    title: str,
+    artist: str,
+    *,
+    isrc: str | None = None,
+    album_title: str | None = None,
+    duration_ms: int | None = None,
+    cover_url: str | None = None,
+) -> str:
+    """카탈로그 Track + TrackPlatform만 매칭/생성 (EMPSource·UserTrack 없음). track_id 반환.
+
+    온보딩에서 구독 플랫폼 플레이리스트의 '미매칭' 트랙을 카탈로그에 만들어 전곡 import
+    하기 위함 — 임베딩이 없으므로 추천(TrackEmbedding JOIN)에서 자동 제외, 재생·표시만.
+    TrackPlatform 매핑 reuse → isrc로 catalog 매칭 → 둘 다 없으면 신규. cover는 previewUrl.
+    commit 안 함 — 호출자가 트랜잭션 관리.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            '''SELECT "trackId" FROM "TrackPlatform"
+               WHERE platform = %s AND "platformTrackId" = %s LIMIT 1''',
+            (platform, platform_track_id),
+        )
+        row = cur.fetchone()
+        if row:
+            return row[0]
+
+    track_id: str | None = None
+    if isrc:
+        with conn.cursor() as cur:
+            cur.execute('SELECT id FROM "Track" WHERE isrc = %s', (isrc,))
+            row = cur.fetchone()
+            if row:
+                track_id = row[0]
+
+    if track_id is None:
+        artist_id = _get_or_create_artist(conn, artist or "Unknown")
+        album_id = _get_or_create_album(conn, album_title, artist_id) if album_title else None
+        track_isrc = isrc or f"{platform}_{platform_track_id}"
+        track_id = _id(f"track|{track_isrc}")
+        with conn.cursor() as cur:
+            cur.execute(
+                '''INSERT INTO "Track"
+                     (id, isrc, title, "titleNormalized", "durationMs", "artistId", "albumId")
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (id) DO NOTHING''',
+                (track_id, track_isrc, title, (title or "").lower().strip(),
+                 duration_ms or 0, artist_id, album_id),
+            )
+
+    tp_id = _id(f"tp|{platform}|{platform_track_id}|{track_id}")
+    with conn.cursor() as cur:
+        cur.execute(
+            '''INSERT INTO "TrackPlatform"
+                 (id, "trackId", platform, "platformTrackId", "previewUrl")
+               VALUES (%s, %s, %s, %s, %s)
+               ON CONFLICT ("trackId", platform) DO UPDATE
+                 SET "previewUrl" = COALESCE(
+                       "TrackPlatform"."previewUrl", EXCLUDED."previewUrl")''',
+            (tp_id, track_id, platform, platform_track_id, cover_url),
+        )
+    return track_id
+
+
 def upsert_track_and_emp_source(
     conn: psycopg.Connection,
     isrc: str | None,

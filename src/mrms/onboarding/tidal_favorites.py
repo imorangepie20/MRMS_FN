@@ -82,10 +82,11 @@ async def fetch_tidal_playlist_tracks(
     playlist_uuid: str,
     country: str = "KR",
     page_size: int = 100,
-) -> list[str]:
-    """플레이리스트 한 개의 트랙 ID 목록 (비-track items 제외)."""
+) -> list[dict]:
+    """플레이리스트 트랙 메타 목록 [{id, title, artist, isrc, cover, duration_ms}].
+    비-track(video 등) 제외. 메타는 미매칭 트랙 카탈로그 생성용(전곡 import)."""
     headers = {"Authorization": f"Bearer {access_token}"}
-    track_ids: list[str] = []
+    tracks: list[dict] = []
     offset = 0
 
     async with httpx.AsyncClient(timeout=15.0) as http:
@@ -104,11 +105,29 @@ async def fetch_tidal_playlist_tracks(
                 if track.get("type") and track["type"] != "track":
                     continue  # video, etc.
                 tid = track.get("id")
-                if tid is not None:
-                    track_ids.append(str(tid))
-            total = data.get("totalNumberOfItems", len(track_ids))
+                if tid is None:
+                    continue
+                artist = (track.get("artist") or {}).get("name")
+                if not artist:
+                    arts = track.get("artists") or []
+                    artist = arts[0].get("name") if arts else None
+                cover_id = (track.get("album") or {}).get("cover")
+                cover = (
+                    f"https://resources.tidal.com/images/{cover_id.replace('-', '/')}/320x320.jpg"
+                    if isinstance(cover_id, str) and "-" in cover_id else None
+                )
+                dur = track.get("duration")
+                tracks.append({
+                    "id": str(tid),
+                    "title": track.get("title") or "",
+                    "artist": artist or "Unknown",
+                    "isrc": track.get("isrc"),
+                    "cover": cover,
+                    "duration_ms": dur * 1000 if isinstance(dur, int) else None,
+                })
+            total = data.get("totalNumberOfItems", len(tracks))
             offset += len(items)
             if not items or offset >= total:
                 break
 
-    return track_ids
+    return tracks

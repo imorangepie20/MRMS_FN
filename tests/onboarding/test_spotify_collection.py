@@ -86,7 +86,8 @@ async def test_fetch_playlist_tracks_skips_local_and_episodes():
 
     with patch("httpx.AsyncClient", return_value=fake_client):
         result = await fetch_spotify_playlist_tracks(access_token="fake", playlist_id="PL_X")
-    assert result == {
-        "TR_X": "USRC10000001",
-        "TR_W": "USRC10000002",
-    }
+    assert [(t["id"], t["isrc"]) for t in result] == [
+        ("TR_X", "USRC10000001"),
+        ("TR_W", "USRC10000002"),
+    ]
+    assert result[0]["artist"] == "Unknown" and result[0]["title"] == ""

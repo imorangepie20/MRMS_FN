@@ -58,6 +58,18 @@
 - 회귀: 기존 importer 테스트(무영향 — _ingest는 track_id 반환만 추가), PGT 테스트(imported 관련 테스트 제거/수정).
 - tsc/eslint(프론트 imported 제거 반영).
 
+## 후속 — 전곡 import (미매칭 트랙 카탈로그 생성)
+
+> 문제: Tidal/Spotify 온보딩은 **MRMS 카탈로그에 이미 있는 트랙만 매칭(match-only)** → 655곡 플레이리스트가 21곡만 import(카탈로그 커버리지). YouTube 임포터는 미스곡을 카탈로그에 만들어 전곡 import — 이 비대칭을 해소.
+
+**결정(사용자 승인): 전곡 import.** 미매칭 플레이리스트 트랙도 카탈로그(Track+TrackPlatform)에 생성 → 플레이리스트엔 전곡, 재생 가능. 임베딩 없어 **취향/MRT엔 기여 안 함**(추천 쿼리가 TrackEmbedding JOIN이라 자동 제외). 취향 적재(UserTrack)는 기존 match-only 유지.
+
+**구현:**
+- `upsert_platform_track(conn, platform, platform_track_id, title, artist, isrc?, cover_url?, duration_ms?) -> track_id` (신규, `emp/base.py` — `upsert_youtube_track` 패턴: TrackPlatform 매핑 reuse → isrc로 catalog 매칭 → 없으면 Artist+Track 생성, **EMPSource 미생성**, commit 안 함). Spotify Dev Mode 403로 /tracks 별도 호출 불가 → **메타데이터는 플레이리스트 item에서 inline 캡처**.
+- `fetch_{tidal,spotify}_playlist_tracks` → `list[dict]`(id·title·artist·isrc·cover·duration_ms). pipeline taste flow는 `t["id"]`로 기존대로 매칭.
+- `_create_imported_playlists`: per_playlist의 각 트랙을 `upsert_platform_track`(매칭 reuse/미매칭 생성) → ordered internal id → `create_imported_playlist`(전곡).
+- 미매칭 트랙은 Playlist(PlaylistTrack)에만, UserTrack(취향)엔 미추가.
+
 ## 영향 범위 / 안전성
 
 - 변경: migration(추가), db helper(추가), importer 2개(track_id 반환 + Playlist 생성, source 태그 유지), PGT 백엔드/프론트 imported 제거.
