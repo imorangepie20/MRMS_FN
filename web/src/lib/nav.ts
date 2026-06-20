@@ -22,9 +22,8 @@ export const navGroups: NavGroup[] = [
   {
     label: "Sections",
     items: [
-      { title: "MRT", href: "/mrt", num: "§ 01", full: "Model Recommendation Tracks", badge: "50" },
-      { title: "EMP", href: "/emp", num: "§ 02", full: "External Music Pool", badge: "2.4k" },
-      { title: "Videos", href: "/videos", num: "§ 04", full: "Tidal Music Videos", badge: "MV" },
+      { title: "EMP", href: "/emp", num: "§ 01", full: "External Music Pool", badge: "2.4k" },
+      { title: "MRT", href: "/mrt", num: "§ 02", full: "Model Recommendation Tracks", badge: "50" },
       {
         title: "PGT", href: "/pgt", num: "§ 03", full: "Personal Generated Tracks", badge: "42",
         children: [
@@ -35,17 +34,16 @@ export const navGroups: NavGroup[] = [
           { title: "PCT", href: "/pgt?tab=pct" },
         ],
       },
+      { title: "Videos", href: "/videos", num: "§ 04", full: "Tidal Music Videos", badge: "MV" },
     ],
   },
   {
     label: "Discover",
     items: [
-      { title: "Search", href: "/search", num: "D1", badge: "⌘K" },
-      { title: "Wellness", href: "/wellness", num: "D4", full: "chicken soup clinic", badge: "·" },
-      { title: "Situation", href: "/situation", num: "D5", full: "situation desk", badge: "·" },
-      { title: "Charts", href: "/charts", num: "D2", badge: "—" },
-      { title: "Editor's picks", href: "/picks", num: "D3", badge: "·" },
-      { title: "Import", href: "/import", num: "D6", full: "Eat The Shared", badge: "·" },
+      { title: "Situation", href: "/situation", num: "D1", full: "situation desk", badge: "·" },
+      { title: "Wellness", href: "/wellness", num: "D2", full: "chicken soup clinic", badge: "·" },
+      { title: "Search", href: "/search", num: "D3", badge: "⌘K" },
+      { title: "Import", href: "/import", num: "D4", full: "Eat The Shared", badge: "·" },
     ],
   },
   {

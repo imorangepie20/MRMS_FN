@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { navGroups } from "@/lib/nav";
@@ -37,7 +38,8 @@ export function AppSidebar() {
       {/* Scrollable nav */}
       <nav className="flex-1 overflow-y-auto px-6 py-4 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-[var(--mrms-rule)]">
         {visibleGroups.map((group) => (
-          <div key={group.label} className="mb-5 last:mb-0">
+          <Fragment key={group.label}>
+          <div className="mb-5 last:mb-0">
             <div className="flex justify-between items-baseline pb-1.5 mb-1.5 border-b border-[var(--mrms-rule)]">
               <span className="font-mono text-[9px] tracking-editorial-wide uppercase text-[var(--mrms-ink-mute)]">
                 {group.label}
@@ -100,8 +102,10 @@ export function AppSidebar() {
               );
             })}
           </div>
+          {/* MY PLAYLISTS — Discover 다음, Settings 앞 */}
+          {group.label === "Discover" && user && <PlaylistNavSection />}
+          </Fragment>
         ))}
-        {user && <PlaylistNavSection />}
       </nav>
 
       {/* Sidebar foot */}
