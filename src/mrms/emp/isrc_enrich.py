@@ -179,3 +179,36 @@ def rekey_track(
             (real_isrc, synth_id),
         )
     conn.commit()
+
+
+async def classify_one(
+    conn: psycopg.Connection, client: httpx.AsyncClient | None, track: SyntheticTrack
+) -> tuple[str, str | None, str | None]:
+    """변형 없이 (action, real_isrc, canonical_id) 결정. action ∈ {merge, rekey, skip}."""
+    real = await resolve_real_isrc(client, track.title, track.artist)
+    if not real:
+        return ("skip", None, None)
+    canonical = find_canonical(conn, real, track.track_id)
+    if canonical:
+        return ("merge", real, canonical)
+    return ("rekey", real, None)
+
+
+def apply_one(
+    conn: psycopg.Connection, track: SyntheticTrack,
+    action: str, real_isrc: str | None, canonical_id: str | None,
+) -> None:
+    """classify_one 결과를 실제 적용."""
+    if action == "merge":
+        merge_track(conn, track.track_id, canonical_id)
+    elif action == "rekey":
+        rekey_track(conn, track.track_id, real_isrc)
+
+
+async def enrich_one(
+    conn: psycopg.Connection, client: httpx.AsyncClient | None, track: SyntheticTrack
+) -> str:
+    """classify + apply (live). 수행한 action 반환."""
+    action, real_isrc, canonical_id = await classify_one(conn, client, track)
+    apply_one(conn, track, action, real_isrc, canonical_id)
+    return action

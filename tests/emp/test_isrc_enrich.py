@@ -6,6 +6,7 @@ import pytest
 
 from mrms.emp.isrc_enrich import (
     SyntheticTrack,
+    classify_one,
     fetch_synthetic_emp_tracks,
     find_canonical,
     is_confident_match,
@@ -182,3 +183,24 @@ def test_rekey_track_updates_isrc(db_conn, cleanup):
     with db_conn.cursor() as cur:
         cur.execute('SELECT isrc FROM "Track" WHERE id = %s', (synth,))
         assert cur.fetchone()[0] == real
+
+
+@pytest.mark.asyncio
+async def test_classify_one_branches(db_conn, cleanup):
+    """resolve 결과 × 카탈로그 존재 여부로 merge/rekey/skip 분기."""
+    sfx = uuid.uuid4().hex[:8]
+    canon = _make_track(db_conn, cleanup, f"USRC3{sfx}", in_emp=True)
+    synth = SyntheticTrack(track_id=f"x_{sfx}", isrc=f"emp_apple_{sfx}",
+                           title="Test Title", artist="Test Artist")
+
+    # real ISRC가 카탈로그에 있음 → merge
+    with patch("mrms.emp.isrc_enrich.resolve_real_isrc",
+               new=AsyncMock(return_value=f"USRC3{sfx}")):
+        assert await classify_one(db_conn, None, synth) == ("merge", f"USRC3{sfx}", canon)
+    # real ISRC가 신규 → rekey
+    with patch("mrms.emp.isrc_enrich.resolve_real_isrc",
+               new=AsyncMock(return_value=f"NEW9{sfx}")):
+        assert await classify_one(db_conn, None, synth) == ("rekey", f"NEW9{sfx}", None)
+    # 해결 실패 → skip
+    with patch("mrms.emp.isrc_enrich.resolve_real_isrc", new=AsyncMock(return_value=None)):
+        assert await classify_one(db_conn, None, synth) == ("skip", None, None)
