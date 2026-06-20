@@ -14,6 +14,11 @@ import psycopg
 
 from mrms.ingest import deezer
 
+# 한 번 시도해 해결 실패(skip)한 트랙을 이 일수 동안 재시도하지 않음 — 파이프라인이
+# 매 run마다 영구-skip 꼬리를 Deezer로 재조회하는 비용 방지(resolveAttemptedAt 스탬프).
+# 기간 경과 후엔 재시도(그새 Deezer 커버리지가 늘었을 수 있음).
+RESOLVE_RETRY_DAYS = 30
+
 
 @dataclass(slots=True)
 class SyntheticTrack:
@@ -26,19 +31,21 @@ class SyntheticTrack:
 def fetch_synthetic_emp_tracks(
     conn: psycopg.Connection, limit: int = 0
 ) -> list[SyntheticTrack]:
-    """inEmp=TRUE & 합성 ISRC(언더스코어 포함) & 미임베딩 트랙. createdAt DESC."""
+    """inEmp=TRUE & 합성 ISRC(언더스코어 포함) & 미임베딩 & 최근 시도 안 한 트랙. createdAt DESC."""
     sql = '''
         SELECT t.id, t.isrc, t.title, ar.name
         FROM "Track" t
         JOIN "Artist" ar ON ar.id = t."artistId"
         WHERE t."inEmp" = TRUE
           AND t.isrc LIKE %s ESCAPE '!'
+          AND (t."resolveAttemptedAt" IS NULL
+               OR t."resolveAttemptedAt" < now() - make_interval(days => %s))
           AND NOT EXISTS (
             SELECT 1 FROM "TrackEmbedding" te WHERE te."trackId" = t.id
           )
         ORDER BY t."createdAt" DESC
     '''
-    params: list = ['%!_%']  # '!' escape → 리터럴 언더스코어 매칭
+    params: list = ['%!_%', RESOLVE_RETRY_DAYS]  # '!' escape → 리터럴 언더스코어 매칭
     if limit:
         sql += " LIMIT %s"
         params.append(limit)
@@ -205,13 +212,21 @@ def apply_one(
         rekey_track(conn, track.track_id, real_isrc)
 
 
+def mark_resolve_attempted(conn: psycopg.Connection, track_id: str) -> None:
+    """해결 실패(skip) 트랙에 시도 시각 스탬프 → RESOLVE_RETRY_DAYS 동안 재조회 제외."""
+    with conn.cursor() as cur:
+        cur.execute(
+            'UPDATE "Track" SET "resolveAttemptedAt" = now() WHERE id = %s', (track_id,)
+        )
+    conn.commit()
+
+
 async def enrich_one(
     conn: psycopg.Connection, client: httpx.AsyncClient | None, track: SyntheticTrack
 ) -> str:
-    """classify + apply (live). 수행한 action 반환."""
+    """classify + apply (live). staleness recheck + skip stamp 포함(apply_with_recheck)."""
     action, real_isrc, canonical_id = await classify_one(conn, client, track)
-    apply_one(conn, track, action, real_isrc, canonical_id)
-    return action
+    return apply_with_recheck(conn, track, action, real_isrc, canonical_id)
 
 
 def apply_with_recheck(
@@ -227,4 +242,6 @@ def apply_with_recheck(
         if fresh:
             action, canonical_id = "merge", fresh
     apply_one(conn, track, action, real_isrc, canonical_id)
+    if action == "skip":
+        mark_resolve_attempted(conn, track.track_id)
     return action

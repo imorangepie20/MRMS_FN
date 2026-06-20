@@ -27,6 +27,7 @@ model Track {
   album           Album?   @relation(fields: [albumId], references: [id])
 
   previewUrl      String?  // 랜딩 히어로 30s preview 캐시(write-through, Deezer/iTunes resolve)
+  resolveAttemptedAt DateTime?  // 합성-ISRC enrichment skip 시도 시각(재조회 throttle)
 
   platforms       TrackPlatform[]
   features        TrackAudioFeatures[]

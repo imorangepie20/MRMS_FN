@@ -11,6 +11,7 @@ from mrms.emp.isrc_enrich import (
     fetch_synthetic_emp_tracks,
     find_canonical,
     is_confident_match,
+    mark_resolve_attempted,
     merge_track,
     rekey_track,
     resolve_real_isrc,
@@ -239,3 +240,38 @@ def test_run_enrich_isrc_wrapper_returns_status_dict(monkeypatch):
     s = runner._run_enrich_isrc()
     assert s["status"] == "success"
     assert any("14_enrich_emp_isrc.py" in str(c) for c in captured["cmd"])
+
+
+def test_fetch_excludes_recently_attempted(db_conn, cleanup):
+    """resolveAttemptedAt이 최근이면 fetch 제외(재조회 throttle), 미시도는 포함."""
+    sfx = uuid.uuid4().hex[:8]
+    fresh = _make_track(db_conn, cleanup, f"emp_apple_{sfx}", in_emp=True)
+    recent = _make_track(db_conn, cleanup, f"emp_vibe_{sfx}", in_emp=True)
+    with db_conn.cursor() as cur:
+        cur.execute('UPDATE "Track" SET "resolveAttemptedAt" = now() WHERE id = %s', (recent,))
+    db_conn.commit()
+
+    ids = {t.track_id for t in fetch_synthetic_emp_tracks(db_conn)}
+    assert fresh in ids       # 미시도 → 포함
+    assert recent not in ids  # 최근 시도 → 제외
+
+
+def test_mark_resolve_attempted_excludes_from_fetch(db_conn, cleanup):
+    """mark_resolve_attempted 스탬프 후 fetch에서 빠진다."""
+    sfx = uuid.uuid4().hex[:8]
+    tid = _make_track(db_conn, cleanup, f"emp_apple_{sfx}", in_emp=True)
+    assert tid in {t.track_id for t in fetch_synthetic_emp_tracks(db_conn)}
+    mark_resolve_attempted(db_conn, tid)
+    assert tid not in {t.track_id for t in fetch_synthetic_emp_tracks(db_conn)}
+
+
+def test_apply_with_recheck_skip_stamps_attempted(db_conn, cleanup):
+    """skip이면 apply_with_recheck가 resolveAttemptedAt 스탬프 → 다음 run 재조회 제외."""
+    sfx = uuid.uuid4().hex[:8]
+    tid = _make_track(db_conn, cleanup, f"emp_vibe_{sfx}", in_emp=True)
+    track = SyntheticTrack(track_id=tid, isrc=f"emp_vibe_{sfx}", title="T", artist="A")
+
+    assert apply_with_recheck(db_conn, track, "skip", None, None) == "skip"
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT "resolveAttemptedAt" FROM "Track" WHERE id = %s', (tid,))
+        assert cur.fetchone()[0] is not None

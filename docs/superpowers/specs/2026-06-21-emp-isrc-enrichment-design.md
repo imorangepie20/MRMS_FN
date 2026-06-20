@@ -148,3 +148,23 @@ DB 테스트는 기존 `tests/` 패턴(`db_conn`, `cleanup` fixture, localhost:5
 - 적용 후: 합성-ISRC EMP 트랙 수 감소, 중복 Track 제거(같은 real ISRC 단일화),
   신규 ISRC 트랙은 02(ISRC)→03→10로 정밀 임베딩.
 - 임베딩 백로그(Q7) 감소가 "임베딩 추가"가 아니라 상당 부분 "중복 제거"에서 나옴.
+
+## 10. 후속 — skip-memo (재조회 throttle)
+
+**문제:** enrich_isrc는 `run_emp_pipeline` 스테이지로 매 run마다 전체 합성트랙을
+Deezer로 classify한다. 첫 풀 실행 결과(prod 2026-06-21): 29,808 중 merge 5,380 /
+rekey 9,401 / **skip 15,027**. skip은 합성 상태로 남아 **매 run마다 다시 Deezer로
+조회**되며(결과는 또 skip) 스테이지를 매번 수십 분~시간 단위로 늘린다.
+
+**해결:** `Track.resolveAttemptedAt` 컬럼(nullable timestamp) 추가.
+- 마이그레이션: `ALTER TABLE "Track" ADD COLUMN IF NOT EXISTS "resolveAttemptedAt" TIMESTAMP(3)`
+  (`prisma/migrations/20260621090000_track_resolve_attempted`).
+- `fetch_synthetic_emp_tracks`: `resolveAttemptedAt IS NULL OR < now() - make_interval(days => RESOLVE_RETRY_DAYS)`
+  조건 추가 → 최근 시도한 트랙 제외. `RESOLVE_RETRY_DAYS = 30`(경과 후 재시도 — Deezer
+  커버리지 증가 가능성).
+- `mark_resolve_attempted(conn, track_id)`: skip 트랙에 `resolveAttemptedAt = now()` 스탬프.
+- `apply_with_recheck`(및 `enrich_one`): 최종 action이 `skip`이면 스탬프.
+  merge(삭제)·rekey(비합성화)는 어차피 fetch에서 빠지므로 스탬프 불필요.
+
+**효과:** 둘째 run부터 영구-skip 꼬리(~15k)를 재Deezer하지 않음 → 스테이지가
+"신규 임포트분 + 30일 경과 재시도분"만 처리해 빨라짐. dry-run은 스탬프 안 함(무변형).
