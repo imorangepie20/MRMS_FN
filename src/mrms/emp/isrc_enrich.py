@@ -1,0 +1,46 @@
+"""EMP 합성-ISRC 트랙을 Deezer로 real ISRC 역해결 → 카탈로그 머지 / re-key.
+
+합성 ISRC(`emp_*`, `{platform}_*` 등 언더스코어 포함)는 임포터가 real ISRC를
+못 받아 생긴 placeholder. 같은 곡이 카탈로그에 real-ISRC로 이미 있으면 머지하고,
+신곡이면 isrc를 real로 갱신해 02(ISRC 정밀)→03→10 임베딩 파이프라인에 태운다.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import psycopg
+
+
+@dataclass(slots=True)
+class SyntheticTrack:
+    track_id: str
+    isrc: str
+    title: str
+    artist: str
+
+
+def fetch_synthetic_emp_tracks(
+    conn: psycopg.Connection, limit: int = 0
+) -> list[SyntheticTrack]:
+    """inEmp=TRUE & 합성 ISRC(언더스코어 포함) & 미임베딩 트랙. createdAt DESC."""
+    sql = '''
+        SELECT t.id, t.isrc, t.title, ar.name
+        FROM "Track" t
+        JOIN "Artist" ar ON ar.id = t."artistId"
+        WHERE t."inEmp" = TRUE
+          AND t.isrc LIKE %s ESCAPE '!'
+          AND NOT EXISTS (
+            SELECT 1 FROM "TrackEmbedding" te WHERE te."trackId" = t.id
+          )
+        ORDER BY t."createdAt" DESC
+    '''
+    params: list = ['%!_%']  # '!' escape → 리터럴 언더스코어 매칭
+    if limit:
+        sql += " LIMIT %s"
+        params.append(limit)
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+        return [
+            SyntheticTrack(track_id=r[0], isrc=r[1], title=r[2] or "", artist=r[3] or "")
+            for r in cur.fetchall()
+        ]
