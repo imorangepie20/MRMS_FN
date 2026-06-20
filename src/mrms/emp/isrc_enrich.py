@@ -167,3 +167,15 @@ def merge_track(
         )
         cur.execute('DELETE FROM "Track" WHERE id = %s', (synth_id,))
     conn.commit()
+
+
+def rekey_track(
+    conn: psycopg.Connection, synth_id: str, real_isrc: str
+) -> None:
+    """합성 트랙의 isrc를 real로 갱신. 호출 전 find_canonical이 None(충돌 없음)임을 보장."""
+    with conn.cursor() as cur:
+        cur.execute(
+            'UPDATE "Track" SET isrc = %s, "updatedAt" = now() WHERE id = %s',
+            (real_isrc, synth_id),
+        )
+    conn.commit()

@@ -10,6 +10,7 @@ from mrms.emp.isrc_enrich import (
     find_canonical,
     is_confident_match,
     merge_track,
+    rekey_track,
     resolve_real_isrc,
 )
 
@@ -167,3 +168,17 @@ def test_merge_track_drops_conflicting_rows(db_conn, cleanup):
         # synth를 참조하는 TrackPlatform 없음
         cur.execute('SELECT count(*) FROM "TrackPlatform" WHERE "trackId" = %s', (synth,))
         assert cur.fetchone()[0] == 0
+
+
+def test_rekey_track_updates_isrc(db_conn, cleanup):
+    """카탈로그에 없는 real ISRC → 합성 트랙 isrc를 real로 갱신."""
+    sfx = uuid.uuid4().hex[:8]
+    synth = _make_track(db_conn, cleanup, f"emp_vibe_{sfx}", in_emp=True)
+    real = f"KRB3{sfx}"
+    cleanup('DELETE FROM "Track" WHERE isrc = %s', (real,))  # 갱신 후 키로도 정리
+
+    rekey_track(db_conn, synth, real)
+
+    with db_conn.cursor() as cur:
+        cur.execute('SELECT isrc FROM "Track" WHERE id = %s', (synth,))
+        assert cur.fetchone()[0] == real
