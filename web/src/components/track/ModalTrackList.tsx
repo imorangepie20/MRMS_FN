@@ -157,6 +157,11 @@ function ModalTrackRow({
   const [pct, setPct] = useState(track.pct ?? false);
   const playable = isPlayable(track);
   const { isGuest, guard } = useRequireAuth();
+  // 큐의 현재 재생 트랙이면 하이라이트 + 이퀄라이저 (QueueDrawer와 동일 표시).
+  const isCurrent = usePlayerStore(
+    (s) => s.queue[s.currentIdx]?.track_id === track.track_id,
+  );
+  const playing = usePlayerStore((s) => s.isPlaying);
 
   const onLike = async () => {
     const prev = liked;
@@ -189,12 +194,34 @@ function ModalTrackRow({
   return (
     <div
       data-track-id={track.track_id}
-      className="group grid grid-cols-[28px_minmax(0,1fr)_44px_80px] sm:grid-cols-[28px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_44px_80px] gap-2 sm:gap-3 py-2 border-b border-(--mrms-rule) items-center hover:bg-(--mrms-bg) transition-colors"
+      aria-current={isCurrent ? "true" : undefined}
+      className={`group grid grid-cols-[28px_minmax(0,1fr)_44px_80px] sm:grid-cols-[28px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_44px_80px] gap-2 sm:gap-3 py-2 border-b border-(--mrms-rule) items-center transition-colors ${
+        isCurrent ? "bg-(--mrms-rust)/[0.07]" : "hover:bg-(--mrms-bg)"
+      }`}
     >
       <div className="relative h-7 flex items-center justify-end">
-        <span className="font-mono text-[11px] text-(--mrms-ink-mute) group-hover:opacity-0">
-          {index + 1}
-        </span>
+        {isCurrent ? (
+          <span
+            className="flex items-end justify-end gap-[2px] h-3.5 group-hover:opacity-0"
+            aria-label={playing ? "재생 중" : "일시정지"}
+          >
+            {[0, 1, 2].map((b) => (
+              <span
+                key={b}
+                className={`w-[2px] bg-(--mrms-rust) ${playing ? "mrms-eq-bar" : ""}`}
+                style={
+                  playing
+                    ? { height: "100%", animationDelay: `${b * 0.18}s` }
+                    : { height: ["45%", "70%", "55%"][b] }
+                }
+              />
+            ))}
+          </span>
+        ) : (
+          <span className="font-mono text-[11px] text-(--mrms-ink-mute) group-hover:opacity-0">
+            {index + 1}
+          </span>
+        )}
         <button
           onClick={playable ? guard(onPlay) : undefined}
           disabled={!playable}
@@ -223,7 +250,9 @@ function ModalTrackRow({
         )}
         <div className="min-w-0 flex-1">
           <div
-            className="font-display font-semibold text-[14px] leading-tight truncate"
+            className={`font-display font-semibold text-[14px] leading-tight truncate ${
+              isCurrent ? "text-(--mrms-rust)" : ""
+            }`}
             title={track.title}
           >
             {track.title}
