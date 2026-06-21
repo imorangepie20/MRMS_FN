@@ -142,7 +142,38 @@ const STYLE = `
 }
 `;
 
-export function ClassicalShowcase({ videos }: { videos: ClassicalVideo[] }) {
+// 클래식/재즈 공용 카피 — 미지정 시 클래식 기본값.
+export interface ShowcaseCopy {
+  kicker: string;
+  titleLead: string;
+  titleEm: string;
+  runline: string;
+  slate: string;
+  sectionLabel: string;
+  footer: string;
+  emptyTitle: string;
+  emptySub: string;
+}
+
+export const CLASSICAL_COPY: ShowcaseCopy = {
+  kicker: "Reel 01 · Live from the great concert halls",
+  titleLead: "클래식 공연 ",
+  titleEm: "실황",
+  runline: "Play full concert",
+  slate: "세계 오케스트라 · Full Concerts",
+  sectionLabel: "The Collection",
+  footer: "MRMS · Classical Archive — 위대한 공연장의 밤, 처음부터 끝까지",
+  emptyTitle: "곧 막이 오릅니다",
+  emptySub: "클래식 공연 실황 · 준비 중",
+};
+
+export function ClassicalShowcase({
+  videos,
+  copy = CLASSICAL_COPY,
+}: {
+  videos: ClassicalVideo[];
+  copy?: ShowcaseCopy;
+}) {
   const [active, setActive] = useState<ModalVideo | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -180,8 +211,8 @@ export function ClassicalShowcase({ videos }: { videos: ClassicalVideo[] }) {
         <div className="lum-vignette" aria-hidden />
         <div className="lum-empty">
           <div>
-            <h2 className="lum-serif">곧 막이 오릅니다</h2>
-            <p>클래식 공연 실황 · 준비 중</p>
+            <h2 className="lum-serif">{copy.emptyTitle}</h2>
+            <p>{copy.emptySub}</p>
           </div>
         </div>
       </div>
@@ -207,14 +238,15 @@ export function ClassicalShowcase({ videos }: { videos: ClassicalVideo[] }) {
           <span className="lum-live">LIVE</span>
         </div>
         <div className="lum-bar lum-bar-bot" aria-hidden />
-        <div className="lum-slate">세계 오케스트라 · Full Concerts</div>
+        <div className="lum-slate">{copy.slate}</div>
         <div className="lum-hero-content">
-          <div className="lum-kicker">Reel 01 · Live from the great concert halls</div>
+          <div className="lum-kicker">{copy.kicker}</div>
           <h1 className="lum-title lum-serif">
-            클래식 공연 <em>실황</em>
+            {copy.titleLead}
+            <em>{copy.titleEm}</em>
           </h1>
           <div className="lum-runline">
-            <span>▸ Play full concert</span>
+            <span>▸ {copy.runline}</span>
             <span className="lum-underline" aria-hidden />
           </div>
         </div>
@@ -222,7 +254,7 @@ export function ClassicalShowcase({ videos }: { videos: ClassicalVideo[] }) {
 
       <section className="lum-collection">
         <div className="lum-sec-head">
-          <span>§ The Collection</span>
+          <span>§ {copy.sectionLabel}</span>
           <span className="lum-rule" aria-hidden />
         </div>
         <div className="lum-grid">
@@ -245,7 +277,7 @@ export function ClassicalShowcase({ videos }: { videos: ClassicalVideo[] }) {
         </div>
       </section>
 
-      <footer className="lum-footer">MRMS · Classical Archive — 위대한 공연장의 밤, 처음부터 끝까지</footer>
+      <footer className="lum-footer">{copy.footer}</footer>
 
       <ClassicalVideoModal video={active} onClose={() => setActive(null)} />
     </div>

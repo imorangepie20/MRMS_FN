@@ -69,12 +69,21 @@ async def _run_importer_youtube(conn) -> dict:
     try:
         import httpx
 
-        from mrms.emp.youtube_videos import import_classical_videos
+        from mrms.emp.youtube_videos import import_classical_videos, import_jazz_videos
         async with httpx.AsyncClient(timeout=20.0) as http:
-            await import_classical_videos(conn, http)
+            try:
+                await import_classical_videos(conn, http)
+            except Exception as e:
+                safe_rollback(conn)
+                summary.setdefault("errors", []).append(f"classical_videos: {fmt_exc(e, 120)}")
+            try:
+                await import_jazz_videos(conn, http)
+            except Exception as e:
+                safe_rollback(conn)
+                summary.setdefault("errors", []).append(f"jazz_videos: {fmt_exc(e, 120)}")
     except Exception as e:
         safe_rollback(conn)
-        summary.setdefault("errors", []).append(f"classical_videos: {fmt_exc(e, 120)}")
+        summary.setdefault("errors", []).append(f"videos: {fmt_exc(e, 120)}")
     return summary
 
 

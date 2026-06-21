@@ -37,6 +37,21 @@ CLASSICAL_CHANNELS: list[tuple[str, str]] = [
     ("UCPDXjHIRZsuW2RTr_g2rdVg", "LG필하모닉"),
 ]
 
+JAZZ_LIVE_SECTION = "video:jazz-live"
+JAZZ_LIVE_TITLE = "재즈 공연 실황"
+
+# 공식 재즈 페스티벌·라디오 빅밴드 채널 — long(>20분)+임베드 허용 풀콘서트 검증됨(2026-06 실측).
+JAZZ_CHANNELS: list[tuple[str, str]] = [
+    ("UCHH_fkg_q8fu-AdEzIczzYQ", "North Sea Jazz Archive"),
+    ("UCC87jVPU5DV_ccBcWs5smcQ", "Jazz In Marciac"),
+    ("UCulDi5lPqT4Wa49gZhNgKdg", "WDR Big Band"),
+    ("UC4LDP8Ee097zy6WOMuxI6Ag", "hr-Bigband"),
+    ("UCiqZVYisk1zpBC4bxQBofeQ", "SWR Big Band"),
+    ("UClUghHElK6LMJrK1_xCWOPA", "Montreux Jazz Festival"),
+    ("UC0CnISy9tA2T3DDH3mjQaug", "Jazz à Vienne"),
+    ("UC8-Hs7utuv_5qyTZW3JJnoA", "Jazzaldia"),
+]
+
 
 def _yt_thumbnail(snippet: dict) -> str | None:
     """search 결과 snippet.thumbnails에서 가장 큰 썸네일 URL."""
@@ -65,14 +80,15 @@ def _normalize_yt_video(item) -> dict | None:
     }
 
 
-async def fetch_classical_videos(
-    http: httpx.AsyncClient, api_key: str, per_channel: int = 8
+async def _fetch_channel_videos(
+    http: httpx.AsyncClient, api_key: str,
+    channels: list[tuple[str, str]], per_channel: int = 8,
 ) -> list[dict]:
     """로스터 채널별로 long+임베드 허용 비디오를 모아 [{video_id, title, channel, cover_url}].
     video_id로 dedup, 채널/결과 순서 유지. 채널 실패는 건너뛴다."""
     out: list[dict] = []
     seen: set[str] = set()
-    for channel_id, _name in CLASSICAL_CHANNELS:
+    for channel_id, _name in channels:
         try:
             r = await http.get(
                 YT_SEARCH_URL,
@@ -101,20 +117,35 @@ async def fetch_classical_videos(
     return out
 
 
-async def import_classical_videos(
-    conn: psycopg.Connection, http: httpx.AsyncClient, display_order: int = 0
+async def fetch_classical_videos(
+    http: httpx.AsyncClient, api_key: str, per_channel: int = 8
+) -> list[dict]:
+    """클래식 로스터 채널의 long+임베드 비디오."""
+    return await _fetch_channel_videos(http, api_key, CLASSICAL_CHANNELS, per_channel)
+
+
+async def fetch_jazz_videos(
+    http: httpx.AsyncClient, api_key: str, per_channel: int = 8
+) -> list[dict]:
+    """재즈 로스터 채널의 long+임베드 비디오."""
+    return await _fetch_channel_videos(http, api_key, JAZZ_CHANNELS, per_channel)
+
+
+async def _import_video_section(
+    conn: psycopg.Connection, http: httpx.AsyncClient,
+    channels: list[tuple[str, str]], section_key: str, title: str, display_order: int,
 ) -> int:
-    """'video:classical-live'(platform='youtube') 섹션 저장(저장 영상 수 반환).
+    """채널 로스터 → EMPSection(platform='youtube') 저장(저장 영상 수 반환).
     YOUTUBE_DATA_API_KEY 없거나 결과 0이면 no-op(섹션 미생성)."""
     api_key = os.environ.get(YT_DATA_API_KEY_ENV)
     if not api_key:
         return 0
-    videos = await fetch_classical_videos(http, api_key)
+    videos = await _fetch_channel_videos(http, api_key, channels)
     if not videos:
         return 0
     sec_id = upsert_section(
-        conn=conn, platform="youtube", section_key=CLASSICAL_LIVE_SECTION,
-        display_title=CLASSICAL_LIVE_TITLE, display_order=display_order,
+        conn=conn, platform="youtube", section_key=section_key,
+        display_title=title, display_order=display_order,
     )
     seen: set[tuple[str, str]] = set()
     for idx, v in enumerate(videos):
@@ -126,3 +157,21 @@ async def import_classical_videos(
         seen.add(("youtube_video", v["video_id"]))
     prune_stale_items(conn, sec_id, seen)
     return len(videos)
+
+
+async def import_classical_videos(
+    conn: psycopg.Connection, http: httpx.AsyncClient, display_order: int = 0
+) -> int:
+    """'video:classical-live' 섹션 저장."""
+    return await _import_video_section(
+        conn, http, CLASSICAL_CHANNELS, CLASSICAL_LIVE_SECTION, CLASSICAL_LIVE_TITLE, display_order
+    )
+
+
+async def import_jazz_videos(
+    conn: psycopg.Connection, http: httpx.AsyncClient, display_order: int = 1
+) -> int:
+    """'video:jazz-live' 섹션 저장."""
+    return await _import_video_section(
+        conn, http, JAZZ_CHANNELS, JAZZ_LIVE_SECTION, JAZZ_LIVE_TITLE, display_order
+    )
