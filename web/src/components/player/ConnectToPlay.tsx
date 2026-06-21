@@ -16,17 +16,25 @@ export function ConnectToPlay() {
     window.location.href = `/api/auth/spotify/authorize?next=${encodeURIComponent(next)}`;
   };
 
+  const connectYoutube = () => {
+    const next = window.location.pathname + window.location.search;
+    window.location.href = `/api/auth/youtube/authorize?next=${encodeURIComponent(next)}`;
+  };
+
   return (
     <div className="border border-(--mrms-ink) bg-(--mrms-paper) p-4">
       <div className="font-mono text-[11px] tracking-editorial uppercase text-(--mrms-ink-mute)">
         재생하려면 연결하세요
       </div>
       <p className="mt-1 text-(--mrms-ink-soft) text-sm">
-        본인 Tidal 계정으로 MRMS에서 바로 들으세요.
+        Tidal 또는 YouTube로 MRMS에서 바로 들으세요.
       </p>
       <div className="mt-3 flex gap-2">
         <Button onClick={() => setTidalOpen(true)} size="sm">
           Tidal로 연결
+        </Button>
+        <Button onClick={connectYoutube} variant="outline" size="sm">
+          YouTube로 연결
         </Button>
         <Button
           onClick={connectSpotify}
