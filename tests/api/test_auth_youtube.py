@@ -5,9 +5,41 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from mrms.api.auth_youtube import _safe_next
 from mrms.api.main import app
 
 client = TestClient(app)
+
+
+def test_safe_next_allows_internal_rejects_external():
+    assert _safe_next("/p/abc") == "/p/abc"
+    assert _safe_next("//evil.com") is None
+    assert _safe_next("https://evil.com") is None
+    assert _safe_next(None) is None
+
+
+def test_authorize_sets_next_cookie_for_safe_path(db_conn):
+    """authorize?next=/p/abc → 307 + mrms_yt_oauth_next 쿠키(인코딩) set."""
+    r = client.get(
+        "/api/auth/youtube/authorize?next=%2Fp%2Fabc", follow_redirects=False
+    )
+    assert r.status_code in (302, 307)
+    assert "accounts.google.com/o/oauth2/v2/auth" in r.headers.get("location", "")
+    set_cookies = "; ".join(r.headers.get_list("set-cookie"))
+    assert "mrms_yt_oauth_next=" in set_cookies
+    client.cookies.clear()
+
+
+def test_authorize_omits_next_cookie_for_unsafe_path(db_conn):
+    """외부 URL next는 쿠키로 저장 안 함(open-redirect 방지)."""
+    r = client.get(
+        "/api/auth/youtube/authorize?next=https%3A%2F%2Fevil.com",
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 307)
+    set_cookies = "; ".join(r.headers.get_list("set-cookie"))
+    assert "mrms_yt_oauth_next=" not in set_cookies
+    client.cookies.clear()
 
 
 @pytest.fixture(autouse=True)

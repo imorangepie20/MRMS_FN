@@ -12,10 +12,11 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote, unquote
 
 import httpx
 import psycopg
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 
 from mrms.api.deps import db_conn, get_current_user_id
@@ -36,6 +37,7 @@ SESSION_MAX_AGE = 30 * 24 * 60 * 60  # 30 days
 OAUTH_STATE_COOKIE = "mrms_yt_oauth_state"
 OAUTH_VERIFIER_COOKIE = "mrms_yt_pkce_verifier"
 OAUTH_STATE_MAX_AGE = 600  # 10 min
+OAUTH_NEXT_COOKIE = "mrms_yt_oauth_next"
 
 
 def _cred(*names: str) -> str:
@@ -62,9 +64,21 @@ def _client() -> YouTubeOAuthClient:
     )
 
 
+def _safe_next(next_url: str | None) -> str | None:
+    """오픈 리다이렉트 방지 — 사이트 내부 상대 경로(/...)만 허용, //는 거부."""
+    if next_url and next_url.startswith("/") and not next_url.startswith("//"):
+        return next_url
+    return None
+
+
 @router.get("/authorize")
-def authorize() -> RedirectResponse:
-    """state + PKCE 생성 → state·code_verifier 쿠키 set → Google authorize 302."""
+def authorize(
+    next_url: str | None = Query(default=None, alias="next"),
+) -> RedirectResponse:
+    """state + PKCE 생성 → state·code_verifier(+next) 쿠키 set → Google authorize 302.
+
+    next=인증 후 돌아올 사이트 내부 경로(예: /p/{token}). 공유페이지 연결 시 복귀.
+    """
     state = uuid.uuid4().hex
     code_verifier, code_challenge = gen_pkce()
     url = _client().build_authorize_url(state, code_challenge)
@@ -85,6 +99,17 @@ def authorize() -> RedirectResponse:
         max_age=OAUTH_STATE_MAX_AGE,
         secure=False,
     )
+    safe_next = _safe_next(next_url)
+    if safe_next:
+        # URL-encode — '/'가 들어가면 Set-Cookie가 값을 따옴표로 감싸므로 인코딩해 저장.
+        resp.set_cookie(
+            key=OAUTH_NEXT_COOKIE,
+            value=quote(safe_next, safe=""),
+            httponly=True,
+            samesite="lax",
+            max_age=OAUTH_STATE_MAX_AGE,
+            secure=False,
+        )
     return resp
 
 
@@ -102,6 +127,7 @@ async def callback(
         resp = RedirectResponse(url=f"/login?error=youtube_{suffix}", status_code=307)
         resp.delete_cookie(OAUTH_STATE_COOKIE)
         resp.delete_cookie(OAUTH_VERIFIER_COOKIE)
+        resp.delete_cookie(OAUTH_NEXT_COOKIE)
         return resp
 
     if not code or not state:
@@ -122,6 +148,7 @@ async def callback(
         resp = RedirectResponse(url="/login?error=youtube_failed", status_code=307)
         resp.delete_cookie(OAUTH_STATE_COOKIE)
         resp.delete_cookie(OAUTH_VERIFIER_COOKIE)
+        resp.delete_cookie(OAUTH_NEXT_COOKIE)
         return resp
 
     access_token = tokens["access_token"]
@@ -139,6 +166,7 @@ async def callback(
         )
         resp.delete_cookie(OAUTH_STATE_COOKIE)
         resp.delete_cookie(OAUTH_VERIFIER_COOKIE)
+        resp.delete_cookie(OAUTH_NEXT_COOKIE)
         return resp
 
     display_name = profile.get("name")
@@ -177,7 +205,9 @@ async def callback(
     )
     conn.commit()
 
-    resp = RedirectResponse(url="/onboarding", status_code=307)
+    next_cookie = request.cookies.get(OAUTH_NEXT_COOKIE)
+    next_target = _safe_next(unquote(next_cookie)) if next_cookie else None
+    resp = RedirectResponse(url=next_target or "/onboarding", status_code=307)
     if guest:
         session_id = uuid.uuid4().hex
         session_expires = datetime.now(timezone.utc) + timedelta(seconds=SESSION_MAX_AGE)
@@ -195,6 +225,7 @@ async def callback(
         )
     resp.delete_cookie(OAUTH_STATE_COOKIE)
     resp.delete_cookie(OAUTH_VERIFIER_COOKIE)
+    resp.delete_cookie(OAUTH_NEXT_COOKIE)
     return resp
 
 
