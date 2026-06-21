@@ -12,8 +12,8 @@ const ACCENT = "#e8b463";
 const TEXT = "#f4ece0";
 const MUTED = "#9a8d78";
 
-// 다크 시네마틱 OG — 첫 공연 썸네일을 어둡게 깐 백드롭 + 레터박스 바 + 텅스텐 앰버.
-// 영문 카피(Satori 기본 폰트로 안정 렌더). 커버 없으면 디자인된 다크 배경만.
+// 다크 시네마틱 OG. 네이버 등이 1200×630을 자기 비율로 cover 크롭하며 좌우를 ~150px까지
+// 잘라내므로, 콘텐츠를 가운데 정렬 + 작게 + 넉넉한 가로 여백으로 둬서 잘려도 여백만 잘리게.
 export default async function Image() {
   const videos = await fetchClassicalVideos();
   const cover = videos[0]?.cover ?? null;
@@ -25,7 +25,6 @@ export default async function Image() {
           width: "100%",
           height: "100%",
           display: "flex",
-          flexDirection: "column",
           position: "relative",
           background: BG,
           color: TEXT,
@@ -45,17 +44,16 @@ export default async function Image() {
               width: "100%",
               height: "100%",
               objectFit: "cover",
-              filter: "grayscale(45%) sepia(28%) brightness(42%) contrast(108%)",
+              filter: "grayscale(45%) sepia(28%) brightness(38%) contrast(108%)",
             }}
           />
         )}
-        {/* spotlight + cinematic floor */}
         <div
           style={{
             position: "absolute",
             inset: 0,
             background:
-              "radial-gradient(120% 95% at 50% 20%, rgba(232,180,99,0.18), transparent 56%)",
+              "radial-gradient(120% 95% at 50% 30%, rgba(232,180,99,0.18), transparent 58%)",
           }}
         />
         <div
@@ -63,53 +61,35 @@ export default async function Image() {
             position: "absolute",
             inset: 0,
             background:
-              "linear-gradient(to top, #0a0807 9%, rgba(10,8,7,0.42) 46%, rgba(10,8,7,0.62))",
+              "linear-gradient(to top, rgba(10,8,7,0.7), rgba(10,8,7,0.3) 50%, rgba(10,8,7,0.7))",
           }}
         />
-        {/* letterbox bars */}
+        {/* 레터박스 바(글자 없음 — 크롭돼도 흉하지 않게) */}
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 46, background: BG }} />
+        <div
+          style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 46, background: BG }}
+        />
+        {/* 가운데 정렬 콘텐츠 */}
         <div
           style={{
             position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 50,
-            background: BG,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "0 64px",
-            fontSize: 18,
-            letterSpacing: 6,
-            textTransform: "uppercase",
-            color: "rgba(232,180,99,0.72)",
-          }}
-        >
-          <div style={{ display: "flex" }}>Archive Broadcast — Restored Edition</div>
-          <div style={{ display: "flex" }}>· 24 FPS</div>
-        </div>
-        <div
-          style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 50, background: BG }}
-        />
-        {/* content */}
-        <div
-          style={{
-            position: "absolute",
-            left: 64,
-            bottom: 104,
+            inset: 0,
             display: "flex",
             flexDirection: "column",
-            maxWidth: 1000,
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            padding: "0 150px",
           }}
         >
           <div
             style={{
               display: "flex",
-              fontSize: 22,
-              letterSpacing: 8,
+              fontSize: 20,
+              letterSpacing: 7,
               textTransform: "uppercase",
               color: ACCENT,
-              marginBottom: 20,
+              marginBottom: 16,
             }}
           >
             MRMS · Classical Archive
@@ -118,10 +98,11 @@ export default async function Image() {
             style={{
               display: "flex",
               flexDirection: "column",
-              fontSize: 138,
+              alignItems: "center",
+              fontSize: 100,
               fontWeight: 800,
-              lineHeight: 0.9,
-              letterSpacing: -4,
+              lineHeight: 0.92,
+              letterSpacing: -3,
               color: TEXT,
             }}
           >
@@ -134,14 +115,14 @@ export default async function Image() {
             style={{
               display: "flex",
               alignItems: "center",
-              marginTop: 30,
-              fontSize: 27,
+              marginTop: 26,
+              fontSize: 22,
               letterSpacing: 1,
               color: MUTED,
             }}
           >
             <div
-              style={{ width: 56, height: 2, background: ACCENT, marginRight: 18, display: "flex" }}
+              style={{ width: 44, height: 2, background: ACCENT, marginRight: 14, display: "flex" }}
             />
             World-orchestra full concerts — start to finish
           </div>
