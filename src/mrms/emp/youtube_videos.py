@@ -80,9 +80,40 @@ def _normalize_yt_video(item) -> dict | None:
     }
 
 
+# 제목에 이게 들어가면 공연 실황이 아니라 인터뷰/다큐/예고/리허설 등으로 보고 제외.
+# (en/ko/de — 로스터 채널이 독일 공영방송 포함이라 독일어도) long 필터만으론 인터뷰가
+# 섞여 들어와서, 제목 기반으로 비-공연 콘텐츠를 걸러낸다.
+_INTERVIEW_KEYWORDS: tuple[str, ...] = (
+    "interview", "인터뷰",
+    "in conversation", "conversation", "대담",
+    "documentary", "dokumentation", "다큐",
+    "trailer", "teaser", "예고",
+    "behind the scenes", "making of",
+    "masterclass", "master class", "meisterklasse", "마스터클래스",
+    "q&a", "q & a",
+    "podcast",
+    "im gespräch", "gespräch",
+    "press conference", "pressekonferenz",
+    "rehearsal", "generalprobe", "리허설",
+    "vorschau",
+    "porträt",
+    "강연",
+    # 채널별 비-공연 포맷(특히 베를린 필 무료 채널 — 실연은 Digital Concert Hall 유료):
+    "live lounge", "upbeat",
+    "announces", "announcement", "예고편",
+    "recording producer", "behind the", "history of the", "from scratch",
+)
+
+
+def _is_interview_like(title: str) -> bool:
+    """제목에 인터뷰/다큐/리허설 등 비-공연 신호가 있으면 True (공연 실황만 남김)."""
+    t = (title or "").lower()
+    return any(kw in t for kw in _INTERVIEW_KEYWORDS)
+
+
 async def _fetch_channel_videos(
     http: httpx.AsyncClient, api_key: str,
-    channels: list[tuple[str, str]], per_channel: int = 8,
+    channels: list[tuple[str, str]], per_channel: int = 12,
 ) -> list[dict]:
     """로스터 채널별로 long+임베드 허용 비디오를 모아 [{video_id, title, channel, cover_url}].
     video_id로 dedup, 채널/결과 순서 유지. 채널 실패는 건너뛴다."""
@@ -112,6 +143,8 @@ async def _fetch_channel_videos(
             v = _normalize_yt_video(it)
             if not v or v["video_id"] in seen:
                 continue
+            if _is_interview_like(v["title"]):
+                continue  # 인터뷰/다큐/리허설 제외 — 공연 실황만
             seen.add(v["video_id"])
             out.append(v)
     return out

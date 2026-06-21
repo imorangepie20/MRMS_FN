@@ -6,11 +6,24 @@ import respx
 from mrms.emp.youtube_videos import (
     CLASSICAL_CHANNELS,
     YT_SEARCH_URL,
+    _is_interview_like,
     _normalize_yt_video,
     _yt_thumbnail,
     fetch_classical_videos,
     import_classical_videos,
 )
+
+
+def test_is_interview_like_excludes_nonconcert_keeps_concert():
+    assert _is_interview_like("Sir Simon Rattle — Interview") is True
+    assert _is_interview_like("Beethoven 9 — Behind the Scenes") is True
+    assert _is_interview_like("Generalprobe / Rehearsal") is True
+    assert _is_interview_like("Karajan im Gespräch") is True
+    assert _is_interview_like("다큐멘터리: 베를린 필") is True
+    # 실제 공연 제목은 통과(False)
+    assert _is_interview_like("Beethoven: Symphony No. 9") is False
+    assert _is_interview_like("Mahler: Symphony No. 2") is False
+    assert _is_interview_like("Chick Corea & Origin - Full Concert [HD]") is False
 
 
 def test_yt_thumbnail_prefers_largest():
@@ -69,6 +82,24 @@ async def test_fetch_classical_videos_dedups_across_channels():
     assert [v["video_id"] for v in vids] == ["v1", "v2"]
     assert vids[1]["title"] == "Mahler: Symphony No. 2 & encore"  # html unescape
     assert vids[0]["cover_url"] == "v1.jpg"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_excludes_interview_videos():
+    """long+embed라도 제목이 인터뷰/다큐면 제외 — 공연 실황만."""
+    payload = {"items": [
+        {"id": {"videoId": "c1"}, "snippet": {
+            "title": "Brahms: Symphony No. 4", "channelTitle": "X",
+            "thumbnails": {"high": {"url": "c1.jpg"}}}},
+        {"id": {"videoId": "i1"}, "snippet": {
+            "title": "Conductor Interview — Behind the Music", "channelTitle": "X",
+            "thumbnails": {"high": {"url": "i1.jpg"}}}},
+    ]}
+    respx.get(YT_SEARCH_URL).mock(return_value=_httpx.Response(200, json=payload))
+    async with _httpx.AsyncClient() as http:
+        vids = await fetch_classical_videos(http, api_key="testkey", per_channel=8)
+    assert [v["video_id"] for v in vids] == ["c1"]  # 인터뷰(i1) 제외
 
 
 def test_roster_is_nonempty_and_well_formed():
