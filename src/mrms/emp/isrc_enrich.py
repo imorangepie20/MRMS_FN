@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import httpx
 import psycopg
 
+from mrms.db.ids import stable_id as _id
 from mrms.ingest import deezer
 
 # 한 번 시도해 해결 실패(skip)한 트랙을 이 일수 동안 재시도하지 않음 — 파이프라인이
@@ -154,16 +155,40 @@ def _repoint_or_drop(
         cur.execute(f'DELETE FROM "{table}" WHERE "trackId" = %s', (synth_id,))
 
 
+def _normalize_emp_source_ids(conn: psycopg.Connection, canonical_id: str) -> None:
+    """repoint된 EMPSource 행의 id를 canonical 기준으로 재계산(stale id 방지).
+
+    EMPSource.id = stable_id("emp|{trackId}|{platform}|{source_id}")인데 _repoint_or_drop은
+    trackId만 바꿔 id가 옛 synth 기준으로 남는다(stale). 그대로 두면 import가 머지로
+    사라진 합성 트랙을 재생성할 때 upsert가 그 stale id와 EMPSource_pkey PK 충돌을 낸다.
+    EMPSource는 생성자가 upsert_emp_source(db/emp.py) 단일이라 공식이 확실 → 안전하게 재계산.
+    (canonical의 원래 EMPSource는 이미 공식과 일치해 그대로, 옮겨온 것만 수정. 새 id는
+    행별 유니크라 충돌 없음.) TrackPlatform은 카탈로그(07 로더)가 다른 id 스킴을 써
+    전역 가정이 불가하고 import 충돌 원인도 아니라 건드리지 않는다.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            'SELECT id, platform, source_id FROM "EMPSource" WHERE "trackId" = %s',
+            (canonical_id,),
+        )
+        for old_id, platform, source_id in cur.fetchall():
+            new_id = _id(f"emp|{canonical_id}|{platform}|{source_id}")
+            if new_id != old_id:
+                cur.execute('UPDATE "EMPSource" SET id = %s WHERE id = %s', (new_id, old_id))
+
+
 def merge_track(
     conn: psycopg.Connection, synth_id: str, canonical_id: str
 ) -> None:
     """합성 Track의 모든 참조를 canonical로 옮기고 합성 Track 삭제 (트랜잭션 1건).
 
     FK가 전부 CASCADE라 삭제 전 repoint 필수. canonical의 임베딩은 그대로 유지돼
-    합성 트랙이 추천에서 canonical로 흡수된다.
+    합성 트랙이 추천에서 canonical로 흡수된다. repoint 후 자식 id를 재계산해 stale id로
+    인한 import PK 충돌을 방지한다(_normalize_child_ids).
     """
     for table, other_cols in _MERGE_TABLES:
         _repoint_or_drop(conn, table, other_cols, synth_id, canonical_id)
+    _normalize_emp_source_ids(conn, canonical_id)
     with conn.cursor() as cur:
         # PlaylistHistory.trackIds (배열, 비-FK): dangling 방지
         cur.execute(

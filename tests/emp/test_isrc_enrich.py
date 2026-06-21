@@ -141,6 +141,10 @@ def test_merge_track_repoints_fks_and_deletes_synth(db_conn, cleanup):
         assert cur.fetchone()[0] == canon
         cur.execute('SELECT "trackId" FROM "EMPSource" WHERE source_id = %s', (f"src_{sfx}",))
         assert cur.fetchone()[0] == canon
+        # repoint된 EMPSource id가 canonical 정본으로 재계산됨(stale id 방지)
+        from mrms.db.ids import stable_id
+        cur.execute('SELECT id FROM "EMPSource" WHERE source_id = %s', (f"src_{sfx}",))
+        assert cur.fetchone()[0] == stable_id(f"emp|{canon}|apple|src_{sfx}")
 
 
 def test_merge_track_drops_conflicting_rows(db_conn, cleanup):
