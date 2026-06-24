@@ -133,11 +133,11 @@ def recommend_by_taste_mood(
       t.id NOT IN (SELECT "trackId" FROM "UserTrack" WHERE "userId" = %(uid)s)
       AND t.id NOT IN (
         SELECT "targetId" FROM "UserBlocked"
-          WHERE "userId" = %(uid)s AND "targetType" = 'track' AND reason = 'disliked'
+          WHERE "userId" = %(uid)s AND "targetType" = 'track' AND reason IN ('disliked', 'dismissed')
         UNION
         SELECT tt.id FROM "Track" tt JOIN "UserBlocked" ub
           ON ub."targetId" = tt."albumId" AND ub."targetType" = 'album'
-          WHERE ub."userId" = %(uid)s AND ub.reason = 'disliked'
+          WHERE ub."userId" = %(uid)s AND ub.reason IN ('disliked', 'dismissed')
       )'''
     sql = f'''
       SELECT t.id, t.title, ar.name AS artist, t."albumId",

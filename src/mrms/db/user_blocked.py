@@ -27,7 +27,11 @@ def block_target(
 
 
 def clear_dismissed(conn: psycopg.Connection, user_id: str) -> int:
-    """일시 숨김(dismissed) 행 전부 삭제. 삭제 수 반환. (재생성 후 호출)"""
+    """숨김(dismissed) 행 전부 삭제. 삭제 수 반환.
+
+    dismissed는 영구 추천 제외라 재생성 시 자동 초기화하지 않는다.
+    이 함수는 관리자 수동 "숨김 리셋"용으로만 남겨둔다(자동 호출 없음).
+    """
     with conn.cursor() as cur:
         cur.execute(
             'DELETE FROM "UserBlocked" WHERE "userId" = %s AND reason = %s',

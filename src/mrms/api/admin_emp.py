@@ -169,7 +169,6 @@ def _regenerate_all_mrt() -> None:
     import time
 
     from mrms.db.emp import append_stage, create_run, finish_run
-    from mrms.db.user_blocked import clear_dismissed
     from mrms.db.user_embedding import prune_playlist_history
     from mrms.emp.base import safe_rollback
     from mrms.recsys.mrt import MODEL_VERSION, generate_user_mrt
@@ -190,7 +189,6 @@ def _regenerate_all_mrt() -> None:
                 if generate_user_mrt(conn, uid) is not None:
                     conn.commit()  # generate_user_mrt 쓰기 명시 커밋 (호출자 책임)
                     prune_playlist_history(conn, uid)  # 자체 commit
-                    clear_dismissed(conn, uid)  # 자체 commit
                     regenerated += 1
                 else:
                     safe_rollback(conn)  # 트랙 부족(None) — 부분 쓰기 폐기, 다음 유저로
@@ -253,7 +251,6 @@ def admin_run_mrt(
             raise HTTPException(404, "user not found")
         target_uid = row[0]
 
-        from mrms.db.user_blocked import clear_dismissed
         from mrms.db.user_embedding import prune_playlist_history
         from mrms.emp.base import fmt_exc, safe_rollback
         from mrms.recsys.discover import read_discovery
@@ -272,7 +269,6 @@ def admin_run_mrt(
             }
         conn.commit()  # generate_user_mrt 쓰기 명시 커밋 (호출자 책임)
         prune_playlist_history(conn, target_uid)  # 자체 commit
-        clear_dismissed(conn, target_uid)  # 자체 commit
         discovery_count = len(read_discovery(conn, target_uid))
         return {
             "mode": "user", "regenerated": True,

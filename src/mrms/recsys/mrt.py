@@ -68,12 +68,12 @@ def search_for_persona(
                  )
                  AND t.id NOT IN (
                    SELECT "targetId" FROM "UserBlocked"
-                     WHERE "userId" = %s AND "targetType" = 'track' AND reason = 'disliked'
+                     WHERE "userId" = %s AND "targetType" = 'track' AND reason IN ('disliked', 'dismissed')
                    UNION
                    SELECT tt.id FROM "Track" tt
                      JOIN "UserBlocked" ub
                        ON ub."targetId" = tt."albumId" AND ub."targetType" = 'album'
-                     WHERE ub."userId" = %s AND ub.reason = 'disliked'
+                     WHERE ub."userId" = %s AND ub.reason IN ('disliked', 'dismissed')
                  )
                ORDER BY e.embedding <=> %s
                LIMIT %s''',
