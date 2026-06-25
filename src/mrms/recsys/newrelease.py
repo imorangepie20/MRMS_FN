@@ -22,6 +22,7 @@ from mrms.recsys.discover import (
     DiscoveryLLMError,
     TrackSuggestion,
     TrackSuggestions,
+    _blocked_song_keys,
     _owned_song_keys,
     read_discovery,
     resolve_via_ytmusic,
@@ -162,7 +163,7 @@ def generate_user_newrelease(
         # 보유곡 + 이미 discovery로 노출 중인 곡 제외 (두 섹션 교차중복 방지)
         owned = _owned_song_keys(conn, user_id)
         disc_keys = {_song_key(d["artist"], d["title"]) for d in read_discovery(conn, user_id)}
-        exclude = owned | disc_keys
+        exclude = owned | disc_keys | _blocked_song_keys(conn, user_id)
         fresh = [t for t in resolved if _song_key(t["artist"], t["title"]) not in exclude]
         if not fresh:
             return 0

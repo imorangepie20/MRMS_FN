@@ -190,6 +190,29 @@ def _owned_song_keys(conn: psycopg.Connection, user_id: str) -> set[str]:
         return {_song_key(r[0], r[1]) for r in cur.fetchall()}
 
 
+def _blocked_song_keys(conn: psycopg.Connection, user_id: str) -> set[str]:
+    """싫어요/그만보기(disliked·dismissed) 곡의 _song_key 집합.
+
+    discovery·신보 재생성이 dismissed 곡을 다시 끌어오지 않도록 제외용.
+    track 직접 차단 ∪ 차단 앨범의 트랙을 곡 단위로 모은다.
+    """
+    from mrms.db.user_blocked import blocked_track_ids
+    from mrms.recsys.taste_mood import _song_key  # 함수-로컬: 순환 import 회피
+
+    ids = blocked_track_ids(conn, user_id, ["disliked", "dismissed"])
+    if not ids:
+        return set()
+    with conn.cursor() as cur:
+        cur.execute(
+            '''SELECT ar.name, t.title
+               FROM "Track" t
+               JOIN "Artist" ar ON ar.id = t."artistId"
+               WHERE t.id = ANY(%s)''',
+            (list(ids),),
+        )
+        return {_song_key(r[0], r[1]) for r in cur.fetchall()}
+
+
 def generate_user_discovery(
     conn: psycopg.Connection, user_id: str, *,
     client: genai.Client | None = None, n: int = 20,
@@ -212,8 +235,8 @@ def generate_user_discovery(
         resolved = resolve_via_ytmusic(conn, suggestions)
         if not resolved:
             return 0
-        owned = _owned_song_keys(conn, user_id)
-        fresh = [t for t in resolved if _song_key(t["artist"], t["title"]) not in owned]
+        exclude = _owned_song_keys(conn, user_id) | _blocked_song_keys(conn, user_id)
+        fresh = [t for t in resolved if _song_key(t["artist"], t["title"]) not in exclude]
         if not fresh:
             return 0
     except DiscoveryLLMError as e:
