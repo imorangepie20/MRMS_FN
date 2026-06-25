@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { EyeOff, Heart, Play, Sparkles, ThumbsDown } from "lucide-react";
 
 import { collectAlbum, dislikeAlbum, dislikeTrack, dismissAlbum, dismissTrack } from "@/lib/api";
@@ -38,6 +39,7 @@ interface Props {
 
 
 export function MrtDashboard({ user, mrt }: Props) {
+  const router = useRouter();
   const [selectedTracks, setSelectedTracks] = useState<Set<string>>(new Set());
   const [albumModal, setAlbumModal] = useState<string | null>(null);
   const [playlistModal, setPlaylistModal] = useState<string | null>(null);
@@ -251,6 +253,7 @@ export function MrtDashboard({ user, mrt }: Props) {
                           await dislikeAlbum(a.album_id);
                           setRemovedAlbums((m) => ({ ...m, [a.album_id]: "disliked" }));
                           setDislikingAlbum(null);
+                          router.refresh();
                         } catch {
                           setDislikingAlbum(null);
                         }
@@ -273,6 +276,7 @@ export function MrtDashboard({ user, mrt }: Props) {
                           await dismissAlbum(a.album_id);
                           setRemovedAlbums((m) => ({ ...m, [a.album_id]: "dismissed" }));
                           setDismissingAlbum(null);
+                          router.refresh();
                         } catch {
                           setDismissingAlbum(null);
                         }
@@ -390,6 +394,7 @@ function TrackRow({
   const [liked, setLiked] = useState(track.liked ?? false);
   const [pct, setPct] = useState(track.pct ?? false);
   const [removed, setRemoved] = useState<null | "disliked" | "dismissed">(null);
+  const router = useRouter();
   // 큐의 현재 재생 트랙이면 하이라이트 + 커버 이퀄라이저. 가드: 재생 곡 있을 때만.
   const currentTrackId = usePlayerStore((s) => s.queue[s.currentIdx]?.track_id ?? null);
   const isCurrent = currentTrackId !== null && currentTrackId === track.track_id;
@@ -591,6 +596,7 @@ function TrackRow({
               try {
                 await dislikeTrack(track.track_id);
                 setRemoved("disliked");
+                router.refresh();
               } catch {
                 // silent — row stays visible on error
               }
@@ -610,6 +616,7 @@ function TrackRow({
               try {
                 await dismissTrack(track.track_id);
                 setRemoved("dismissed");
+                router.refresh();
               } catch {
                 // silent — row stays visible on error
               }
