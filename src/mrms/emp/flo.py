@@ -94,6 +94,19 @@ def _parse_play_time(play_time) -> int | None:
     return (minutes * 60 + seconds) * 1000
 
 
+def _section_key(display_title: str | None, sec_id) -> str:
+    """섹션 → EMPSection.sectionKey.
+
+    title을 정규화(공백 축약)해 그대로 key로 쓴다 — FLO가 같은 큐레이션을
+    여러 content.id로 중복 반환해도 같은 title이면 같은 sectionKey로 upsert돼
+    자연히 dedup된다. title이 없을 때만 sec_id fallback.
+    """
+    if display_title and display_title.strip():
+        normalized = " ".join(display_title.split())
+        return f"special:{normalized}"
+    return f"special:id-{sec_id}"
+
+
 def _normalize_track(tr) -> dict | None:
     """FLO track object → 공통 dict. id+name 없으면 None."""
     if not isinstance(tr, dict):
@@ -254,6 +267,29 @@ class FloEMPImporter(EMPImporter):
             return await self._fetch_channel_tracks(http, item_id)
         return []
 
+    @staticmethod
+    def _prune_stale_special_sections(
+        conn: psycopg.Connection, keep_keys: set[str]
+    ) -> int:
+        """이번 sync에 보이지 않는 special:* 섹션 삭제(모듈 제거·리네임·단발성
+        기획 큐레이션 정리). items는 FK CASCADE로 함께 삭제.
+
+        keep_keys가 비면(빈 fetch / special 소스 누락) 아무것도 안 지운다 —
+        빈 응답으로 전체 삭제되는 사고 방지. playlist:*·channel:* 직접 소스
+        섹션은 special: 접두사가 아니므로 영향받지 않는다."""
+        if not keep_keys:
+            return 0
+        with conn.cursor() as cur:
+            cur.execute(
+                '''DELETE FROM "EMPSection"
+                   WHERE platform = 'flo' AND "sectionKey" LIKE 'special:%%'
+                     AND "sectionKey" <> ALL(%s)''',
+                (list(keep_keys),),
+            )
+            deleted = cur.rowcount
+        conn.commit()
+        return deleted
+
     # ----- entrypoint -----
 
     async def import_all(self, conn: psycopg.Connection) -> dict:
@@ -276,6 +312,8 @@ class FloEMPImporter(EMPImporter):
         async with httpx.AsyncClient(timeout=20.0) as http:
             # Phase 1: resolve sources → 섹션/아이템 저장 + 적재 대상 수집
             section_idx = 0
+            special_keep_keys: set[str] = set()
+            special_synced = False
             for kind, ident in sources:
                 if kind == "special":
                     try:
@@ -288,6 +326,7 @@ class FloEMPImporter(EMPImporter):
                         errors.append(f"special: {err}")
                         continue
 
+                    special_synced = True
                     for sec in sections:
                         content = sec.get("content") if isinstance(sec, dict) else None
                         if not isinstance(content, dict):
@@ -295,8 +334,8 @@ class FloEMPImporter(EMPImporter):
                         sec_id = content.get("id")
                         if sec_id is None:
                             continue
-                        section_key = f"special:{sec_id}"
                         display_title = content.get("title")
+                        section_key = _section_key(display_title, sec_id)
                         raw_items = content.get("list") or []
                         classified = [
                             c for c in (_classify_item(i) for i in raw_items) if c
@@ -322,6 +361,7 @@ class FloEMPImporter(EMPImporter):
                                 )
                                 seen.add((it, ii))
                             prune_stale_items(conn, db_section_id, seen)
+                            special_keep_keys.add(section_key)
                         except Exception as e:
                             safe_rollback(conn)
                             errors.append(
@@ -357,6 +397,11 @@ class FloEMPImporter(EMPImporter):
                         errors.append(f"section save {section_key}: {fmt_exc(e, 120)}")
                     section_idx += 1
                     _add_item(kind, ident, ident, None)
+
+            # special 소스가 한 번이라도 정상 처리됐으면 stale 섹션 정리.
+            # (에러/누락 시 special_synced=False → 보호: 빈 fetch로 전체 삭제 방지)
+            if special_synced:
+                self._prune_stale_special_sections(conn, special_keep_keys)
 
             # Phase 2: fetch tracks per item, upsert
             tracks_new = 0

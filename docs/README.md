@@ -32,6 +32,7 @@
 - [decisions/ADR-008-taste-first-embedding-recsys.md](decisions/ADR-008-taste-first-embedding-recsys.md): 무드 추천 표현 전환 — 피처 센트로이드 → 취향-우선 임베딩(`recommend_by_taste_mood`). 자체 acousticness 피처 무의미(실데이터) → 폐기, 유저 취향 임베딩 최근접 풀 + v/e/t 재정렬. situation·wellness 공용. "몽땅 클래식" 해소
 - [decisions/ADR-010-shared-playlist-page.md](decisions/ADR-010-shared-playlist-page.md): 공유 플레이리스트 페이지(Share & Play, Eat The Shared의 짝) — 내 플레이리스트를 공개 링크 `/p/{token}`로 공유, 방문자가 **우리 페이지에서** 재생. 재생하려면 본인 Spotify/Tidal을 우리 OAuth로 연결(=사이트 세션). 목적=홍보. (외부 export는 트래픽 유출로 기각)
 - [decisions/ADR-009-share-url-import.md](decisions/ADR-009-share-url-import.md): 공유 URL 가져오기(Eat The Shared) — Tidal/Spotify track·playlist·album 공유 링크 붙여넣어 트랙 fetch→EMP 적재→청취. 단독 페이지 `/import`, ADR-005 fetch/normalize/persist 재사용(신규=URL 파서+단일트랙 fetch+라우트)
+- [decisions/ADR-011-flo-section-dedup.md](decisions/ADR-011-flo-section-dedup.md): FLO 섹션 중복 제거 — sectionKey를 `special:{sec_id}`에서 **title 기반**(`special:{title}`)으로 전환(같은 title은 UNIQUE로 자연 dedup) + `special:*` stale 섹션 prune 추가(월드컵 등 시즌성 큐레이션 자동 정리). 마이그레이션으로 기존 중복 4행(월드컵×3→1, 주간하이라이트×3→1) 정리
 
 ## 설계 / 계획 (superpowers)
 
