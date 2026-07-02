@@ -5,15 +5,17 @@ JSON의 `code == "2000000"`.
 
 엔드포인트:
 - 큐레이션 섹션: GET /api/personal/v1/curations/contents → data.list[]
+- 홈 패널:     GET /api/personal/v2/recommends/home/panels → data.list[]
 - playlist 트랙:  GET /api/personal/v1/playlist/{numId}     → data.track.list[]
 - channel 트랙:   GET /api/meta/v1/channel/{numId}          → data.trackList[]   (CHNL 타입)
 
 소스 형식 (Setting 'flo_emp_sources', 한 줄에 하나, # 주석):
 - special           — /curations/contents 전체 자동 발견 (섹션 + playlist/channel)
+- panels            — /recommends/home/panels 홈 추천 패널 (POPULAR_CHANNEL, 트랙 인라인)
 - playlist/{numId}  — 직접 playlist
 - channel/{numId}   — 직접 channel
 
-비었을 때 기본값: ["special"].
+비었을 때 기본값: ["special", "panels"].
 """
 from __future__ import annotations
 
@@ -40,7 +42,7 @@ SOURCES_SETTING_KEY = "flo_emp_sources"
 SUCCESS_CODE = "2000000"
 COVER_SIZE = "500"
 
-DEFAULT_SOURCES = ["special"]
+DEFAULT_SOURCES = ["special", "panels"]
 
 
 def _format_cover(node: dict | None) -> str | None:
@@ -131,6 +133,49 @@ def _detail_cover(grid_img: dict | None) -> str | None:
     return urls[-1]
 
 
+def _pick_img_url(img_list: list | None, target: int) -> str | None:
+    """imgList[{size, url}]에서 target에 가장 가까운 size의 URL 선택."""
+    if not isinstance(img_list, list) or not img_list:
+        return None
+    best = None
+    best_diff = None
+    for entry in img_list:
+        if not isinstance(entry, dict):
+            continue
+        url = entry.get("url")
+        if not isinstance(url, str) or not url:
+            continue
+        size = entry.get("size")
+        if isinstance(size, (int, float)):
+            diff = abs(int(size) - target)
+            if best_diff is None or diff < best_diff:
+                best, best_diff = url, diff
+        elif best is None:
+            best = url  # size 없으면 첫 URL fallback
+    return best
+
+
+def _album_cover(album: dict | None) -> str | None:
+    """앨범 객체 → 커버 URL. v1(img.urlFormat) + v2(imgUrlFormat, imgList) 대응.
+
+    v1 curations: album.img = {urlFormat: '.../{size}.jpg'}
+    v2 panels:    album.imgUrlFormat = '.../{size}/quality/90'
+                  album.imgList = [{size, url}, ...]
+    """
+    if not isinstance(album, dict):
+        return None
+    # v2: album.imgUrlFormat (inline, '{size}' 치환)
+    fmt = album.get("imgUrlFormat")
+    if isinstance(fmt, str) and fmt:
+        return fmt.replace("{size}", COVER_SIZE)
+    # v2: album.imgList[{size, url}]
+    url = _pick_img_url(album.get("imgList"), int(COVER_SIZE))
+    if url:
+        return url
+    # v1: album.img.urlFormat
+    return _format_cover(album.get("img"))
+
+
 def _normalize_track(tr) -> dict | None:
     """FLO track object → 공통 dict. id+name 없으면 None."""
     if not isinstance(tr, dict):
@@ -155,7 +200,7 @@ def _normalize_track(tr) -> dict | None:
     album = tr.get("album") or {}
     if isinstance(album, dict):
         album_title = album.get("title")
-        cover_url = _format_cover(album.get("img"))
+        cover_url = _album_cover(album)
     else:
         album_title = None
         cover_url = None
@@ -195,17 +240,18 @@ class FloEMPImporter(EMPImporter):
         }
 
     def _load_sources(self, conn: psycopg.Connection) -> list[tuple[str, str]]:
-        """[(kind, identifier), ...]. kind ∈ {special, playlist, channel}.
+        """[(kind, identifier), ...]. kind ∈ {special, panels, playlist, channel}.
 
-        'special'은 identifier 없음 → ('special', ''). 비었으면 DEFAULT_SOURCES."""
+        'special'/'panels'은 identifier 없음 → (kind, ''). 비었으면 DEFAULT_SOURCES."""
         raw = get_setting(conn, SOURCES_SETTING_KEY) or ""
         sources: list[tuple[str, str]] = []
         for line in raw.splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            if line.lower() == "special":
-                sources.append(("special", ""))
+            lower = line.lower()
+            if lower in ("special", "panels"):
+                sources.append((lower, ""))
                 continue
             if "/" not in line:
                 continue
@@ -216,8 +262,8 @@ class FloEMPImporter(EMPImporter):
                 sources.append((kind, ident))
         if not sources:
             for s in DEFAULT_SOURCES:
-                if s == "special":
-                    sources.append(("special", ""))
+                if s in ("special", "panels"):
+                    sources.append((s, ""))
                 else:
                     kind, _, ident = s.partition("/")
                     sources.append((kind, ident))
@@ -247,6 +293,34 @@ class FloEMPImporter(EMPImporter):
             return [], f"curations code {code}"
         sections = (data.get("data") or {}).get("list") or []
         return sections, None
+
+    async def _fetch_home_panels(
+        self, http: httpx.AsyncClient
+    ) -> tuple[list[dict], str | None]:
+        """/recommends/home/panels → (panels, error).
+
+        POPULAR_CHANNEL 타입 패널만 반환 (content.type == CHNL + trackList 인라인).
+        PLAY_NOW 등 다른 타입은 건너뛴다. 각 panel dict = {title, content: {id,
+        type, trackList, ...}}."""
+        r = await http.get(
+            f"{FLO_BASE}/api/personal/v2/recommends/home/panels",
+            headers=self._headers(),
+        )
+        if r.status_code != 200:
+            return [], f"panels HTTP {r.status_code}"
+        data = r.json()
+        if not self._check_code(data):
+            code = data.get("code") if isinstance(data, dict) else None
+            return [], f"panels code {code}"
+        raw_panels = (data.get("data") or {}).get("list") or []
+        panels = [
+            p for p in raw_panels
+            if isinstance(p, dict)
+            and p.get("type") == "POPULAR_CHANNEL"
+            and isinstance(p.get("content"), dict)
+            and p["content"].get("type", "").upper() == "CHNL"
+        ]
+        return panels, None
 
     async def _fetch_playlist_tracks(
         self, http: httpx.AsyncClient, num_id: str
@@ -298,53 +372,33 @@ class FloEMPImporter(EMPImporter):
             return await self._fetch_channel_tracks(http, item_id), None
         return [], None
 
-    @staticmethod
-    def _prune_stale_special_sections(
-        conn: psycopg.Connection, keep_keys: set[str]
-    ) -> int:
-        """이번 sync에 보이지 않는 special:* 섹션 삭제(모듈 제거·리네임·단발성
-        기획 큐레이션 정리). items는 FK CASCADE로 함께 삭제.
-
-        keep_keys가 비면(빈 fetch / special 소스 누락) 아무것도 안 지운다 —
-        빈 응답으로 전체 삭제되는 사고 방지. playlist:*·channel:* 직접 소스
-        섹션은 special: 접두사가 아니므로 영향받지 않는다."""
-        if not keep_keys:
-            return 0
-        with conn.cursor() as cur:
-            cur.execute(
-                '''DELETE FROM "EMPSection"
-                   WHERE platform = 'flo' AND "sectionKey" LIKE 'special:%%'
-                     AND "sectionKey" <> ALL(%s)''',
-                (list(keep_keys),),
-            )
-            deleted = cur.rowcount
-        conn.commit()
-        return deleted
-
     # ----- entrypoint -----
 
     async def import_all(self, conn: psycopg.Connection) -> dict:
         """모든 source 적재. 반환 {tracks_new, tracks_existing, playlists_processed, errors}.
 
-        'playlists_processed'는 playlist+channel 합산 아이템 수 (base 인터페이스 호환)."""
+        'playlists_processed'는 playlist+channel 합산 아이템 수 (base 인터페이스 호환).
+        v2 panels 소스는 트랙이 인라인이라 Phase 2 fetch 없이 Phase 1에서 직접 upsert."""
         sources = self._load_sources(conn)
 
         errors: list[str] = []
-        # (item_type, item_id) → (name, cover) — 중복 fetch 방지
-        items: dict[tuple[str, str], tuple[str, str | None]] = {}
+        # (item_type, item_id) → (name, cover, inline_tracks)
+        # inline_tracks: None = Phase 2 fetch 필요, list = 이미 보유(panels)
+        items: dict[tuple[str, str], tuple[str, str | None, list[dict] | None]] = {}
         order: list[tuple[str, str]] = []
 
-        def _add_item(item_type: str, item_id: str, name: str, cover: str | None) -> None:
+        def _add_item(
+            item_type: str, item_id: str, name: str, cover: str | None,
+            inline_tracks: list[dict] | None = None,
+        ) -> None:
             key = (item_type, item_id)
             if key not in items:
-                items[key] = (name, cover)
+                items[key] = (name, cover, inline_tracks)
                 order.append(key)
 
         async with httpx.AsyncClient(timeout=20.0) as http:
             # Phase 1: resolve sources → 섹션/아이템 저장 + 적재 대상 수집
             section_idx = 0
-            special_keep_keys: set[str] = set()
-            special_synced = False
             for kind, ident in sources:
                 if kind == "special":
                     try:
@@ -357,7 +411,6 @@ class FloEMPImporter(EMPImporter):
                         errors.append(f"special: {err}")
                         continue
 
-                    special_synced = True
                     for sec in sections:
                         content = sec.get("content") if isinstance(sec, dict) else None
                         if not isinstance(content, dict):
@@ -392,7 +445,6 @@ class FloEMPImporter(EMPImporter):
                                 )
                                 seen.add((it, ii))
                             prune_stale_items(conn, db_section_id, seen)
-                            special_keep_keys.add(section_key)
                         except Exception as e:
                             safe_rollback(conn)
                             errors.append(
@@ -402,6 +454,70 @@ class FloEMPImporter(EMPImporter):
 
                         for it, ii, nn, cv in classified:
                             _add_item(it, ii, nn, cv)
+
+                elif kind == "panels":
+                    # v2 홈 패널 — POPULAR_CHANNEL (트랙 인라인)
+                    try:
+                        panels, err = await self._fetch_home_panels(http)
+                    except Exception as e:
+                        safe_rollback(conn)
+                        errors.append(f"panels: {fmt_exc(e, 120)}")
+                        continue
+                    if err:
+                        errors.append(f"panels: {err}")
+                        continue
+
+                    for panel in panels:
+                        content = panel.get("content") or {}
+                        channel_id = str(content.get("id") or "")
+                        if not channel_id:
+                            continue
+                        display_title = panel.get("title") or channel_id
+                        section_key = f"panel:{' '.join(display_title.split())}"
+                        raw_tracks = content.get("trackList") or []
+                        inline = [
+                            t for t in (_normalize_track(x) for x in raw_tracks) if t
+                        ]
+                        # 패널 커버 = 첫 트랙 앨범 커버 (패널 imgList는 제네릭 장르 이미지)
+                        panel_cover = None
+                        if inline:
+                            first_album = (
+                                raw_tracks[0].get("album")
+                                if isinstance(raw_tracks[0], dict) else None
+                            )
+                            panel_cover = _album_cover(first_album)
+
+                        try:
+                            db_section_id = upsert_section(
+                                conn=conn,
+                                platform=self.platform,
+                                section_key=section_key,
+                                display_title=display_title,
+                                display_order=section_idx,
+                            )
+                            upsert_section_item(
+                                conn=conn,
+                                section_id=db_section_id,
+                                item_type="channel",
+                                item_id=channel_id,
+                                title=display_title,
+                                cover_url=panel_cover,
+                                display_order=0,
+                            )
+                            prune_stale_items(
+                                conn, db_section_id, {("channel", channel_id)}
+                            )
+                        except Exception as e:
+                            safe_rollback(conn)
+                            errors.append(
+                                f"section save {section_key}: {fmt_exc(e, 120)}"
+                            )
+                        section_idx += 1
+                        # inline tracks → Phase 2 skip
+                        _add_item(
+                            "channel", channel_id, display_title, panel_cover, inline
+                        )
+
                 else:
                     # 직접 playlist/channel 소스 → 일관성 위해 섹션 1개로 묶음
                     section_key = f"{kind}:{ident}"
@@ -429,36 +545,35 @@ class FloEMPImporter(EMPImporter):
                     section_idx += 1
                     _add_item(kind, ident, ident, None)
 
-            # special 소스가 한 번이라도 정상 처리됐으면 stale 섹션 정리.
-            # (에러/누락 시 special_synced=False → 보호: 빈 fetch로 전체 삭제 방지)
-            if special_synced:
-                self._prune_stale_special_sections(conn, special_keep_keys)
-
-            # Phase 2: fetch tracks per item, upsert
+            # Phase 2: fetch tracks per item, upsert (inline 보유 시 skip)
             tracks_new = 0
             tracks_existing = 0
             for item_type, item_id in order:
-                name, _cover = items[(item_type, item_id)]
-                try:
-                    tracks, detail_cover = await self._fetch_item_tracks(
-                        http, item_type, item_id
-                    )
-                except Exception as e:
-                    safe_rollback(conn)
-                    errors.append(f"{item_type}/{item_id}: {fmt_exc(e, 120)}")
-                    continue
-
-                # playlist 상세에서 뽑은 커버 역채우기 — 큐레이션 목록엔 빠져있음.
-                if detail_cover:
+                name, _cover, inline_tracks = items[(item_type, item_id)]
+                if inline_tracks is not None:
+                    tracks = inline_tracks
+                    detail_cover = None
+                else:
                     try:
-                        update_item_cover(
-                            conn, self.platform, item_type, item_id, detail_cover
+                        tracks, detail_cover = await self._fetch_item_tracks(
+                            http, item_type, item_id
                         )
                     except Exception as e:
                         safe_rollback(conn)
-                        errors.append(
-                            f"cover update {item_type}/{item_id}: {fmt_exc(e, 120)}"
-                        )
+                        errors.append(f"{item_type}/{item_id}: {fmt_exc(e, 120)}")
+                        continue
+
+                    # playlist 상세에서 뽑은 커버 역채우기 — 큐레이션 목록엔 빠져있음.
+                    if detail_cover:
+                        try:
+                            update_item_cover(
+                                conn, self.platform, item_type, item_id, detail_cover
+                            )
+                        except Exception as e:
+                            safe_rollback(conn)
+                            errors.append(
+                                f"cover update {item_type}/{item_id}: {fmt_exc(e, 120)}"
+                            )
 
                 for t in tracks:
                     try:

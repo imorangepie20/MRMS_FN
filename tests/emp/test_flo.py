@@ -14,15 +14,18 @@ from mrms.emp.flo import (
     DEFAULT_SOURCES,
     SOURCES_SETTING_KEY,
     FloEMPImporter,
+    _album_cover,
     _classify_item,
     _detail_cover,
     _format_cover,
     _normalize_track,
     _parse_play_time,
+    _pick_img_url,
     _section_key,
 )
 
 CURATIONS_URL = "https://www.music-flo.com/api/personal/v1/curations/contents"
+PANELS_URL = "https://www.music-flo.com/api/personal/v2/recommends/home/panels"
 
 
 def _playlist_url(num_id: str) -> str:
@@ -90,12 +93,13 @@ def _flo_track(tid, name, artists, album_title, play_time, rep_artist=None):
 
 
 def test_load_sources_parses(db_conn):
-    """special + playlist + channel 파싱, 주석/빈 줄/모르는 kind 무시."""
+    """special + panels + playlist + channel 파싱, 주석/빈 줄/모르는 kind 무시."""
     set_setting(
         db_conn,
         SOURCES_SETTING_KEY,
         "# comment\n"
         "special\n"
+        "panels\n"
         "playlist/12345\n"
         "channel/67890\n"
         "bogus/xyz\n"
@@ -106,6 +110,7 @@ def test_load_sources_parses(db_conn):
         sources = importer._load_sources(db_conn)
         assert sources == [
             ("special", ""),
+            ("panels", ""),
             ("playlist", "12345"),
             ("channel", "67890"),
         ]
@@ -114,12 +119,12 @@ def test_load_sources_parses(db_conn):
 
 
 def test_load_sources_default(db_conn):
-    """비어 있으면 DEFAULT_SOURCES = ['special']."""
+    """비어 있으면 DEFAULT_SOURCES = ['special', 'panels']."""
     set_setting(db_conn, SOURCES_SETTING_KEY, None)
     importer = FloEMPImporter()
     sources = importer._load_sources(db_conn)
-    assert DEFAULT_SOURCES == ["special"]
-    assert sources == [("special", "")]
+    assert DEFAULT_SOURCES == ["special", "panels"]
+    assert sources == [("special", ""), ("panels", "")]
 
 
 # ----- cover urlFormat 치환 -----
@@ -422,77 +427,6 @@ def test_section_key_falls_back_to_id_when_no_title():
     assert _section_key("   ", 9001) == "special:id-9001"
 
 
-# ----- _prune_stale_special_sections (직접 단위 테스트) -----
-
-
-def test_prune_stale_special_sections_keeps_current(db_conn, cleanup):
-    """이번 sync에 없는 special:* 섹션만 삭제, keep_keys 섹션은 보존.
-    (공용 dev DB 안전 — 기존 real 키 전부 keep에 넣고 주입한 stale만 제거 확인.)"""
-    cleanup(
-        'DELETE FROM "EMPSection" WHERE platform = %s AND "sectionKey" = %s',
-        ("flo", "special:__stale_test__"),
-    )
-
-    existing = {
-        s["section_key"]
-        for s in list_sections_with_items(db_conn, platform="flo")
-        if s["section_key"].startswith("special:")
-    }
-    stale_id = upsert_section(
-        db_conn, platform="flo", section_key="special:__stale_test__",
-        display_title="Stale", display_order=99,
-    )
-    upsert_section_item(
-        db_conn, section_id=stale_id, item_type="playlist", item_id="999",
-        title="old", cover_url=None, display_order=0,
-    )
-
-    deleted = FloEMPImporter._prune_stale_special_sections(db_conn, keep_keys=existing)
-    after = {
-        s["section_key"]
-        for s in list_sections_with_items(db_conn, platform="flo")
-    }
-    assert deleted >= 1
-    assert "special:__stale_test__" not in after  # 주입한 stale 삭제됨(items도 CASCADE)
-    assert existing <= after  # real special:* 섹션은 전부 보존
-
-
-def test_prune_stale_special_sections_empty_keep_is_noop(db_conn):
-    """keep_keys가 비면(빈 fetch / special 누락) 아무것도 안 지운다 — 전체 삭제 방지."""
-    assert FloEMPImporter._prune_stale_special_sections(db_conn, keep_keys=set()) == 0
-
-
-def test_prune_stale_special_sections_preserves_direct_sources(db_conn, cleanup):
-    """special:* prune는 playlist:*·channel:* 직접 소스 섹션을 건드리지 않는다.
-
-    keep_keys에 real special:* 섹션이 없으면 전부 삭제되므로(공용 dev DB 위험) —
-    이 테스트는 _preserve_flo_special_sections로 감싸 real 섹션을 보호한다."""
-    cleanup(
-        'DELETE FROM "EMPSection" WHERE platform = %s AND "sectionKey" IN (%s, %s)',
-        ("flo", "special:__stale_test__", "playlist:__direct_test__"),
-    )
-
-    with _preserve_flo_special_sections(db_conn):
-        upsert_section(
-            db_conn, platform="flo", section_key="playlist:__direct_test__",
-            display_title="Direct", display_order=0,
-        )
-        upsert_section(
-            db_conn, platform="flo", section_key="special:__stale_test__",
-            display_title="Stale", display_order=1,
-        )
-        # keep_keys는 비어 있지 않지만 direct 소스 키는 없음 → special만 삭제
-        FloEMPImporter._prune_stale_special_sections(
-            db_conn, keep_keys={"special:keep-me-that-does-not-exist"}
-        )
-        after = {
-            s["section_key"]
-            for s in list_sections_with_items(db_conn, platform="flo")
-        }
-        assert "special:__stale_test__" not in after
-        assert "playlist:__direct_test__" in after  # 직접 소스 보존
-
-
 # ----- import_all 통합: title 중복 dedup -----
 
 
@@ -663,3 +597,147 @@ async def test_import_all_backfills_playlist_cover_from_detail(db_conn, cleanup)
             assert row is not None
             # Phase 1은 None, Phase 2가 detail 커버로 backfill → 500에 가장 가까운 것
             assert row[0] == detail_cover
+
+
+# ----- _album_cover / _pick_img_url: v1 + v2 앨범 커버 대응 -----
+
+
+def test_album_cover_v1_img_urlFormat():
+    """v1: album.img = {urlFormat: '.../{size}.jpg'} → {size} 치환."""
+    album = {"img": {"urlFormat": "https://cdn.flo.com/x/{size}.jpg"}}
+    assert _album_cover(album) == "https://cdn.flo.com/x/500.jpg"
+
+
+def test_album_cover_v2_imgUrlFormat():
+    """v2: album.imgUrlFormat = '.../{size}/quality/90' (inline at album level)."""
+    album = {"imgUrlFormat": "https://cdn.flo.com/image/album/123/{size}/quality/90"}
+    assert _album_cover(album) == "https://cdn.flo.com/image/album/123/500/quality/90"
+
+
+def test_album_cover_v2_imgList():
+    """v2: album.imgList = [{size, url}, ...] → COVER_SIZE(500)에 가장 가까운 것."""
+    album = {"imgList": [
+        {"size": 75, "url": "https://cdn.flo.com/s75.jpg"},
+        {"size": 500, "url": "https://cdn.flo.com/s500.jpg"},
+        {"size": 1000, "url": "https://cdn.flo.com/s1000.jpg"},
+    ]}
+    assert _album_cover(album) == "https://cdn.flo.com/s500.jpg"
+
+
+def test_album_cover_none():
+    assert _album_cover(None) is None
+    assert _album_cover({}) is None
+
+
+def test_pick_img_url_closest():
+    """target 500에서 size 200(diff 300)이 1000(diff 500)보다 가깝다."""
+    assert _pick_img_url([{"size": 200, "url": "a"}, {"size": 1000, "url": "b"}], 500) == "a"
+    assert _pick_img_url([{"size": 350, "url": "c"}, {"size": 1000, "url": "d"}], 500) == "c"
+    assert _pick_img_url(None, 500) is None
+    assert _pick_img_url([], 500) is None
+
+
+# ----- _fetch_home_panels: v2 POPULAR_CHANNEL 필터 -----
+
+
+@respx.mock
+async def test_fetch_home_panels_filters_popular_channel():
+    """POPULAR_CHANNEL(CHNL)만 반환, PLAY_NOW 등 다른 타입은 skip."""
+    panels_resp = {
+        "code": "2000000",
+        "data": {"list": [
+            {
+                "type": "POPULAR_CHANNEL", "title": "채널 A",
+                "content": {"id": "111", "type": "CHNL", "trackList": []},
+            },
+            {
+                "type": "PLAY_NOW", "title": "자동선곡",
+                "content": {"id": "null", "type": "RC_PLNW_TR"},
+            },
+            {
+                "type": "POPULAR_CHANNEL", "title": "채널 B",
+                "content": {"id": "222", "type": "CHNL", "trackList": []},
+            },
+        ]},
+    }
+    respx.get(PANELS_URL).mock(return_value=httpx.Response(200, json=panels_resp))
+    import httpx as _httpx
+    async with _httpx.AsyncClient() as http:
+        panels, err = await FloEMPImporter()._fetch_home_panels(http)
+    assert err is None
+    assert len(panels) == 2  # PLAY_NOW 1개 제외
+    assert panels[0]["title"] == "채널 A"
+    assert panels[1]["title"] == "채널 B"
+
+
+# ----- import_all panels: 인라인 트랙 + 첫 트랙 커버 -----
+
+
+@respx.mock
+async def test_import_all_panels_saves_section_item_inline_tracks(db_conn, cleanup):
+    """panels 소스 → 섹션 1개 + item 1개(channel) + 인라인 트랙 직접 upsert.
+    커버는 첫 트랙 앨범 커버. Phase 2 fetch skip."""
+    title = "FLO PANEL TEST unique55"
+    set_setting(db_conn, SOURCES_SETTING_KEY, "panels")
+
+    cleanup('DELETE FROM "EMPSection" WHERE platform = %s AND "displayTitle" = %s', ("flo", title))
+    cleanup(
+        'DELETE FROM "EMPSource" WHERE platform = %s AND source_id = %s',
+        ("flo", "channel:51909"),
+    )
+    cleanup('DELETE FROM "Setting" WHERE key = %s', (SOURCES_SETTING_KEY,))
+
+    cover500 = "https://cdn.music-flo.com/image/v2/album/830/350/08/s500.jpg"
+    panels_resp = {
+        "code": "2000000",
+        "data": {"list": [{
+            "type": "POPULAR_CHANNEL",
+            "title": title,
+            "imgList": [{"size": 500, "url": "https://generic-not-used.jpg"}],
+            "content": {
+                "id": "51909", "type": "CHNL", "trackCount": 1,
+                "trackList": [{
+                    "id": 454522696, "name": "팡파레", "playTime": "03:29",
+                    "artistList": [{"id": 80041466, "name": "다비치"}],
+                    "representationArtist": {"id": 80041466, "name": "다비치"},
+                    "album": {
+                        "id": 408350830, "title": "Season Note",
+                        "imgUrlFormat": "https://cdn.music-flo.com/image/v2/album/830/350/08/{size}.jpg",
+                        "imgList": [
+                            {"size": 75, "url": "https://cdn.music-flo.com/image/v2/album/830/350/08/s75.jpg"},
+                            {"size": 500, "url": cover500},
+                        ],
+                    },
+                }],
+            },
+        }]},
+    }
+    respx.get(PANELS_URL).mock(return_value=httpx.Response(200, json=panels_resp))
+
+    with _preserve_flo_special_sections(db_conn):
+        importer = FloEMPImporter()
+        summary = await importer.import_all(db_conn)
+
+        assert summary["errors"] == []
+        assert summary["tracks_new"] + summary["tracks_existing"] == 1
+
+        with db_conn.cursor() as cur:
+            # 섹션 1개 (panel: prefix)
+            cur.execute(
+                'SELECT "sectionKey" FROM "EMPSection" WHERE platform = %s AND "displayTitle" = %s',
+                ("flo", title),
+            )
+            sec_row = cur.fetchone()
+            assert sec_row is not None
+            assert sec_row[0] == f"panel:{title}"
+
+            # item cover = 첫 트랙 앨범 커버 (imgUrlFormat → 500)
+            cur.execute(
+                '''SELECT si."coverUrl" FROM "EMPSectionItem" si
+                   JOIN "EMPSection" s ON s.id = si."sectionId"
+                   WHERE s.platform = %s AND s."displayTitle" = %s''',
+                ("flo", title),
+            )
+            item_row = cur.fetchone()
+            assert item_row is not None
+            assert item_row[0] == "https://cdn.music-flo.com/image/v2/album/830/350/08/500.jpg"
