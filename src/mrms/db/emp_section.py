@@ -153,3 +153,31 @@ def prune_stale_items(
         deleted = cur.rowcount
     conn.commit()
     return deleted
+
+
+def update_item_cover(
+    conn: psycopg.Connection,
+    platform: str,
+    item_type: str,
+    item_id: str,
+    cover_url: str | None,
+) -> int:
+    """같은 (platform, itemType, itemId)를 갖는 모든 섹션 아이템의 coverUrl 갱신.
+
+    플랫폼이 큐레이션 목록엔 안 주고 상세 API에만 주는 커버(예: FLO playlist)를
+    트랙 fetch 시점에 역채우기(backfill)하기 위함. 같은 아이템이 여러 섹션에
+    걸쳐 있어도 한 번에 갱신된다."""
+    with conn.cursor() as cur:
+        cur.execute(
+            '''UPDATE "EMPSectionItem" si
+               SET "coverUrl" = %s
+               FROM "EMPSection" s
+               WHERE si."sectionId" = s.id
+                 AND s.platform = %s
+                 AND si."itemType" = %s
+                 AND si."itemId" = %s''',
+            (cover_url, platform, item_type, item_id),
+        )
+        updated = cur.rowcount
+    conn.commit()
+    return updated

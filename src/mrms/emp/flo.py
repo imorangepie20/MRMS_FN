@@ -20,7 +20,12 @@ from __future__ import annotations
 import httpx
 import psycopg
 
-from mrms.db.emp_section import prune_stale_items, upsert_section, upsert_section_item
+from mrms.db.emp_section import (
+    prune_stale_items,
+    update_item_cover,
+    upsert_section,
+    upsert_section_item,
+)
 from mrms.db.settings import get_setting
 from mrms.emp.base import (
     EMPImporter,
@@ -105,6 +110,25 @@ def _section_key(display_title: str | None, sec_id) -> str:
         normalized = " ".join(display_title.split())
         return f"special:{normalized}"
     return f"special:id-{sec_id}"
+
+
+def _detail_cover(grid_img: dict | None) -> str | None:
+    """playlist/channel 상세 API의 gridImg → cover URL.
+
+    상세 응답은 gridImg.urlFormatList(완전 URL 리스트, '{size}' 치환 불필요)를
+    준다. availableSizeList와 길이가 맞으면 COVER_SIZE(500)에 가장 가까운 것,
+    아니면 가장 큰 것(마지막)을 선택. (크게 받아서 CSS 축소 — 작게 받아 확대보다 깨끗.)
+    """
+    if not isinstance(grid_img, dict):
+        return None
+    urls = grid_img.get("urlFormatList") or []
+    if not urls:
+        return None
+    sizes = grid_img.get("availableSizeList") or []
+    if sizes and len(sizes) == len(urls):
+        best = min(range(len(sizes)), key=lambda i: abs(sizes[i] - int(COVER_SIZE)))
+        return urls[best]
+    return urls[-1]
 
 
 def _normalize_track(tr) -> dict | None:
@@ -226,8 +250,11 @@ class FloEMPImporter(EMPImporter):
 
     async def _fetch_playlist_tracks(
         self, http: httpx.AsyncClient, num_id: str
-    ) -> list[dict]:
-        """/playlist/{numId} → data.track.list[]."""
+    ) -> tuple[list[dict], str | None]:
+        """/playlist/{numId} → (tracks, cover_url).
+
+        상세 응답의 gridImg.urlFormatList에서 cover도 같이 뽑는다 — 큐레이션 목록의
+        PLAYLIST 아이템은 커버가 빠져 있어 Phase 2에서 역채우기(backfill)한다."""
         r = await http.get(
             f"{FLO_BASE}/api/personal/v1/playlist/{num_id}",
             headers=self._headers(),
@@ -238,13 +265,16 @@ class FloEMPImporter(EMPImporter):
         if not self._check_code(data):
             code = data.get("code") if isinstance(data, dict) else None
             raise RuntimeError(f"playlist code {code}")
-        raw_list = ((data.get("data") or {}).get("track") or {}).get("list") or []
-        return [t for t in (_normalize_track(x) for x in raw_list) if t]
+        payload = data.get("data") or {}
+        raw_list = (payload.get("track") or {}).get("list") or []
+        tracks = [t for t in (_normalize_track(x) for x in raw_list) if t]
+        cover = _detail_cover(payload.get("gridImg"))
+        return tracks, cover
 
     async def _fetch_channel_tracks(
         self, http: httpx.AsyncClient, num_id: str
     ) -> list[dict]:
-        """/channel/{numId} → data.trackList[]."""
+        """/channel/{numId} → data.trackList[]. channel은 큐레이션 목록에 커버 이미 있음."""
         r = await http.get(
             f"{FLO_BASE}/api/meta/v1/channel/{num_id}",
             headers=self._headers(),
@@ -260,12 +290,13 @@ class FloEMPImporter(EMPImporter):
 
     async def _fetch_item_tracks(
         self, http: httpx.AsyncClient, item_type: str, item_id: str
-    ) -> list[dict]:
+    ) -> tuple[list[dict], str | None]:
+        """(tracks, cover_url). cover는 playlist 상세에서만 추출, channel은 None."""
         if item_type == "playlist":
             return await self._fetch_playlist_tracks(http, item_id)
         if item_type == "channel":
-            return await self._fetch_channel_tracks(http, item_id)
-        return []
+            return await self._fetch_channel_tracks(http, item_id), None
+        return [], None
 
     @staticmethod
     def _prune_stale_special_sections(
@@ -409,11 +440,25 @@ class FloEMPImporter(EMPImporter):
             for item_type, item_id in order:
                 name, _cover = items[(item_type, item_id)]
                 try:
-                    tracks = await self._fetch_item_tracks(http, item_type, item_id)
+                    tracks, detail_cover = await self._fetch_item_tracks(
+                        http, item_type, item_id
+                    )
                 except Exception as e:
                     safe_rollback(conn)
                     errors.append(f"{item_type}/{item_id}: {fmt_exc(e, 120)}")
                     continue
+
+                # playlist 상세에서 뽑은 커버 역채우기 — 큐레이션 목록엔 빠져있음.
+                if detail_cover:
+                    try:
+                        update_item_cover(
+                            conn, self.platform, item_type, item_id, detail_cover
+                        )
+                    except Exception as e:
+                        safe_rollback(conn)
+                        errors.append(
+                            f"cover update {item_type}/{item_id}: {fmt_exc(e, 120)}"
+                        )
 
                 for t in tracks:
                     try:

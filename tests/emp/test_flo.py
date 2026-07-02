@@ -15,6 +15,7 @@ from mrms.emp.flo import (
     SOURCES_SETTING_KEY,
     FloEMPImporter,
     _classify_item,
+    _detail_cover,
     _format_cover,
     _normalize_track,
     _parse_play_time,
@@ -573,3 +574,92 @@ async def test_import_all_dedupes_same_title_different_sec_ids(db_conn, cleanup)
                 ("flo", title),
             )
             assert cur.fetchone()[0] == 1
+
+
+# ----- _detail_cover: playlist 상세의 gridImg → cover URL -----
+
+
+def test_detail_cover_picks_closest_to_500():
+    """availableSizeList와 길이가 맞으면 500에 가장 가까운 size index 선택."""
+    grid = {
+        "availableSizeList": [75, 140, 200, 350, 500, 1000],
+        "urlFormatList": [f"https://cdn.flo.com/s{i}.jpg" for i in [75, 140, 200, 350, 500, 1000]],
+    }
+    assert _detail_cover(grid) == "https://cdn.flo.com/s500.jpg"
+
+
+def test_detail_cover_size_mismatch_takes_last():
+    """availableSizeList와 길이 안 맞거나 없으면 마지막(가장 큰) URL."""
+    assert _detail_cover({"urlFormatList": ["a", "b", "c"]}) == "c"
+    assert _detail_cover({"urlFormatList": []}) is None
+    assert _detail_cover(None) is None
+    assert _detail_cover({}) is None
+
+
+# ----- import_all: playlist 상세에서 커버 역채우기(backfill) -----
+
+
+@respx.mock
+async def test_import_all_backfills_playlist_cover_from_detail(db_conn, cleanup):
+    """큐레이션 목록엔 없고 playlist 상세 API에만 있는 커버를 Phase 2에서 채운다.
+
+    재현: FLO 큐레이션 PLAYLIST 아이템은 gridImg/img 없이 옴 → Phase 1 cover=None.
+    Phase 2에서 /playlist/{id} 호출 시 data.gridImg.urlFormatList → cover 추출해
+    EMPSectionItem.coverUrl 업데이트."""
+    title = "FLO BACKFILL COVER TEST unique777"
+    set_setting(db_conn, SOURCES_SETTING_KEY, "special")
+
+    cleanup(
+        'DELETE FROM "EMPSection" WHERE platform = %s AND "displayTitle" = %s',
+        ("flo", title),
+    )
+    cleanup('DELETE FROM "Setting" WHERE key = %s', (SOURCES_SETTING_KEY,))
+
+    detail_cover = "https://cdn.music-flo.com/image/v2/album/backfill_500.jpg"
+    curations = {
+        "code": "2000000",
+        "data": {"list": [{
+            "type": "CURATION2",
+            "content": {
+                "id": 77001,
+                "title": title,
+                "list": [{
+                    # 큐레이션 목록의 PLAYLIST 아이템 — gridImg/img 없음
+                    "type": "PLAYLIST", "id": 77888, "name": "Backfill PL",
+                }],
+            },
+        }]},
+    }
+    respx.get(CURATIONS_URL).mock(return_value=httpx.Response(200, json=curations))
+    respx.get(_playlist_url("77888")).mock(
+        return_value=httpx.Response(200, json={
+            "code": "2000000",
+            "data": {
+                "track": {"list": []},
+                "gridImg": {
+                    "availableSizeList": [140, 350, 500],
+                    "urlFormatList": [
+                        "https://cdn.music-flo.com/image/v2/album/backfill_140.jpg",
+                        "https://cdn.music-flo.com/image/v2/album/backfill_350.jpg",
+                        detail_cover,
+                    ],
+                },
+            },
+        })
+    )
+
+    with _preserve_flo_special_sections(db_conn):
+        importer = FloEMPImporter()
+        await importer.import_all(db_conn)
+
+        with db_conn.cursor() as cur:
+            cur.execute(
+                '''SELECT si."coverUrl" FROM "EMPSectionItem" si
+                   JOIN "EMPSection" s ON s.id = si."sectionId"
+                   WHERE s.platform = %s AND si."itemType" = %s AND si."itemId" = %s''',
+                ("flo", "playlist", "77888"),
+            )
+            row = cur.fetchone()
+            assert row is not None
+            # Phase 1은 None, Phase 2가 detail 커버로 backfill → 500에 가장 가까운 것
+            assert row[0] == detail_cover
